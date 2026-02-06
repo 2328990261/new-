@@ -1,0 +1,1004 @@
+<?php
+
+namespace app\controller\admin;
+
+use app\BaseController;
+use app\model\Payment as PaymentModel;
+use think\facade\Db;
+
+class Payment extends BaseController
+{
+    /**
+     * 获取支付列表
+     */
+    public function list()
+    {
+        try {
+            $page = $this->request->param('page', 1);
+            $limit = $this->request->param('limit', 10);
+            
+            // 获取筛选参�?            $tutorName = $this->request->param('tutor_name', '');
+            $teacherName = $this->request->param('teacher_name', '');
+            $status = $this->request->param('status', '');
+            $refundStatus = $this->request->param('refund_status', '');
+            $dispatcherId = $this->request->param('dispatcher_id', '');
+            $amountMin = $this->request->param('amount_min', '');
+            $amountMax = $this->request->param('amount_max', '');
+            $payTimeStart = $this->request->param('pay_time_start', '');
+            $payTimeEnd = $this->request->param('pay_time_end', '');
+            $refundTimeStart = $this->request->param('refund_time_start', '');
+            $refundTimeEnd = $this->request->param('refund_time_end', '');
+            $refundApplyTimeStart = $this->request->param('refund_apply_time_start', '');
+            $refundApplyTimeEnd = $this->request->param('refund_apply_time_end', '');
+            
+            // 构建查询
+            $query = PaymentModel::with(['dispatcher' => function($query) {
+                $query->field('id,nickname');
+            }])->order('paid_time', 'desc');
+            
+            // 应用筛选条�?            if ($tutorName) {
+                $query->where('tutor_name', 'like', "%{$tutorName}%");
+            }
+            if ($teacherName) {
+                $query->where('teacher_name', 'like', "%{$teacherName}%");
+            }
+            if ($status) {
+                $query->where('status', $status);
+            }
+            if ($refundStatus) {
+                $query->where('refund_status', $refundStatus);
+            }
+            if ($dispatcherId) {
+                $query->where('dispatcher_id', $dispatcherId);
+            }
+            if ($amountMin) {
+                $query->where('amount', '>=', $amountMin);
+            }
+            if ($amountMax) {
+                $query->where('amount', '<=', $amountMax);
+            }
+            if ($payTimeStart && $payTimeEnd) {
+                $query->whereBetweenTime('paid_time', $payTimeStart, $payTimeEnd);
+            }
+            if ($refundTimeStart && $refundTimeEnd) {
+                $query->whereBetweenTime('refund_time', $refundTimeStart, $refundTimeEnd);
+            }
+            if ($refundApplyTimeStart && $refundApplyTimeEnd) {
+                $query->whereBetweenTime('refund_apply_time', $refundApplyTimeStart, $refundApplyTimeEnd);
+            }
+            
+            // 分页查询
+            $list = $query->paginate([
+                'list_rows' => $limit,
+                'page' => $page
+            ]);
+            
+            // 处理数据，添加派单员昵称
+            $items = $list->items();
+            foreach ($items as &$item) {
+                $item['dispatcher_name'] = $item['dispatcher'] ? $item['dispatcher']['nickname'] : '';
+                unset($item['dispatcher']);
+            }
+            
+            return json([
+                'code' => 200,
+                'message' => '获取成功',
+                'data' => [
+                    'list' => $items,
+                    'total' => $list->total()
+                ]
+            ]);
+        } catch (\Exception $e) {
+            return json([
+                'code' => 500,
+                'message' => '获取失败�? . $e->getMessage()
+            ]);
+        }
+    }
+    
+    /**
+     * 获取统计数据
+     */
+    public function statistics()
+    {
+        try {
+            // 获取筛选参数（与列表相同）
+            $tutorName = $this->request->param('tutor_name', '');
+            $teacherName = $this->request->param('teacher_name', '');
+            $dispatcherId = $this->request->param('dispatcher_id', '');
+            $amountMin = $this->request->param('amount_min', '');
+            $amountMax = $this->request->param('amount_max', '');
+            $payTimeStart = $this->request->param('pay_time_start', '');
+            $payTimeEnd = $this->request->param('pay_time_end', '');
+            $refundTimeStart = $this->request->param('refund_time_start', '');
+            $refundTimeEnd = $this->request->param('refund_time_end', '');
+            $refundApplyTimeStart = $this->request->param('refund_apply_time_start', '');
+            $refundApplyTimeEnd = $this->request->param('refund_apply_time_end', '');
+            $refundStatus = $this->request->param('refund_status', '');
+            
+            // 构建查询
+            $query = PaymentModel::where('status', 'paid');
+            
+            // 应用筛选条�?            if ($tutorName) {
+                $query->where('tutor_name', 'like', "%{$tutorName}%");
+            }
+            if ($teacherName) {
+                $query->where('teacher_name', 'like', "%{$teacherName}%");
+            }
+            if ($dispatcherId) {
+                $query->where('dispatcher_id', $dispatcherId);
+            }
+            if ($amountMin) {
+                $query->where('amount', '>=', $amountMin);
+            }
+            if ($amountMax) {
+                $query->where('amount', '<=', $amountMax);
+            }
+            if ($payTimeStart && $payTimeEnd) {
+                $query->whereBetweenTime('paid_time', $payTimeStart, $payTimeEnd);
+            }
+            if ($refundTimeStart && $refundTimeEnd) {
+                $query->whereBetweenTime('refund_time', $refundTimeStart, $refundTimeEnd);
+            }
+            if ($refundApplyTimeStart && $refundApplyTimeEnd) {
+                $query->whereBetweenTime('refund_apply_time', $refundApplyTimeStart, $refundApplyTimeEnd);
+            }
+            if ($refundStatus) {
+                $query->where('refund_status', $refundStatus);
+            }
+            
+            // 统计数据
+            $totalPaidAmount = $query->sum('amount');
+            $totalRefundedAmount = $query->sum('refunded_amount');
+            $totalActualAmount = $totalPaidAmount - $totalRefundedAmount;
+            $totalCount = $query->count();
+            
+            return json([
+                'code' => 200,
+                'message' => '获取成功',
+                'data' => [
+                    'total_paid_amount' => round($totalPaidAmount, 2),
+                    'total_refunded_amount' => round($totalRefundedAmount, 2),
+                    'total_actual_amount' => round($totalActualAmount, 2),
+                    'total_count' => $totalCount
+                ]
+            ]);
+        } catch (\Exception $e) {
+            return json([
+                'code' => 500,
+                'message' => '获取失败�? . $e->getMessage()
+            ]);
+        }
+    }
+    
+    /**
+     * 获取支付详情
+     */
+    public function read($id)
+    {
+        try {
+            $payment = PaymentModel::find($id);
+            
+            if (!$payment) {
+                return json([
+                    'code' => 404,
+                    'message' => '支付记录不存�?
+                ]);
+            }
+            
+            return json([
+                'code' => 200,
+                'message' => '获取成功',
+                'data' => $payment
+            ]);
+        } catch (\Exception $e) {
+            return json([
+                'code' => 500,
+                'message' => '获取失败�? . $e->getMessage()
+            ]);
+        }
+    }
+    
+    /**
+     * 处理退�?     */
+    public function processRefund()
+    {
+        try {
+            $id = $this->request->param('id');
+            $refundAmount = $this->request->param('refund_amount');
+            $remark = $this->request->param('remark', '');
+            
+            if (!$id || !$refundAmount) {
+                return json([
+                    'code' => 400,
+                    'message' => '参数错误'
+                ]);
+            }
+            
+            $payment = PaymentModel::find($id);
+            
+            if (!$payment) {
+                return json([
+                    'code' => 404,
+                    'message' => '支付记录不存�?
+                ]);
+            }
+            
+            // 检查退款金�?            $canRefundAmount = $payment->amount - $payment->refunded_amount;
+            if ($refundAmount > $canRefundAmount) {
+                return json([
+                    'code' => 400,
+                    'message' => '退款金额超过可退金额'
+                ]);
+            }
+            
+            // 更新退款信�?            $payment->refunded_amount = $payment->refunded_amount + $refundAmount;
+            $payment->refund_status = 'completed';
+            $payment->refund_time = date('Y-m-d H:i:s');
+            $payment->actual_amount = $payment->amount - $payment->refunded_amount;
+            if ($remark) {
+                $payment->remark = $remark;
+            }
+            $payment->save();
+            
+            return json([
+                'code' => 200,
+                'message' => '退款成�?
+            ]);
+        } catch (\Exception $e) {
+            return json([
+                'code' => 500,
+                'message' => '退款失败：' . $e->getMessage()
+            ]);
+        }
+    }
+    
+    /**
+     * 驳回退�?     */
+    public function rejectRefund()
+    {
+        try {
+            $id = $this->request->param('id');
+            $rejectReason = $this->request->param('reject_reason', '');
+            
+            if (!$id || !$rejectReason) {
+                return json([
+                    'code' => 400,
+                    'message' => '参数错误'
+                ]);
+            }
+            
+            $payment = PaymentModel::find($id);
+            
+            if (!$payment) {
+                return json([
+                    'code' => 404,
+                    'message' => '支付记录不存�?
+                ]);
+            }
+            
+            // 更新退款状�?            $payment->refund_status = 'rejected';
+            $payment->reject_reason = $rejectReason;
+            $payment->save();
+            
+            return json([
+                'code' => 200,
+                'message' => '驳回成功'
+            ]);
+        } catch (\Exception $e) {
+            return json([
+                'code' => 500,
+                'message' => '驳回失败�? . $e->getMessage()
+            ]);
+        }
+    }
+    
+    /**
+     * 获取派单员列表（用于筛选）
+     */
+    public function getDispatchers()
+    {
+        try {
+            // 只获取派单组的管理员（role='dispatcher'�?            $dispatchers = Db::name('admin')
+                ->where('status', 1)
+                ->where('role', 'dispatcher')
+                ->field('id,nickname,username')
+                ->order('id', 'asc')
+                ->select()
+                ->toArray();
+            
+            // 如果没有数据，返回空数组而不是null
+            if (empty($dispatchers)) {
+                $dispatchers = [];
+            }
+            
+            return json([
+                'code' => 200,
+                'message' => '获取成功',
+                'data' => $dispatchers
+            ]);
+        } catch (\Exception $e) {
+            \think\facade\Log::error('获取派单员列表失�? ' . $e->getMessage());
+            return json([
+                'code' => 500,
+                'message' => '获取失败�? . $e->getMessage()
+            ]);
+        }
+    }
+    
+    /**
+     * 获取今日交易�?     */
+    public function todayAmount()
+    {
+        try {
+            $today = date('Y-m-d');
+            
+            $result = Db::name('payments')
+                ->whereTime('paid_time', 'today')
+                ->where('status', 'paid')
+                ->field('SUM(amount - IFNULL(refunded_amount, 0)) as total_amount')
+                ->find();
+            
+            $amount = $result['total_amount'] ?? 0;
+            
+            return json([
+                'code' => 200,
+                'message' => '获取成功',
+                'data' => [
+                    'amount' => round($amount, 2),
+                    'update_time' => date('H:i')
+                ]
+            ]);
+        } catch (\Exception $e) {
+            return json([
+                'code' => 500,
+                'message' => '获取失败�? . $e->getMessage()
+            ]);
+        }
+    }
+    
+    /**
+     * 获取数据面板
+     */
+    public function dataPanel()
+    {
+        try {
+            $startDate = $this->request->param('start_date', '');
+            $endDate = $this->request->param('end_date', '');
+            
+            // 默认最�?0�?            if (!$startDate || !$endDate) {
+                $endDate = date('Y-m-d');
+                $startDate = date('Y-m-d', strtotime('-30 days'));
+            }
+            
+            // 核心指标
+            $metrics = $this->getMetrics($startDate, $endDate);
+            
+            // 趋势数据
+            $trendData = $this->getTrendData($startDate, $endDate);
+            
+            // 状态分�?            $statusData = $this->getStatusData($startDate, $endDate);
+            
+            // 退款原因分�?            $refundReasonData = $this->getRefundReasonData($startDate, $endDate);
+            
+            // 客服业绩排行
+            $staffRankData = $this->getStaffRankData($startDate, $endDate);
+            
+            // 表格数据
+            $tableData = $this->getTableData($startDate, $endDate);
+            
+            return json([
+                'code' => 200,
+                'message' => '获取成功',
+                'data' => [
+                    'metrics' => $metrics,
+                    'trendData' => $trendData,
+                    'statusData' => $statusData,
+                    'refundReasonData' => $refundReasonData,
+                    'staffRankData' => $staffRankData,
+                    'tableData' => $tableData
+                ]
+            ]);
+        } catch (\Exception $e) {
+            return json([
+                'code' => 500,
+                'message' => '获取失败�? . $e->getMessage()
+            ]);
+        }
+    }
+    
+    /**
+     * 获取核心指标
+     */
+    private function getMetrics($startDate, $endDate)
+    {
+        // 当前期间数据
+        $current = Db::name('payments')
+            ->whereBetweenTime('paid_time', $startDate, $endDate)
+            ->field([
+                'SUM(amount) as total_amount',
+                'SUM(CASE WHEN status = "paid" THEN amount ELSE 0 END) as paid_amount',
+                'SUM(IFNULL(refunded_amount, 0)) as refund_amount',
+                'SUM(CASE WHEN status = "paid" THEN amount - IFNULL(refunded_amount, 0) ELSE 0 END) as actual_amount'
+            ])
+            ->find();
+        
+        // 上一期间数据（用于计算趋势）
+        $days = (strtotime($endDate) - strtotime($startDate)) / 86400;
+        $prevStartDate = date('Y-m-d', strtotime($startDate . " -{$days} days"));
+        $prevEndDate = date('Y-m-d', strtotime($endDate . " -{$days} days"));
+        
+        $previous = Db::name('payments')
+            ->whereBetweenTime('paid_time', $prevStartDate, $prevEndDate)
+            ->field([
+                'SUM(amount) as total_amount',
+                'SUM(CASE WHEN status = "paid" THEN amount ELSE 0 END) as paid_amount',
+                'SUM(IFNULL(refunded_amount, 0)) as refund_amount',
+                'SUM(CASE WHEN status = "paid" THEN amount - IFNULL(refunded_amount, 0) ELSE 0 END) as actual_amount'
+            ])
+            ->find();
+        
+        // 计算趋势
+        $totalAmountTrend = $previous['total_amount'] > 0 
+            ? round((($current['total_amount'] - $previous['total_amount']) / $previous['total_amount']) * 100, 2)
+            : 0;
+        $paidAmountTrend = $previous['paid_amount'] > 0 
+            ? round((($current['paid_amount'] - $previous['paid_amount']) / $previous['paid_amount']) * 100, 2)
+            : 0;
+        $refundAmountTrend = $previous['refund_amount'] > 0 
+            ? round((($current['refund_amount'] - $previous['refund_amount']) / $previous['refund_amount']) * 100, 2)
+            : 0;
+        $actualAmountTrend = $previous['actual_amount'] > 0 
+            ? round((($current['actual_amount'] - $previous['actual_amount']) / $previous['actual_amount']) * 100, 2)
+            : 0;
+        
+        // 计算退款率
+        $refundRate = $current['paid_amount'] > 0 
+            ? round(($current['refund_amount'] / $current['paid_amount']) * 100, 2)
+            : 0;
+        $prevRefundRate = $previous['paid_amount'] > 0 
+            ? round(($previous['refund_amount'] / $previous['paid_amount']) * 100, 2)
+            : 0;
+        $refundRateTrend = $prevRefundRate > 0 
+            ? round((($refundRate - $prevRefundRate) / $prevRefundRate) * 100, 2)
+            : 0;
+        
+        return [
+            'totalAmount' => round($current['total_amount'] ?? 0, 2),
+            'totalAmountTrend' => $totalAmountTrend,
+            'paidAmount' => round($current['paid_amount'] ?? 0, 2),
+            'paidAmountTrend' => $paidAmountTrend,
+            'refundAmount' => round($current['refund_amount'] ?? 0, 2),
+            'refundAmountTrend' => $refundAmountTrend,
+            'actualAmount' => round($current['actual_amount'] ?? 0, 2),
+            'actualAmountTrend' => $actualAmountTrend,
+            'refundRate' => $refundRate,
+            'refundRateTrend' => $refundRateTrend
+        ];
+    }
+    
+    /**
+     * 获取趋势数据
+     */
+    private function getTrendData($startDate, $endDate)
+    {
+        $data = Db::name('payments')
+            ->whereBetweenTime('paid_time', $startDate, $endDate)
+            ->field([
+                'DATE(paid_time) as date',
+                'SUM(CASE WHEN status = "paid" THEN amount ELSE 0 END) as paid_amount',
+                'SUM(IFNULL(refunded_amount, 0)) as refund_amount',
+                'SUM(CASE WHEN status = "paid" THEN amount - IFNULL(refunded_amount, 0) ELSE 0 END) as actual_amount',
+                'COUNT(*) as order_count'
+            ])
+            ->group('DATE(paid_time)')
+            ->order('date', 'asc')
+            ->select()
+            ->toArray();
+        
+        $dates = [];
+        $paidAmounts = [];
+        $refundAmounts = [];
+        $actualAmounts = [];
+        $refundRates = [];
+        $orderCounts = [];
+        
+        foreach ($data as $item) {
+            $dates[] = $item['date'];
+            $paidAmounts[] = round($item['paid_amount'], 2);
+            $refundAmounts[] = round($item['refund_amount'], 2);
+            $actualAmounts[] = round($item['actual_amount'], 2);
+            $refundRate = $item['paid_amount'] > 0 
+                ? round(($item['refund_amount'] / $item['paid_amount']) * 100, 2)
+                : 0;
+            $refundRates[] = $refundRate;
+            $orderCounts[] = $item['order_count'];
+        }
+        
+        return [
+            'dates' => $dates,
+            'paidAmounts' => $paidAmounts,
+            'refundAmounts' => $refundAmounts,
+            'actualAmounts' => $actualAmounts,
+            'refundRates' => $refundRates,
+            'orderCounts' => $orderCounts
+        ];
+    }
+    
+    /**
+     * 获取状态分�?     */
+    private function getStatusData($startDate, $endDate)
+    {
+        $data = Db::name('payments')
+            ->whereBetweenTime('paid_time', $startDate, $endDate)
+            ->field([
+                'CASE 
+                    WHEN refund_status = "completed" THEN "已退�?
+                    WHEN refund_status = "pending" THEN "退费待处理"
+                    WHEN refund_status = "rejected" THEN "退费驳�?
+                    WHEN status = "paid" THEN "已支�?
+                    ELSE "其他"
+                END as status_name',
+                'SUM(amount) as amount'
+            ])
+            ->group('status_name')
+            ->select()
+            ->toArray();
+        
+        $result = [];
+        foreach ($data as $item) {
+            $result[] = [
+                'name' => $item['status_name'],
+                'value' => round($item['amount'], 2)
+            ];
+        }
+        
+        return $result;
+    }
+    
+    /**
+     * 获取退款原因分�?     */
+    private function getRefundReasonData($startDate, $endDate)
+    {
+        $data = Db::name('payments')
+            ->whereBetweenTime('paid_time', $startDate, $endDate)
+            ->where('refund_status', '<>', '')
+            ->whereNotNull('refund_reason')
+            ->field([
+                'refund_reason',
+                'COUNT(*) as count'
+            ])
+            ->group('refund_reason')
+            ->order('count', 'desc')
+            ->limit(10)
+            ->select()
+            ->toArray();
+        
+        $reasons = [];
+        $counts = [];
+        
+        foreach ($data as $item) {
+            $reason = $item['refund_reason'] ?: '未填�?;
+            if (mb_strlen($reason) > 15) {
+                $reason = mb_substr($reason, 0, 15) . '...';
+            }
+            $reasons[] = $reason;
+            $counts[] = $item['count'];
+        }
+        
+        return [
+            'reasons' => $reasons,
+            'counts' => $counts
+        ];
+    }
+    
+    /**
+     * 获取客服业绩排行
+     */
+    private function getStaffRankData($startDate, $endDate)
+    {
+        $data = Db::name('payments')
+            ->whereBetweenTime('paid_time', $startDate, $endDate)
+            ->where('status', 'paid')
+            ->whereNotNull('customer_service')
+            ->where('customer_service', '<>', '')
+            ->field([
+                'customer_service',
+                'SUM(amount - IFNULL(refunded_amount, 0)) as amount'
+            ])
+            ->group('customer_service')
+            ->order('amount', 'desc')
+            ->limit(10)
+            ->select()
+            ->toArray();
+        
+        $staffNames = [];
+        $amounts = [];
+        
+        foreach ($data as $item) {
+            $staffNames[] = $item['customer_service'];
+            $amounts[] = round($item['amount'], 2);
+        }
+        
+        return [
+            'staffNames' => $staffNames,
+            'amounts' => $amounts
+        ];
+    }
+    
+    /**
+     * 获取表格数据
+     */
+    private function getTableData($startDate, $endDate)
+    {
+        $data = Db::name('payments')
+            ->whereBetweenTime('paid_time', $startDate, $endDate)
+            ->field([
+                'DATE(paid_time) as date',
+                'SUM(amount) as total_amount',
+                'SUM(CASE WHEN status = "paid" THEN amount ELSE 0 END) as paid_amount',
+                'SUM(IFNULL(refunded_amount, 0)) as refund_amount',
+                'SUM(CASE WHEN status = "paid" THEN amount - IFNULL(refunded_amount, 0) ELSE 0 END) as actual_amount',
+                'COUNT(*) as order_count',
+                'ROUND(SUM(IFNULL(refunded_amount, 0)) / SUM(amount) * 100, 2) as refund_rate'
+            ])
+            ->group('DATE(paid_time)')
+            ->order('date', 'desc')
+            ->select()
+            ->toArray();
+        
+        foreach ($data as &$item) {
+            $item['totalAmount'] = round($item['total_amount'], 2);
+            $item['paidAmount'] = round($item['paid_amount'], 2);
+            $item['refundAmount'] = round($item['refund_amount'], 2);
+            $item['actualAmount'] = round($item['actual_amount'], 2);
+            $item['orderCount'] = $item['order_count'];
+            $item['refundRate'] = $item['refund_rate'] ?? 0;
+        }
+        
+        return $data;
+    }
+    
+    /**
+     * 获取支付配置
+     * GET /admin/api/payments/config
+     */
+    public function getConfig()
+    {
+        try {
+            $method = $this->request->param('method', 'wechat');
+            
+            $config = \app\model\PaymentConfig::where('payment_method', $method)->find();
+            
+            if (!$config) {
+                // 返回默认配置
+                return json([
+                    'code' => 200,
+                    'message' => '获取成功',
+                    'data' => [
+                        'payment_method' => $method,
+                        'app_id' => '',
+                        'mch_id' => '',
+                        'api_key' => '',
+                        'cert_path' => '',
+                        'notify_url' => '',
+                        'is_enabled' => 0
+                    ]
+                ]);
+            }
+            
+            return json([
+                'code' => 200,
+                'message' => '获取成功',
+                'data' => $config
+            ]);
+        } catch (\Exception $e) {
+            return json([
+                'code' => 500,
+                'message' => '获取失败�? . $e->getMessage()
+            ]);
+        }
+    }
+    
+    /**
+     * 更新支付配置
+     * POST /admin/api/payments/config
+     */
+    public function updateConfig()
+    {
+        try {
+            $data = $this->request->post();
+            
+            // 支持两种数据格式�?            // 1. 单个配置：{ payment_method: 'wechat', app_id: '...', ... }
+            // 2. 批量配置：{ wechat: {...}, alipay: {...} }
+            
+            if (isset($data['wechat']) || isset($data['alipay'])) {
+                // 批量配置格式
+                $results = [];
+                $errors = [];
+                
+                if (isset($data['wechat'])) {
+                    $wechatData = $data['wechat'];
+                    
+                    // 如果启用了微信支付，验证必填字段
+                    if (!empty($wechatData['enabled'])) {
+                        $validation = $this->validateWechatConfig($wechatData);
+                        if (!$validation['valid']) {
+                            $errors['wechat'] = $validation['errors'];
+                        }
+                    }
+                    
+                    if (empty($errors['wechat'])) {
+                        $wechatData['payment_method'] = 'wechat';
+                        $wechatData['is_enabled'] = $wechatData['enabled'] ?? 0;
+                        unset($wechatData['enabled']);
+                        
+                        $config = \app\model\PaymentConfig::where('payment_method', 'wechat')->find();
+                        if ($config) {
+                            $config->save($wechatData);
+                        } else {
+                            \app\model\PaymentConfig::create($wechatData);
+                        }
+                        $results['wechat'] = 'success';
+                    }
+                }
+                
+                if (isset($data['alipay'])) {
+                    $alipayData = $data['alipay'];
+                    
+                    // 如果启用了支付宝，验证必填字�?                    if (!empty($alipayData['enabled'])) {
+                        $validation = $this->validateAlipayConfig($alipayData);
+                        if (!$validation['valid']) {
+                            $errors['alipay'] = $validation['errors'];
+                        }
+                    }
+                    
+                    if (empty($errors['alipay'])) {
+                        $alipayData['payment_method'] = 'alipay';
+                        $alipayData['is_enabled'] = $alipayData['enabled'] ?? 0;
+                        unset($alipayData['enabled']);
+                        
+                        $config = \app\model\PaymentConfig::where('payment_method', 'alipay')->find();
+                        if ($config) {
+                            $config->save($alipayData);
+                        } else {
+                            \app\model\PaymentConfig::create($alipayData);
+                        }
+                        $results['alipay'] = 'success';
+                    }
+                }
+                
+                // 如果有验证错误，返回错误信息
+                if (!empty($errors)) {
+                    $errorMessages = [];
+                    foreach ($errors as $method => $methodErrors) {
+                        $errorMessages[] = ($method === 'wechat' ? '微信支付' : '支付�?) . '�? . implode('�?, $methodErrors);
+                    }
+                    
+                    return json([
+                        'code' => 400,
+                        'message' => implode(' | ', $errorMessages),
+                        'data' => ['errors' => $errors]
+                    ]);
+                }
+                
+                return json([
+                    'code' => 200,
+                    'message' => '保存成功',
+                    'data' => $results
+                ]);
+            } else {
+                // 单个配置格式
+                if (!isset($data['payment_method'])) {
+                    return json([
+                        'code' => 400,
+                        'message' => '支付方式不能为空'
+                    ]);
+                }
+                
+                // 验证配置
+                if ($data['payment_method'] === 'wechat' && !empty($data['is_enabled'])) {
+                    $validation = $this->validateWechatConfig($data);
+                    if (!$validation['valid']) {
+                        return json([
+                            'code' => 400,
+                            'message' => implode('�?, $validation['errors'])
+                        ]);
+                    }
+                } elseif ($data['payment_method'] === 'alipay' && !empty($data['is_enabled'])) {
+                    $validation = $this->validateAlipayConfig($data);
+                    if (!$validation['valid']) {
+                        return json([
+                            'code' => 400,
+                            'message' => implode('�?, $validation['errors'])
+                        ]);
+                    }
+                }
+                
+                $config = \app\model\PaymentConfig::where('payment_method', $data['payment_method'])->find();
+                
+                if ($config) {
+                    $config->save($data);
+                } else {
+                    \app\model\PaymentConfig::create($data);
+                }
+                
+                return json([
+                    'code' => 200,
+                    'message' => '保存成功'
+                ]);
+            }
+        } catch (\Exception $e) {
+            return json([
+                'code' => 500,
+                'message' => '保存失败�? . $e->getMessage()
+            ]);
+        }
+    }
+    
+    /**
+     * 验证微信支付配置
+     */
+    private function validateWechatConfig($data)
+    {
+        $errors = [];
+        
+        // 验证AppID
+        if (empty($data['app_id'])) {
+            $errors[] = '应用ID不能为空';
+        } elseif (!preg_match('/^wx[a-zA-Z0-9]{16}$/', $data['app_id'])) {
+            $errors[] = '应用ID格式不正确（应为wx开头的18位字符，如：wx1234567890abcdef�?;
+        }
+        
+        // 验证商户�?        if (empty($data['mch_id'])) {
+            $errors[] = '商户号不能为�?;
+        } elseif (!preg_match('/^\d{10}$/', $data['mch_id'])) {
+            $errors[] = '商户号格式不正确（应�?0位数字，如：1234567890�?;
+        }
+        
+        // 验证API密钥
+        if (empty($data['api_key'])) {
+            $errors[] = 'API密钥不能为空';
+        } elseif (strlen($data['api_key']) != 32) {
+            $errors[] = 'API密钥格式不正确（应为32位字符）';
+        } elseif (!preg_match('/^[a-zA-Z0-9]{32}$/', $data['api_key'])) {
+            $errors[] = 'API密钥只能包含字母和数�?;
+        }
+        
+        // 验证应用密钥（可选）
+        if (!empty($data['app_secret'])) {
+            if (strlen($data['app_secret']) != 32) {
+                $errors[] = '应用密钥格式不正确（应为32位字符）';
+            } elseif (!preg_match('/^[a-zA-Z0-9]{32}$/', $data['app_secret'])) {
+                $errors[] = '应用密钥只能包含字母和数�?;
+            }
+        }
+        
+        // 验证回调地址（可选，但如果填写了要验证格式）
+        if (!empty($data['notify_url'])) {
+            if (!filter_var($data['notify_url'], FILTER_VALIDATE_URL)) {
+                $errors[] = '支付回调地址格式不正�?;
+            } elseif (strpos($data['notify_url'], 'https://') !== 0) {
+                $errors[] = '支付回调地址必须使用HTTPS协议（微信支付要求）';
+            }
+        }
+        
+        // 验证证书路径（可选）
+        if (!empty($data['cert_path'])) {
+            if (!preg_match('/\.(pem|p12)$/i', $data['cert_path'])) {
+                $errors[] = '证书路径应该�?pem�?p12文件';
+            }
+        }
+        
+        return [
+            'valid' => empty($errors),
+            'errors' => $errors
+        ];
+    }
+    
+    /**
+     * 验证支付宝配�?     */
+    private function validateAlipayConfig($data)
+    {
+        $errors = [];
+        
+        // 验证AppID
+        if (empty($data['app_id'])) {
+            $errors[] = '应用ID不能为空';
+        } elseif (!preg_match('/^\d{16}$/', $data['app_id'])) {
+            $errors[] = '应用ID格式不正确（应为16位数字，如：2021001234567890�?;
+        }
+        
+        // 验证支付宝公�?        if (empty($data['alipay_public_key'])) {
+            $errors[] = '支付宝公钥不能为�?;
+        } elseif (strlen($data['alipay_public_key']) < 200) {
+            $errors[] = '支付宝公钥长度不足（请确保复制完整的公钥内容�?;
+        } elseif (!preg_match('/^[A-Za-z0-9+\/=\s\r\n]+$/', $data['alipay_public_key'])) {
+            $errors[] = '支付宝公钥格式不正确（应为Base64编码的字符串�?;
+        }
+        
+        // 验证应用私钥
+        if (empty($data['private_key'])) {
+            $errors[] = '应用私钥不能为空';
+        } elseif (strlen($data['private_key']) < 200) {
+            $errors[] = '应用私钥长度不足（请确保复制完整的私钥内容）';
+        } elseif (!preg_match('/^[A-Za-z0-9+\/=\s\r\n]+$/', $data['private_key'])) {
+            $errors[] = '应用私钥格式不正确（应为Base64编码的字符串�?;
+        }
+        
+        // 验证回调地址（可选，但如果填写了要验证格式）
+        if (!empty($data['notify_url'])) {
+            if (!filter_var($data['notify_url'], FILTER_VALIDATE_URL)) {
+                $errors[] = '支付回调地址格式不正�?;
+            } elseif (strpos($data['notify_url'], 'http://') !== 0 && strpos($data['notify_url'], 'https://') !== 0) {
+                $errors[] = '支付回调地址必须以http://或https://开�?;
+            }
+        }
+        
+        return [
+            'valid' => empty($errors),
+            'errors' => $errors
+        ];
+    }
+    
+    /**
+     * 测试支付配置
+     * POST /admin/api/payments/config/test
+     */
+    public function testConfig()
+    {
+        try {
+            $method = $this->request->post('payment_method', 'wechat');
+            
+            if ($method === 'wechat') {
+                $wechatService = new \app\service\WechatPayService();
+                $result = $wechatService->testConfig();
+                
+                return json([
+                    'code' => $result['success'] ? 200 : 500,
+                    'message' => $result['message'],
+                    'data' => $result
+                ]);
+            } elseif ($method === 'alipay') {
+                return json([
+                    'code' => 500,
+                    'message' => '支付宝配置测试功能开发中'
+                ]);
+            }
+            
+            return json([
+                'code' => 400,
+                'message' => '不支持的支付方式'
+            ]);
+        } catch (\Exception $e) {
+            return json([
+                'code' => 500,
+                'message' => '测试失败�? . $e->getMessage()
+            ]);
+        }
+    }
+}
+            if ($method === 'wechat') {
+                $service = new \app\service\WechatPayService();
+                $result = $service->testConfig();
+                
+                return json([
+                    'code' => $result['success'] ? 200 : 400,
+                    'message' => $result['message'],
+                    'data' => $result
+                ]);
+            }
+            
+            return json([
+                'code' => 400,
+                'message' => '不支持的支付方式'
+            ]);
+        } catch (\Exception $e) {
+            return json([
+                'code' => 500,
+                'message' => '测试失败�? . $e->getMessage()
+            ]);  
+]);
+        }
+    }
+}
