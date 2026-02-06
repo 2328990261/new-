@@ -1,0 +1,66 @@
+# 环境配置文件（包含敏感信息）
+.env
+backend/.env
+backend/config/database.php
+
+# 依赖目录
+node_modules/
+backend/vendor/
+backend/composer.lock
+
+# 构建产物
+frontend/admin/dist/
+frontend/user/dist/
+deployment/
+
+# 日志文件
+backend/runtime/
+*.log
+
+# 缓存文件
+backend/runtime/cache/
+backend/runtime/log/
+backend/runtime/session/
+backend/runtime/temp/
+
+# 上传文件（根据需要调整）
+backend/public/uploads/
+backend/public/temp/
+
+# IDE 配置
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# 系统文件
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# 证书文件（敏感）
+backend/cert/wechat/*.pem
+*.pem
+*.key
+*.crt
+
+# 临时文件
+*.tmp
+*.bak
+*.old
+
+# 测试文件
+backend/test_*.php
+backend/check_*.php
+backend/fix_*.php
+backend/add_dispatcher_field.php
+
+# 数据库备份
+*.sql.bak
+backup/
+
+# 编译脚本生成的文件
+编译生产文件.bat
+生成部署包.bat
+启动服务.bat
