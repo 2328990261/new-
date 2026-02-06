@@ -6,12 +6,29 @@
 
 91家教管理系统是一个基于 Vue 3 + ThinkPHP 6 开发的现代化家教信息管理平台，提供家教信息发布、订单管理、支付管理、线索管理等完整功能。
 
+## 仓库分支说明
+
+本仓库包含两个分支：
+
+- **main 分支**（当前）：主系统代码（后端 + 管理前端 + 用户前端）
+- **miniprogram 分支**：微信小程序代码（uni-app 项目）
+
+### 获取小程序代码
+
+```bash
+# 克隆小程序分支
+git clone -b miniprogram https://gitee.com/yuchendeloy/tjiajiao91.git miniprogram
+
+# 或者在已克隆的仓库中切换分支
+git checkout miniprogram
+```
+
 ## 技术栈
 
 ### 前端
 - **管理后台**: Vue 3 + Element Plus + Vite
 - **用户前端**: Vue 3 + Element Plus + Vite
-- **微信小程序**: uni-app
+- **微信小程序**: uni-app（在 miniprogram 分支）
 
 ### 后端
 - **框架**: ThinkPHP 6.1
@@ -162,9 +179,22 @@ npm run dev
 # 访问 http://localhost:3001
 ```
 
-#### 5. 微信小程序
+#### 微信小程序
 
-使用微信开发者工具打开 `预约家教小程序` 目录，配置 AppID 后即可预览。
+**注意**：小程序代码在 **miniprogram 分支**，需要单独获取。
+
+```bash
+# 克隆小程序代码
+git clone -b miniprogram https://gitee.com/yuchendeloy/tjiajiao91.git miniprogram
+cd miniprogram
+```
+
+**开发工具**：
+- HBuilderX 3.0+ 或
+- 微信开发者工具
+
+**详细说明**：
+切换到 miniprogram 分支后查看该分支的 README.md 文件。
 
 ### 一键启动（Windows）
 
@@ -177,7 +207,9 @@ npm run dev
 
 ## 生产部署
 
-### 编译前端
+### 前端部署
+
+#### 编译前端
 
 ```bash
 # 在项目根目录执行
@@ -196,14 +228,43 @@ cd frontend/user
 npm run build
 ```
 
-### 生成部署包
+编译后的文件：
+- 管理后台：`frontend/admin/dist/`
+- 用户前端：`frontend/user/dist/`
 
+#### 部署到服务器
+
+1. 将 `frontend/admin/dist/` 上传到服务器的 `public/admin/` 目录
+2. 将 `frontend/user/dist/` 上传到服务器的 `public/` 目录
+
+### 后端部署
+
+1. 上传 `backend/` 目录到服务器
+2. 配置 `.env` 文件
+3. 安装依赖：`composer install`
+4. 导入数据库文件
+5. 配置 Nginx（参考 `nginx_production.conf`）
+
+### 微信小程序部署
+
+**小程序代码在 miniprogram 分支**
+
+1. 切换到 miniprogram 分支：
 ```bash
-# 在项目根目录执行
-生成部署包.bat
+git checkout miniprogram
 ```
 
-这将生成一个包含所有必要文件的 `deployment` 目录。
+2. 使用 HBuilderX 打开项目
+
+3. 配置 AppID 和 API 地址
+
+4. 发行 → 小程序-微信
+
+5. 在微信开发者工具中上传代码
+
+6. 登录微信公众平台提交审核
+
+详细步骤请查看 miniprogram 分支的 README.md
 
 ### Nginx 配置
 
