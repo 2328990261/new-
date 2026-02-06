@@ -55,6 +55,37 @@ backend/test_*.php
 backend/check_*.php
 backend/fix_*.php
 backend/add_dispatcher_field.php
+backend/debug_*.php
+backend/setup_*.bat
+
+# Git 上传相关文件（不需要提交）
+GIT上传指南.md
+Git上传准备完成.md
+SSH密钥配置步骤.md
+SSH公钥-复制此内容到Gitee.txt
+一键配置并上传.bat
+立即上传*.bat
+上传*.bat
+上传*.txt
+现在*.txt
+最终*.bat
+分步*.bat
+手动*.md
+快速*.txt
+最终*.txt
+
+# 临时说明文档
+backend/微信支付自动检测说明.md
+backend/支付接口500错误*.md
+backend/支付配置验证和测试功能说明.md
+frontend/user/本地支付测试指南.md
+frontend/user/修复API路径重复问题.md
+frontend/user/支付页面微信分享配置说明.md
+frontend/admin/移动端适配说明.md
+backend/协议接口说明.md
+修复总结.md
+部署清单.md
+backend/快速修复404错误.md
 
 # 数据库备份
 *.sql.bak
