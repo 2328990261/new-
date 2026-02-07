@@ -107,18 +107,18 @@ class Teacher extends BaseController
                     if (is_array($photos)) {
                         // 新格式：{avatar: "", teaching_photos: []}
                         if (isset($photos['avatar'])) {
-                            $item['avatar'] = $photos['avatar'];
-                            $item['cover'] = $photos['avatar'];
+                            $item['avatar'] = $this->getFullImageUrl($photos['avatar']);
+                            $item['cover'] = $this->getFullImageUrl($photos['avatar']);
                         } else {
                             // 旧格式：数组
-                            $item['avatar'] = $photos[0] ?? '';
-                            $item['cover'] = $photos[0] ?? '';
+                            $item['avatar'] = $this->getFullImageUrl($photos[0] ?? '');
+                            $item['cover'] = $this->getFullImageUrl($photos[0] ?? '');
                         }
                     } else {
                         // 逗号分隔的字符串
                         $photoArray = array_filter(array_map('trim', explode(',', $item['photos'])));
-                        $item['cover'] = $photoArray[0] ?? '';
-                        $item['avatar'] = $photoArray[0] ?? '';
+                        $item['cover'] = $this->getFullImageUrl($photoArray[0] ?? '');
+                        $item['avatar'] = $this->getFullImageUrl($photoArray[0] ?? '');
                     }
                 } else {
                     $item['cover'] = '';
@@ -177,6 +177,63 @@ class Teacher extends BaseController
             if (!$teacher) {
                 return json(['success' => false, 'error' => '教师不存在']);
             }
+            
+            // 处理照片字段
+            if (!empty($teacher['photos'])) {
+                $photos = json_decode($teacher['photos'], true);
+                if (is_array($photos)) {
+                    // 新格式：{avatar: "", teaching_photos: []}
+                    if (isset($photos['avatar'])) {
+                        $teacher['avatar'] = $this->getFullImageUrl($photos['avatar']);
+                        $teacher['teaching_photos'] = array_map([$this, 'getFullImageUrl'], $photos['teaching_photos'] ?? []);
+                    } else {
+                        // 旧格式：数组
+                        $teacher['avatar'] = $this->getFullImageUrl($photos[0] ?? '');
+                        $teacher['teaching_photos'] = array_map([$this, 'getFullImageUrl'], array_slice($photos, 1));
+                    }
+                } else {
+                    // 逗号分隔的字符串
+                    $photoArray = array_filter(array_map('trim', explode(',', $teacher['photos'])));
+                    $teacher['avatar'] = $this->getFullImageUrl($photoArray[0] ?? '');
+                    $teacher['teaching_photos'] = array_map([$this, 'getFullImageUrl'], array_slice($photoArray, 1));
+                }
+            } else {
+                $teacher['avatar'] = '';
+                $teacher['teaching_photos'] = [];
+            }
+            
+            // 处理科目名称
+            if (!empty($teacher['subject_names'])) {
+                $teacher['subjects'] = explode(',', $teacher['subject_names']);
+            } else {
+                $teacher['subjects'] = [];
+            }
+            
+            // 处理优势标签
+            if (!empty($teacher['advantage_tags'])) {
+                $tags = json_decode($teacher['advantage_tags'], true);
+                $teacher['advantage_tags'] = is_array($tags) ? $tags : [];
+            } else {
+                $teacher['advantage_tags'] = [];
+            }
+            
+            // 处理教学经历
+            if (!empty($teacher['experience'])) {
+                try {
+                    $exp = json_decode($teacher['experience'], true);
+                    $teacher['experiences'] = is_array($exp) ? $exp : [];
+                } catch (\Exception $e) {
+                    $teacher['experiences'] = [];
+                }
+            } else {
+                $teacher['experiences'] = [];
+            }
+            
+            // 处理认证状态
+            $teacher['is_verified'] = $teacher['real_name_verified'] || 
+                                     $teacher['education_verified'] || 
+                                     $teacher['teacher_verified'];
+            
             return json(['success' => true, 'data' => $teacher]);
         } catch (\Exception $e) {
             return json(['success' => false, 'error' => $e->getMessage()]);
@@ -191,6 +248,34 @@ class Teacher extends BaseController
         $data = $this->request->post();
         // 可根据实际表结构写入订单；此处先直接返回成功
         return json(['success' => true, 'message' => '预约已提交，我们会尽快联系您', 'data' => $data]);
+    }
+    
+    /**
+     * 获取完整的图片URL
+     * @param string $path 相对路径
+     * @return string 完整URL
+     */
+    private function getFullImageUrl($path)
+    {
+        if (empty($path)) {
+            return '';
+        }
+        
+        // 如果已经是完整URL，直接返回
+        if (strpos($path, 'http://') === 0 || strpos($path, 'https://') === 0) {
+            return $path;
+        }
+        
+        // 获取请求的域名和协议
+        $request = request();
+        $domain = $request->domain();
+        
+        // 确保路径以/开头
+        if (strpos($path, '/') !== 0) {
+            $path = '/' . $path;
+        }
+        
+        return $domain . $path;
     }
 }
 

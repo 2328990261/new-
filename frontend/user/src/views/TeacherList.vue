@@ -165,7 +165,11 @@
             
             <div class="info-row">
               <el-icon class="info-icon"><Reading /></el-icon>
-              <span class="info-text">{{ teacher.subject_names?.join('、') || '暂无' }}</span>
+              <span class="info-text">{{ 
+                Array.isArray(teacher.subject_names) 
+                  ? teacher.subject_names.join('、') 
+                  : (teacher.subject_names || '暂无')
+              }}</span>
             </div>
             
             <div class="intro-text">

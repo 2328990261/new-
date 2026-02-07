@@ -3,7 +3,7 @@ import request from '@/utils/request'
 // 获取小程序用户列表
 export function getMiniUserList(params) {
   return request({
-    url: '/admin/api/mini-users',
+    url: '/mini-users',
     method: 'get',
     params
   })
@@ -12,7 +12,7 @@ export function getMiniUserList(params) {
 // 获取用户详情
 export function getMiniUserDetail(id) {
   return request({
-    url: `/admin/api/mini-users/${id}`,
+    url: `/mini-users/${id}`,
     method: 'get'
   })
 }
@@ -20,7 +20,7 @@ export function getMiniUserDetail(id) {
 // 更新用户信息
 export function updateMiniUser(id, data) {
   return request({
-    url: `/admin/api/mini-users/${id}`,
+    url: `/mini-users/${id}`,
     method: 'put',
     data
   })
@@ -29,7 +29,7 @@ export function updateMiniUser(id, data) {
 // 删除用户
 export function deleteMiniUser(id) {
   return request({
-    url: `/admin/api/mini-users/${id}`,
+    url: `/mini-users/${id}`,
     method: 'delete'
   })
 }
@@ -37,7 +37,7 @@ export function deleteMiniUser(id) {
 // 批量删除用户
 export function batchDeleteMiniUsers(ids) {
   return request({
-    url: '/admin/api/mini-users/batch-delete',
+    url: '/mini-users/batch-delete',
     method: 'post',
     data: { ids }
   })
@@ -46,7 +46,7 @@ export function batchDeleteMiniUsers(ids) {
 // 获取用户统计数据
 export function getMiniUserStats() {
   return request({
-    url: '/admin/api/mini-users/stats',
+    url: '/mini-users/stats',
     method: 'get'
   })
 }

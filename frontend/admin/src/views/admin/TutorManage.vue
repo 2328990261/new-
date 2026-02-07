@@ -1,4 +1,4 @@
-﻿<template>
+<template>
   <div class="tutor-manage">
     <!-- 移动端视图 -->
     <TutorManageMobile
@@ -4828,6 +4828,7 @@ const formatDateForFilename = (date) => {
 
 .card-grid-item {
   width: 100%;
+  min-width: 0;
   align-self: start;
 }
 

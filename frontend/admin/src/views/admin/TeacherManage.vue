@@ -167,83 +167,8 @@
         </div>
       </div>
 
-      <!-- PC端：表格视图 -->
-      <div v-if="!isMobile" class="table-container">
-        <el-table 
-          :data="teacherList" 
-          v-loading="loading"
-          @selection-change="handleSelectionChange"
-          stripe
-        >
-          <el-table-column type="selection" width="55" />
-          <el-table-column prop="id" label="ID" width="80" />
-          <el-table-column prop="avatar" label="头像" width="80">
-            <template #default="{ row }">
-              <el-avatar 
-                v-if="row.avatar" 
-                :src="row.avatar" 
-                :size="50"
-              />
-              <el-avatar v-else :size="50">
-                {{ row.name?.charAt(0) || '?' }}
-              </el-avatar>
-            </template>
-          </el-table-column>
-          <el-table-column prop="name" label="姓名" width="100" />
-          <el-table-column prop="gender" label="性别" width="60" />
-          <el-table-column prop="phone" label="手机号" width="120" />
-          <el-table-column prop="wechat_id" label="微信号" width="120" show-overflow-tooltip />
-          <el-table-column prop="teacher_type" label="教师类型" width="140">
-            <template #default="{ row }">
-              {{ getTeacherTypeLabel(row.teacher_type, row.grade_level, row.education_level) }}
-            </template>
-          </el-table-column>
-          <el-table-column prop="school" label="学校" min-width="150" show-overflow-tooltip v-if="visibleColumns.school" />
-          <el-table-column prop="major" label="专业" min-width="120" show-overflow-tooltip v-if="visibleColumns.major" />
-          <el-table-column prop="certification" label="认证状态" width="180" v-if="visibleColumns.certification">
-            <template #default="{ row }">
-              <div style="display: flex; flex-direction: column; gap: 4px;">
-                <el-tag :type="row.real_name_verified ? 'success' : 'info'" size="small">
-                  实名: {{ row.real_name_verified ? '已认证' : '未认证' }}
-                </el-tag>
-                <el-tag :type="row.education_verified ? 'success' : 'info'" size="small">
-                  学历: {{ row.education_verified ? '已认证' : '未认证' }}
-                </el-tag>
-                <el-tag :type="row.teacher_verified ? 'success' : 'info'" size="small">
-                  教师: {{ row.teacher_verified ? '已认证' : '未认证' }}
-                </el-tag>
-              </div>
-            </template>
-          </el-table-column>
-          <el-table-column prop="is_top" label="置顶" width="60" v-if="visibleColumns.is_top">
-            <template #default="{ row }">
-              <el-tag v-if="row.is_top" type="danger" size="small">置顶</el-tag>
-            </template>
-          </el-table-column>
-          <el-table-column prop="wechat_nickname" label="微信昵称" width="120" show-overflow-tooltip v-if="visibleColumns.wechat_nickname" />
-          <el-table-column prop="openid" label="OpenID" width="180" show-overflow-tooltip v-if="visibleColumns.openid" />
-          <el-table-column prop="last_login_time" label="最新登录" width="160" v-if="visibleColumns.last_login_time" />
-          <el-table-column prop="update_time" label="更新时间" width="160" v-if="visibleColumns.update_time" />
-          <el-table-column prop="create_time" label="注册时间" width="160" v-if="visibleColumns.create_time" />
-          <el-table-column label="操作" width="200" fixed="right">
-            <template #default="{ row }">
-              <el-button type="primary" size="small" @click="handleView(row)">查看</el-button>
-              <el-button type="info" size="small" @click="handleEdit(row)">编辑</el-button>
-              <el-button 
-                :type="row.is_top ? 'info' : 'warning'" 
-                size="small" 
-                @click="handleSetTop(row)"
-              >
-                {{ row.is_top ? '取消置顶' : '置顶' }}
-              </el-button>
-              <el-button type="danger" size="small" @click="handleDelete(row)">删除</el-button>
-            </template>
-          </el-table-column>
-        </el-table>
-      </div>
-
-      <!-- 移动端：卡片视图 -->
-      <div v-else v-loading="loading" class="teacher-cards" element-loading-text="加载中...">
+      <!-- 卡片视图 -->
+      <div v-loading="loading" class="teacher-cards" element-loading-text="加载中...">
         <TeacherCard
           v-for="teacher in teacherList"
           :key="teacher.id"
@@ -252,6 +177,7 @@
           @select="handleCardSelect"
           @view="handleView"
           @edit="handleEdit"
+          @review="handleReview"
           @toggle-top="handleSetTop"
           @toggle-status="handleToggleStatus"
           @delete="handleDelete"
@@ -426,6 +352,261 @@
         <el-button type="primary" @click="handleSaveEdit" :loading="saveLoading">保存</el-button>
       </template>
     </el-dialog>
+
+    <!-- 审核弹窗 -->
+    <el-dialog v-model="reviewVisible" title="审核教师认证" width="800px" top="5vh">
+      <el-form 
+        ref="reviewFormRef" 
+        :model="reviewForm" 
+        label-width="120px"
+        v-if="reviewForm"
+      >
+        <el-form-item label="教师姓名">
+          <span style="font-weight: 600; font-size: 15px;">{{ reviewForm.name }}</span>
+          <el-tag style="margin-left: 12px;" size="small">ID: {{ reviewForm.id }}</el-tag>
+        </el-form-item>
+        
+        <el-divider content-position="left">认证资料</el-divider>
+        
+        <!-- 基本信息 -->
+        <el-row :gutter="20">
+          <el-col :span="12">
+            <el-form-item label="性别">
+              <span>{{ reviewForm.gender || '-' }}</span>
+            </el-form-item>
+          </el-col>
+          <el-col :span="12">
+            <el-form-item label="手机号">
+              <span>{{ reviewForm.phone || '-' }}</span>
+            </el-form-item>
+          </el-col>
+        </el-row>
+        
+        <el-row :gutter="20">
+          <el-col :span="12">
+            <el-form-item label="学校">
+              <span>{{ reviewForm.school || '-' }}</span>
+            </el-form-item>
+          </el-col>
+          <el-col :span="12">
+            <el-form-item label="专业">
+              <span>{{ reviewForm.major || '-' }}</span>
+            </el-form-item>
+          </el-col>
+        </el-row>
+        
+        <el-form-item label="教师类型">
+          <span>{{ getTeacherTypeLabel(reviewForm.teacher_type, reviewForm.grade_level, reviewForm.education_level) }}</span>
+        </el-form-item>
+        
+        <!-- 认证照片 -->
+        <el-form-item label="头像照片">
+          <div v-if="reviewForm.avatar" class="photo-preview">
+            <el-image 
+              :src="reviewForm.avatar" 
+              :preview-src-list="[reviewForm.avatar]"
+              fit="cover"
+              style="width: 120px; height: 120px; border-radius: 8px; cursor: pointer;"
+            />
+          </div>
+          <span v-else style="color: #909399;">未上传</span>
+        </el-form-item>
+        
+        <el-form-item label="教学风采照片">
+          <div v-if="reviewForm.teaching_photos && reviewForm.teaching_photos.length" class="photo-preview">
+            <el-image 
+              v-for="(photo, index) in reviewForm.teaching_photos"
+              :key="index"
+              :src="photo" 
+              :preview-src-list="reviewForm.teaching_photos"
+              fit="cover"
+              style="width: 100px; height: 100px; border-radius: 8px; margin-right: 10px; cursor: pointer;"
+            />
+          </div>
+          <span v-else style="color: #909399;">未上传</span>
+        </el-form-item>
+        
+        <el-divider content-position="left">认证材料</el-divider>
+        
+        <!-- 实名认证材料 -->
+        <el-form-item label="身份证正面">
+          <div v-if="reviewForm.id_card_front" class="photo-preview">
+            <el-image 
+              :src="reviewForm.id_card_front" 
+              :preview-src-list="[reviewForm.id_card_front]"
+              fit="cover"
+              style="width: 200px; height: 130px; border-radius: 8px; cursor: pointer;"
+            />
+          </div>
+          <el-tag v-else type="warning" size="small">未上传</el-tag>
+        </el-form-item>
+        
+        <el-form-item label="身份证反面">
+          <div v-if="reviewForm.id_card_back" class="photo-preview">
+            <el-image 
+              :src="reviewForm.id_card_back" 
+              :preview-src-list="[reviewForm.id_card_back]"
+              fit="cover"
+              style="width: 200px; height: 130px; border-radius: 8px; cursor: pointer;"
+            />
+          </div>
+          <el-tag v-else type="warning" size="small">未上传</el-tag>
+        </el-form-item>
+        
+        <!-- 学历认证材料 -->
+        <el-form-item label="学历证明">
+          <div v-if="reviewForm.education_certificate" class="photo-preview">
+            <el-image 
+              :src="reviewForm.education_certificate" 
+              :preview-src-list="[reviewForm.education_certificate]"
+              fit="cover"
+              style="width: 200px; height: 130px; border-radius: 8px; cursor: pointer;"
+            />
+          </div>
+          <el-tag v-else type="warning" size="small">未上传</el-tag>
+        </el-form-item>
+        
+        <!-- 教师认证材料 -->
+        <el-form-item label="教师资格证">
+          <div v-if="reviewForm.teacher_certificate" class="photo-preview">
+            <el-image 
+              :src="reviewForm.teacher_certificate" 
+              :preview-src-list="[reviewForm.teacher_certificate]"
+              fit="cover"
+              style="width: 200px; height: 130px; border-radius: 8px; cursor: pointer;"
+            />
+          </div>
+          <el-tag v-else type="warning" size="small">未上传</el-tag>
+        </el-form-item>
+        
+        <el-divider content-position="left">认证审核</el-divider>
+        
+        <!-- 实名认证 -->
+        <el-form-item label="实名认证">
+          <el-switch 
+            v-model="reviewForm.real_name_verified" 
+            :active-value="1" 
+            :inactive-value="0"
+            :disabled="!reviewForm.id_card_front && !reviewForm.id_card_back"
+            active-text="已认证"
+            inactive-text="未认证"
+            active-color="#67c23a"
+          />
+          <span style="margin-left: 12px; color: #909399; font-size: 13px;">
+            （身份证明）
+          </span>
+          <el-tag v-if="!reviewForm.id_card_front && !reviewForm.id_card_back" type="warning" size="small" style="margin-left: 8px;">
+            未上传证明材料
+          </el-tag>
+        </el-form-item>
+        
+        <!-- 学历认证 -->
+        <el-form-item label="学历认证">
+          <el-switch 
+            v-model="reviewForm.education_verified" 
+            :active-value="1" 
+            :inactive-value="0"
+            :disabled="!reviewForm.education_certificate"
+            active-text="已认证"
+            inactive-text="未认证"
+            active-color="#67c23a"
+          />
+          <span style="margin-left: 12px; color: #909399; font-size: 13px;">
+            （学历证明）
+          </span>
+          <el-tag v-if="!reviewForm.education_certificate" type="warning" size="small" style="margin-left: 8px;">
+            未上传证明材料
+          </el-tag>
+        </el-form-item>
+        
+        <!-- 教师认证 -->
+        <el-form-item label="教师认证">
+          <el-switch 
+            v-model="reviewForm.teacher_verified" 
+            :active-value="1" 
+            :inactive-value="0"
+            :disabled="!reviewForm.teacher_certificate"
+            active-text="已认证"
+            inactive-text="未认证"
+            active-color="#67c23a"
+          />
+          <span style="margin-left: 12px; color: #909399; font-size: 13px;">
+            （教师证明）
+          </span>
+          <el-tag v-if="!reviewForm.teacher_certificate" type="warning" size="small" style="margin-left: 8px;">
+            未上传证明材料
+          </el-tag>
+        </el-form-item>
+        
+        <el-divider content-position="left">审核状态</el-divider>
+        
+        <el-form-item label="当前审核状态">
+          <div style="min-width: 80px; display: inline-block;">
+            <el-tag 
+              v-if="reviewForm.current_status === 'pending'" 
+              type="warning"
+            >
+              待审核
+            </el-tag>
+            <el-tag 
+              v-else-if="reviewForm.current_status === 'approved'" 
+              type="success"
+            >
+              审核通过
+            </el-tag>
+            <el-tag 
+              v-else-if="reviewForm.current_status === 'rejected'" 
+              type="danger"
+            >
+              审核拒绝
+            </el-tag>
+          </div>
+          <span style="margin-left: 12px; color: #909399; font-size: 13px;">
+            （至少一项认证通过即为审核通过）
+          </span>
+        </el-form-item>
+        
+        <el-form-item label="设置审核状态" prop="review_status">
+          <el-radio-group v-model="reviewForm.review_status">
+            <el-radio label="pending">待审核</el-radio>
+            <el-radio label="approved">审核通过</el-radio>
+            <el-radio label="rejected">审核拒绝</el-radio>
+          </el-radio-group>
+        </el-form-item>
+        
+        <el-form-item label="审核备注" prop="review_note">
+          <el-input 
+            v-model="reviewForm.review_note" 
+            type="textarea" 
+            :rows="3"
+            placeholder="请输入审核备注（选填）"
+            maxlength="200"
+            show-word-limit
+          />
+        </el-form-item>
+        
+        <el-alert
+          title="审核说明"
+          type="info"
+          :closable="false"
+          show-icon
+          style="margin-top: 10px;"
+        >
+          <template #default>
+            <div style="font-size: 13px; line-height: 1.6;">
+              <p style="margin: 0 0 8px 0;">• 认证开关：控制各项认证状态，只有上传了对应证明材料才能开启认证</p>
+              <p style="margin: 0 0 8px 0;">• 审核状态：控制教师的整体审核结果</p>
+              <p style="margin: 0;">• 至少一项认证通过即可设置为"审核通过"</p>
+            </div>
+          </template>
+        </el-alert>
+      </el-form>
+      
+      <template #footer>
+        <el-button @click="reviewVisible = false">取消</el-button>
+        <el-button type="primary" @click="handleSaveReview" :loading="saveLoading">保存</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -440,7 +621,7 @@ import { ref, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { List, CircleCheck, Clock, CircleClose, Lock, Delete, DocumentDelete, Search, Setting } from '@element-plus/icons-vue'
 import TeacherCard from '@/components/teacher/TeacherCard.vue'
-import { getTeacherList, updateTeacherStatus, setTeacherTop, deleteTeacher, batchDeleteTeachers, batchUpdateTeacherStatus, updateTeacher, getTeacherStatistics } from '@/api/teacher'
+import { getTeacherList, updateTeacherStatus, setTeacherTop, deleteTeacher, batchDeleteTeachers, batchUpdateTeacherStatus, updateTeacher, getTeacherStatistics, reviewTeacher } from '@/api/teacher'
 
 const loading = ref(false)
 const saveLoading = ref(false)
@@ -470,8 +651,10 @@ const statistics = ref({
 
 const detailVisible = ref(false)
 const editVisible = ref(false)
+const reviewVisible = ref(false)
 const currentTeacher = ref(null)
 const editForm = ref(null)
+const reviewForm = ref(null)
 
 const selectedRows = ref([])
 
@@ -644,6 +827,34 @@ const handleEdit = (row) => {
   editVisible.value = true
 }
 
+// 审核
+const handleReview = (row) => {
+  reviewForm.value = {
+    id: row.id,
+    name: row.name,
+    gender: row.gender,
+    phone: row.phone,
+    school: row.school,
+    major: row.major,
+    teacher_type: row.teacher_type,
+    grade_level: row.grade_level,
+    education_level: row.education_level,
+    avatar: row.avatar || '',
+    teaching_photos: row.teaching_photos || [],
+    id_card_front: row.id_card_front || '',
+    id_card_back: row.id_card_back || '',
+    education_certificate: row.education_certificate || '',
+    teacher_certificate: row.teacher_certificate || '',
+    current_status: row.review_status || 'pending', // 保存原始状态用于显示
+    review_status: row.review_status || 'pending',
+    real_name_verified: row.real_name_verified || 0,
+    education_verified: row.education_verified || 0,
+    teacher_verified: row.teacher_verified || 0,
+    review_note: ''
+  }
+  reviewVisible.value = true
+}
+
 // 保存编辑
 const handleSaveEdit = async () => {
   try {
@@ -661,6 +872,40 @@ const handleSaveEdit = async () => {
   } catch (error) {
     console.error('更新失败:', error)
     ElMessage.error('更新失败')
+  } finally {
+    saveLoading.value = false
+  }
+}
+
+// 保存审核
+const handleSaveReview = async () => {
+  try {
+    saveLoading.value = true
+    
+    // 使用专门的审核接口，传递所有认证字段
+    const res = await reviewTeacher(
+      reviewForm.value.id, 
+      reviewForm.value.review_status,
+      reviewForm.value.review_note || '',
+      {
+        real_name_verified: reviewForm.value.real_name_verified,
+        education_verified: reviewForm.value.education_verified,
+        teacher_verified: reviewForm.value.teacher_verified
+      }
+    )
+    
+    if (res.success) {
+      ElMessage.success('审核状态更新成功')
+      reviewVisible.value = false
+      // 重新加载数据
+      await loadData()
+      await loadStatistics()
+    } else {
+      ElMessage.error(res.error || '审核失败')
+    }
+  } catch (error) {
+    console.error('审核失败:', error)
+    ElMessage.error('审核失败')
   } finally {
     saveLoading.value = false
   }
@@ -969,6 +1214,28 @@ onMounted(() => {
 /* 教师卡片列表 */
 .teacher-cards {
   min-height: 400px;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+}
+
+@media (max-width: 1600px) {
+  .teacher-cards {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 1200px) {
+  .teacher-cards {
+    grid-template-columns: 1fr;
+    gap: 12px;
+  }
+}
+
+@media (max-width: 768px) {
+  .teacher-cards {
+    gap: 10px;
+  }
 }
 
 /* 空状态 */

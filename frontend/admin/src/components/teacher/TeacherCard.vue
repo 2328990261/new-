@@ -1,150 +1,141 @@
 <template>
-  <div class="teacher-card" :class="{ selected: isSelected }">
-    <div class="card-header">
+  <div 
+    class="teacher-card" 
+    :class="{ selected: isSelected }"
+    @click="handleCardClick"
+  >
+    <!-- 左侧：复选框和头像 -->
+    <div class="card-left">
       <el-checkbox 
         :model-value="isSelected" 
         @change="$emit('select', teacher)"
+        @click.stop
         class="card-checkbox"
       />
       <div class="teacher-avatar">
-        <el-avatar :src="teacher.avatar" :size="60">
+        <el-avatar :src="teacher.avatar" :size="50">
           {{ teacher.name?.charAt(0) || '?' }}
         </el-avatar>
       </div>
-      <div class="teacher-basic">
-        <div class="teacher-name">
+    </div>
+
+    <!-- 右侧：所有信息 -->
+    <div class="card-content">
+      <!-- 第一行：姓名、ID、状态标签 -->
+      <div class="info-line-1">
+        <div class="teacher-name-group">
           <span class="name-text">{{ teacher.name }}</span>
           <el-tag v-if="teacher.is_top" type="danger" size="small" class="top-tag">置顶</el-tag>
+          <span class="teacher-id">ID: {{ teacher.id }}</span>
         </div>
-        <div class="teacher-id">ID: {{ teacher.id }}</div>
-        <div class="teacher-meta">
-          <span class="meta-item">{{ teacher.gender }}</span>
-          <span class="meta-divider">|</span>
-          <span class="meta-item">{{ teacher.phone }}</span>
+        <div class="status-tags">
+          <el-tag 
+            v-if="teacher.review_status === 'pending'" 
+            type="warning" 
+            size="small"
+          >
+            待审核
+          </el-tag>
+          <el-tag 
+            v-else-if="teacher.review_status === 'approved'" 
+            type="success" 
+            size="small"
+          >
+            审核通过
+          </el-tag>
+          <el-tag 
+            v-else-if="teacher.review_status === 'rejected'" 
+            type="danger" 
+            size="small"
+          >
+            审核拒绝
+          </el-tag>
         </div>
       </div>
-      <div class="card-status">
-        <div class="certification-badges">
+
+      <!-- 第二行：基本信息 -->
+      <div class="info-line-2">
+        <span class="info-item">
+          <span class="label">性别：</span>
+          <span class="value">{{ teacher.gender }}</span>
+        </span>
+        <span class="divider">|</span>
+        <span class="info-item">
+          <span class="label">手机：</span>
+          <span class="value">{{ teacher.phone }}</span>
+        </span>
+        <span class="divider">|</span>
+        <span class="info-item">
+          <span class="label">微信：</span>
+          <span class="value">{{ teacher.wechat_id || '-' }}</span>
+        </span>
+      </div>
+
+      <!-- 第三行：学校和专业 -->
+      <div class="info-line-3">
+        <span class="info-item">
+          <span class="label">学校：</span>
+          <span class="value">{{ teacher.school || '-' }}</span>
+        </span>
+        <span class="divider">|</span>
+        <span class="info-item">
+          <span class="label">专业：</span>
+          <span class="value">{{ teacher.major || '-' }}</span>
+        </span>
+      </div>
+
+      <!-- 第四行：认证状态和类型 -->
+      <div class="info-line-4">
+        <div class="cert-tags">
           <el-tag 
             :type="teacher.real_name_verified ? 'success' : 'info'" 
             size="small"
+            effect="plain"
           >
             实名{{ teacher.real_name_verified ? '✓' : '✗' }}
           </el-tag>
           <el-tag 
             :type="teacher.education_verified ? 'success' : 'info'" 
             size="small"
+            effect="plain"
           >
             学历{{ teacher.education_verified ? '✓' : '✗' }}
           </el-tag>
           <el-tag 
             :type="teacher.teacher_verified ? 'success' : 'info'" 
             size="small"
+            effect="plain"
           >
             教师{{ teacher.teacher_verified ? '✓' : '✗' }}
           </el-tag>
         </div>
-        <el-tag 
-          v-if="teacher.review_status === 'pending'" 
-          type="warning" 
-          size="small"
-          style="margin-top: 4px"
-        >
-          待审核
-        </el-tag>
-        <el-tag 
-          v-else-if="teacher.review_status === 'approved'" 
-          type="success" 
-          size="small"
-          style="margin-top: 4px"
-        >
-          审核通过
-        </el-tag>
-        <el-tag 
-          v-else-if="teacher.review_status === 'rejected'" 
-          type="danger" 
-          size="small"
-          style="margin-top: 4px"
-        >
-          审核拒绝
-        </el-tag>
+        <span class="teacher-type">{{ getTeacherTypeLabel(teacher) }}</span>
       </div>
-    </div>
 
-    <div class="card-body">
-      <div class="info-row">
-        <div class="info-item">
-          <span class="info-label">学校：</span>
-          <span class="info-value">{{ teacher.school || '-' }}</span>
-        </div>
-        <div class="info-item">
-          <span class="info-label">专业：</span>
-          <span class="info-value">{{ teacher.major || '-' }}</span>
-        </div>
+      <!-- 第五行：注册时间 -->
+      <div class="info-line-5">
+        <span class="create-time">注册：{{ teacher.create_time }}</span>
       </div>
-      <div class="info-row">
-        <div class="info-item">
-          <span class="info-label">类型：</span>
-          <span class="info-value">{{ getTeacherTypeLabel(teacher) }}</span>
-        </div>
-        <div class="info-item">
-          <span class="info-label">微信：</span>
-          <span class="info-value">{{ teacher.wechat_id || '-' }}</span>
-        </div>
-      </div>
-      <div class="info-row" v-if="teacher.personal_advantage">
-        <div class="info-item full-width">
-          <span class="info-label">优势：</span>
-          <span class="info-value advantage-text">{{ teacher.personal_advantage }}</span>
-        </div>
-      </div>
-      <div class="info-row" v-if="teacher.advantage_tags && teacher.advantage_tags.length">
-        <div class="info-item full-width">
-          <span class="info-label">标签：</span>
-          <div class="tags-container">
-            <el-tag 
-              v-for="tag in teacher.advantage_tags.slice(0, 5)" 
-              :key="tag" 
-              size="small"
-              class="advantage-tag"
-            >
-              {{ tag }}
-            </el-tag>
-            <el-tag 
-              v-if="teacher.advantage_tags.length > 5" 
-              size="small"
-              type="info"
-            >
-              +{{ teacher.advantage_tags.length - 5 }}
-            </el-tag>
-          </div>
-        </div>
-      </div>
-      <div class="info-row time-row">
-        <div class="info-item">
-          <span class="info-label">注册时间：</span>
-          <span class="info-value time-value">{{ teacher.create_time }}</span>
-        </div>
-      </div>
-    </div>
 
-    <div class="card-footer">
-      <el-button size="small" type="primary" @click="$emit('view', teacher)">
-        <el-icon><View /></el-icon> 查看
-      </el-button>
-      <el-button size="small" type="info" @click="$emit('edit', teacher)">
-        <el-icon><Edit /></el-icon> 编辑
-      </el-button>
-      <el-button 
-        size="small" 
-        :type="teacher.is_top ? 'info' : 'warning'" 
-        @click="$emit('toggle-top', teacher)"
-      >
-        <el-icon><Top /></el-icon> {{ teacher.is_top ? '取消置顶' : '置顶' }}
-      </el-button>
-      <el-button size="small" type="danger" @click="$emit('delete', teacher)">
-        <el-icon><Delete /></el-icon> 删除
-      </el-button>
+      <!-- 第六行：操作按钮 -->
+      <div class="card-actions" @click.stop>
+        <el-button size="small" type="primary" @click="$emit('edit', teacher)">
+          查看
+        </el-button>
+        <el-button size="small" type="success" @click="$emit('review', teacher)">
+          审核
+        </el-button>
+        <el-button 
+          size="small" 
+          :type="teacher.is_top ? 'info' : 'warning'" 
+          @click="$emit('toggle-top', teacher)"
+        >
+          {{ teacher.is_top ? '取消置顶' : '置顶' }}
+        </el-button>
+        <el-button size="small" type="danger" @click="$emit('delete', teacher)">
+          删除
+        </el-button>
+      </div>
     </div>
   </div>
 </template>
@@ -152,7 +143,7 @@
 <script setup>
 import { View, Edit, Top, Lock, Unlock, Delete } from '@element-plus/icons-vue'
 
-defineProps({
+const props = defineProps({
   teacher: {
     type: Object,
     required: true
@@ -163,7 +154,12 @@ defineProps({
   }
 })
 
-defineEmits(['select', 'view', 'edit', 'toggle-top', 'toggle-status', 'delete'])
+const emit = defineEmits(['select', 'view', 'edit', 'toggle-top', 'toggle-status', 'delete'])
+
+// 点击卡片区域选中
+const handleCardClick = () => {
+  emit('select', props.teacher)
+}
 
 const getTeacherTypeLabel = (teacher) => {
   const typeMap = {
@@ -215,55 +211,85 @@ const getTeacherTypeLabel = (teacher) => {
 <style scoped>
 .teacher-card {
   background: #fff;
-  border-radius: 8px;
-  padding: 16px;
-  margin-bottom: 16px;
-  border: 1px solid #e4e7ed;
-  transition: all 0.3s;
-  position: relative;
+  border-radius: 10px;
+  padding: 14px 12px;
+  border: 1.5px solid #e4e7ed;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+  transition: all 0.3s ease;
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin-bottom: 12px;
+  cursor: pointer;
+  user-select: none;
 }
 
 .teacher-card:hover {
-  box-shadow: 0 2px 12px 0 rgba(0, 0, 0, 0.1);
+  box-shadow: 0 4px 16px rgba(64, 158, 255, 0.2);
   border-color: #409eff;
+  transform: translateY(-2px);
 }
 
 .teacher-card.selected {
   border-color: #409eff;
-  background-color: #f0f9ff;
+  border-width: 2px;
+  background: linear-gradient(135deg, #ecf5ff 0%, #e1f0ff 100%);
+  box-shadow: 0 4px 12px rgba(64, 158, 255, 0.25);
 }
 
-.card-header {
+/* 左侧区域 */
+.card-left {
   display: flex;
   align-items: flex-start;
-  margin-bottom: 16px;
-  gap: 12px;
+  gap: 8px;
+  flex-shrink: 0;
 }
 
 .card-checkbox {
-  margin-top: 20px;
+  flex-shrink: 0;
+  margin-top: 4px;
 }
 
 .teacher-avatar {
   flex-shrink: 0;
 }
 
-.teacher-basic {
-  flex: 1;
-  min-width: 0;
+.teacher-avatar :deep(.el-avatar) {
+  border: 2px solid #f0f0f0;
 }
 
-.teacher-name {
+/* 右侧内容区域 */
+.card-content {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+/* 第一行：姓名和状态 */
+.info-line-1 {
   display: flex;
   align-items: center;
+  justify-content: space-between;
   gap: 8px;
-  margin-bottom: 4px;
+  flex-wrap: wrap;
+}
+
+.teacher-name-group {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 1;
+  min-width: 0;
+  flex-wrap: wrap;
 }
 
 .name-text {
-  font-size: 16px;
+  font-size: 15px;
   font-weight: 600;
   color: #303133;
+  flex-shrink: 0;
 }
 
 .top-tag {
@@ -271,140 +297,224 @@ const getTeacherTypeLabel = (teacher) => {
 }
 
 .teacher-id {
-  font-size: 12px;
+  font-size: 11px;
   color: #909399;
-  margin-bottom: 4px;
+  font-family: 'Courier New', monospace;
+  flex-shrink: 0;
 }
 
-.teacher-meta {
-  font-size: 13px;
+.status-tags {
+  display: flex;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+/* 第二行：基本信息 */
+.info-line-2 {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
   color: #606266;
+  flex-wrap: wrap;
 }
 
-.meta-item {
-  display: inline-block;
-}
-
-.meta-divider {
-  margin: 0 8px;
-  color: #dcdfe6;
-}
-
-.card-status {
+/* 第三行：学校专业 */
+.info-line-3 {
   display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  gap: 4px;
-}
-
-.certification-badges {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  align-items: flex-end;
-}
-
-.card-body {
-  padding: 12px 0;
-  border-top: 1px solid #f0f0f0;
-  border-bottom: 1px solid #f0f0f0;
-}
-
-.info-row {
-  display: flex;
-  gap: 16px;
-  margin-bottom: 8px;
-}
-
-.info-row:last-child {
-  margin-bottom: 0;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: #606266;
+  flex-wrap: wrap;
 }
 
 .info-item {
-  flex: 1;
-  min-width: 0;
-  font-size: 13px;
+  display: inline-flex;
+  align-items: center;
+  white-space: nowrap;
 }
 
-.info-item.full-width {
-  flex: none;
-  width: 100%;
-}
-
-.info-label {
+.info-item .label {
   color: #909399;
-  margin-right: 4px;
+  margin-right: 3px;
 }
 
-.info-value {
-  color: #606266;
-  word-break: break-all;
-}
-
-.advantage-text {
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
+.info-item .value {
+  color: #303133;
+  font-weight: 500;
   overflow: hidden;
   text-overflow: ellipsis;
+  max-width: 120px;
 }
 
-.tags-container {
-  display: inline-flex;
+.divider {
+  color: #dcdfe6;
+  margin: 0 3px;
+}
+
+/* 第四行：认证和类型 */
+.info-line-4 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
   flex-wrap: wrap;
+}
+
+.cert-tags {
+  display: flex;
   gap: 4px;
-  margin-top: 4px;
+  flex-wrap: wrap;
 }
 
-.advantage-tag {
-  margin: 0;
+.teacher-type {
+  color: #606266;
+  padding: 2px 6px;
+  background: #f0f2f5;
+  border-radius: 4px;
+  font-size: 11px;
 }
 
-.time-row {
-  margin-top: 8px;
-  padding-top: 8px;
+/* 第五行：注册时间 */
+.info-line-5 {
+  display: flex;
+  align-items: center;
+  padding-top: 5px;
   border-top: 1px dashed #e4e7ed;
 }
 
-.time-value {
-  font-size: 12px;
+.create-time {
   color: #909399;
+  font-family: 'Courier New', monospace;
+  font-size: 11px;
 }
 
-.card-footer {
+/* 第六行：操作按钮 */
+.card-actions {
   display: flex;
-  gap: 8px;
-  margin-top: 12px;
+  gap: 6px;
   flex-wrap: wrap;
+  padding-top: 7px;
 }
 
-.card-footer .el-button {
-  flex: 0 0 auto;
+.card-actions .el-button {
+  padding: 6px 10px;
+  font-size: 12px;
 }
 
+/* 响应式 - 小屏 */
+@media (max-width: 1200px) {
+  .card-actions .el-button {
+    flex: 1;
+    min-width: 0;
+  }
+}
+
+/* 响应式 - 移动端 */
 @media (max-width: 768px) {
-  .card-header {
-    flex-wrap: wrap;
-  }
-  
-  .card-status {
-    width: 100%;
-    flex-direction: row;
-    justify-content: flex-start;
-    margin-top: 8px;
-  }
-  
-  .info-row {
+  .teacher-card {
+    padding: 12px;
     flex-direction: column;
+  }
+  
+  .card-left {
+    width: 100%;
     gap: 8px;
   }
   
-  .card-footer {
-    justify-content: flex-start;
+  .teacher-avatar :deep(.el-avatar) {
+    width: 45px !important;
+    height: 45px !important;
   }
   
-  .card-footer .el-button {
-    flex: 0 0 calc(50% - 4px);
+  .card-content {
+    width: 100%;
+  }
+  
+  .info-line-1 {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 6px;
+  }
+  
+  .teacher-name-group {
+    width: 100%;
+  }
+  
+  .name-text {
+    font-size: 15px;
+  }
+  
+  .status-tags {
+    width: 100%;
+  }
+  
+  .info-line-2,
+  .info-line-3 {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 4px;
+  }
+  
+  .info-item {
+    width: 100%;
+  }
+  
+  .info-item .value {
+    max-width: 200px;
+  }
+  
+  .divider {
+    display: none;
+  }
+  
+  .info-line-4 {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 6px;
+  }
+  
+  .cert-tags {
+    width: 100%;
+  }
+  
+  .teacher-type {
+    font-size: 11px;
+  }
+  
+  .create-time {
+    font-size: 11px;
+  }
+  
+  .card-actions {
+    width: 100%;
+    gap: 8px;
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+  }
+  
+  .card-actions .el-button {
+    font-size: 13px;
+    padding: 8px 12px;
+    margin: 0;
+    width: 100%;
+  }
+}
+
+/* 响应式 - 超小屏 */
+@media (max-width: 480px) {
+  .teacher-card {
+    padding: 10px;
+  }
+  
+  .card-actions {
+    gap: 6px;
+  }
+  
+  .card-actions .el-button {
+    font-size: 12px;
+    padding: 7px 10px;
   }
 }
 </style>

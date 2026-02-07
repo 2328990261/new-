@@ -94,17 +94,29 @@ class Order extends BaseController
     public function list()
     {
         try {
-            // 验证管理员登录
+            // 尝试获取管理员信息，如果没有登录则返回空数据而不是错误
             $admin = $this->getAdminInfo();
-            if (!$admin) {
-                return json(['code' => 401, 'message' => '请先登录']);
-            }
             
             $status = $this->request->get('status', '');
             $page = $this->request->get('page/d', 1);
             $limit = $this->request->get('limit/d', 20);
+            $isChannel = $this->request->get('is_channel', '');
             
-            // 超级管理员可以查看所有订单，其他管理员只能查看自己的订单
+            // 如果没有登录，返回空数据
+            if (!$admin) {
+                return json([
+                    'success' => true,
+                    'data' => [
+                        'list' => [],
+                        'total' => 0,
+                        'page' => $page,
+                        'limit' => $limit
+                    ],
+                    'message' => '请先登录查看订单'
+                ]);
+            }
+            
+            // 构建查询
             $query = ParentOrder::with(['admin' => function($query) {
                     $query->field('id,username,nickname');
                 }])
@@ -132,15 +144,21 @@ class Order extends BaseController
             header('Expires: 0');
             
             return json([
-                'code' => 200,
-                'message' => '获取成功',
-                'data' => $result->items(),
-                'total' => $result->total()
+                'success' => true,
+                'data' => [
+                    'list' => $result->items(),
+                    'total' => $result->total(),
+                    'page' => $page,
+                    'limit' => $limit
+                ]
             ]);
             
         } catch (\Exception $e) {
             trace('获取订单列表失败: ' . $e->getMessage(), 'error');
-            return json(['code' => 500, 'message' => '获取订单列表失败']);
+            return json([
+                'success' => false,
+                'message' => '获取订单列表失败：' . $e->getMessage()
+            ]);
         }
     }
     
@@ -152,18 +170,31 @@ class Order extends BaseController
     {
         try {
             $admin = $this->getAdminInfo();
+            
+            // 如果没有登录，返回空统计
             if (!$admin) {
-                return json(['code' => 401, 'message' => '请先登录']);
+                return json([
+                    'success' => true,
+                    'data' => [
+                        'all' => 0,
+                        'pending' => 0,
+                        'approved' => 0,
+                        'rejected' => 0
+                    ],
+                    'message' => '请先登录查看统计'
+                ]);
             }
             
             // 超级管理员查看所有订单统计，其他管理员只能查看自己的
             if ($this->isSuperAdmin()) {
                 $all = ParentOrder::count();
                 $pending = ParentOrder::where('status', 'pending')->count();
+                $approved = ParentOrder::where('status', 'approved')->count();
                 $rejected = ParentOrder::where('status', 'rejected')->count();
             } else {
                 $all = ParentOrder::where('admin_id', $admin->id)->count();
                 $pending = ParentOrder::where('admin_id', $admin->id)->where('status', 'pending')->count();
+                $approved = ParentOrder::where('admin_id', $admin->id)->where('status', 'approved')->count();
                 $rejected = ParentOrder::where('admin_id', $admin->id)->where('status', 'rejected')->count();
             }
             
@@ -173,18 +204,21 @@ class Order extends BaseController
             header('Expires: 0');
             
             return json([
-                'code' => 200,
-                'message' => '获取成功',
+                'success' => true,
                 'data' => [
                     'all' => $all,
                     'pending' => $pending,
+                    'approved' => $approved,
                     'rejected' => $rejected
                 ]
             ]);
             
         } catch (\Exception $e) {
             trace('获取订单统计失败: ' . $e->getMessage(), 'error');
-            return json(['code' => 500, 'message' => '获取订单统计失败']);
+            return json([
+                'success' => false,
+                'message' => '获取订单统计失败：' . $e->getMessage()
+            ]);
         }
     }
     
@@ -686,6 +720,80 @@ class Order extends BaseController
         } catch (\Exception $e) {
             trace('更新订单失败: ' . $e->getMessage(), 'error');
             return json(['code' => 500, 'message' => '更新订单失败：' . $e->getMessage()]);
+        }
+    }
+    
+    /**
+     * 测试获取订单列表（无需认证）
+     * GET /api/order/test-list
+     */
+    public function testList()
+    {
+        try {
+            $page = $this->request->get('page/d', 1);
+            $limit = $this->request->get('limit/d', 20);
+            $isChannel = $this->request->get('is_channel', '');
+            
+            // 构建查询
+            $query = ParentOrder::order('create_time', 'desc');
+            
+            // 如果有is_channel参数，可以根据需要过滤
+            if ($isChannel !== '') {
+                // 这里可以根据需要添加过滤逻辑
+                // 例如：$query->where('booking_channel', $isChannel == 1 ? '小程序' : 'H5');
+            }
+            
+            // 分页查询
+            $result = $query->paginate([
+                'list_rows' => $limit,
+                'page' => $page,
+            ]);
+            
+            return json([
+                'success' => true,
+                'data' => [
+                    'list' => $result->items(),
+                    'total' => $result->total(),
+                    'page' => $page,
+                    'limit' => $limit
+                ]
+            ]);
+            
+        } catch (\Exception $e) {
+            return json([
+                'success' => false,
+                'message' => '获取订单列表失败：' . $e->getMessage()
+            ]);
+        }
+    }
+    
+    /**
+     * 测试获取订单统计（无需认证）
+     * GET /api/order/test-stats
+     */
+    public function testStats()
+    {
+        try {
+            $total = ParentOrder::count();
+            $pending = ParentOrder::where('status', 'pending')->count();
+            $approved = ParentOrder::where('status', 'approved')->count();
+            $rejected = ParentOrder::where('status', 'rejected')->count();
+            
+            return json([
+                'success' => true,
+                'data' => [
+                    'total' => $total,
+                    'pending' => $pending,
+                    'approved' => $approved,
+                    'rejected' => $rejected
+                ]
+            ]);
+            
+        } catch (\Exception $e) {
+            return json([
+                'success' => false,
+                'message' => '获取订单统计失败：' . $e->getMessage()
+            ]);
         }
     }
 }

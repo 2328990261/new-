@@ -24,13 +24,16 @@ export function getTeacherDetail(id) {
 /**
  * 审核教师（保留兼容性）
  */
-export function reviewTeacher(id, status, reason = '') {
+export function reviewTeacher(id, status, reason = '', certifications = {}) {
   return request({
     url: `/teachers/${id}/review`,
     method: 'post',
     data: {
       status,
-      reason
+      reason,
+      real_name_verified: certifications.real_name_verified,
+      education_verified: certifications.education_verified,
+      teacher_verified: certifications.teacher_verified
     }
   })
 }

@@ -181,7 +181,7 @@ class Teacher extends BaseController
     }
     
     /**
-     * 审核教师（保留兼容性）
+     * 审核教师
      */
     public function review($id)
     {
@@ -195,8 +195,11 @@ class Teacher extends BaseController
         try {
             $status = $this->request->post('status');
             $reason = $this->request->post('reason', '');
+            $realNameVerified = $this->request->post('real_name_verified');
+            $educationVerified = $this->request->post('education_verified');
+            $teacherVerified = $this->request->post('teacher_verified');
             
-            if (!in_array($status, ['approved', 'rejected'])) {
+            if (!in_array($status, ['pending', 'approved', 'rejected'])) {
                 return json(['success' => false, 'error' => '无效的审核状态']);
             }
             
@@ -206,15 +209,33 @@ class Teacher extends BaseController
             }
             
             // 更新审核状态
-            $teacher->status = $status;
-            $teacher->reject_reason = $status === 'rejected' ? $reason : '';
+            $teacher->review_status = $status;
+            $teacher->review_note = $reason;
             $teacher->review_time = date('Y-m-d H:i:s');
             $teacher->reviewer_id = $_SESSION['admin_id'];
+            
+            // 更新各项认证状态
+            if ($realNameVerified !== null) {
+                $teacher->real_name_verified = intval($realNameVerified);
+            }
+            if ($educationVerified !== null) {
+                $teacher->education_verified = intval($educationVerified);
+            }
+            if ($teacherVerified !== null) {
+                $teacher->teacher_verified = intval($teacherVerified);
+            }
+            
             $teacher->save();
+            
+            $statusText = [
+                'pending' => '待审核',
+                'approved' => '审核通过',
+                'rejected' => '审核拒绝'
+            ];
             
             return json([
                 'success' => true,
-                'message' => $status === 'approved' ? '审核通过' : '已拒绝'
+                'message' => '审核状态已更新为：' . $statusText[$status]
             ]);
             
         } catch (\Exception $e) {
