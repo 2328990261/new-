@@ -1,7 +1,6 @@
 <?php
 namespace app\service;
 
-use think\facade\Filesystem;
 use think\facade\Log;
 
 /**
@@ -32,6 +31,12 @@ class UploadService
     public function uploadRefundVoucher($file)
     {
         try {
+            // 先获取文件信息（在移动之前）
+            $originalName = $file->getOriginalName();
+            $fileSize = $file->getSize();
+            $fileMime = $file->getOriginalMime();
+            $extension = $file->extension();
+            
             // 验证文件
             $validation = $this->validateFile($file, array_merge($this->allowedImageTypes, $this->allowedDocTypes));
             if (!$validation['success']) {
@@ -39,27 +44,33 @@ class UploadService
             }
             
             // 生成保存路径
-            $savePath = 'voucher/' . date('Ymd');
+            $uploadPath = root_path('public') . 'uploads/voucher/' . date('Ymd') . '/';
             
-            // 使用ThinkPHP的文件系统保存文件
-            $saveName = Filesystem::disk('public')->putFile($savePath, $file);
+            // 创建目录（如果不存在）
+            if (!is_dir($uploadPath)) {
+                mkdir($uploadPath, 0755, true);
+            }
             
-            if (!$saveName) {
+            // 生成唯一文件名
+            $fileName = uniqid() . '_' . time() . '.' . $extension;
+            
+            // 移动文件
+            if (!$file->move($uploadPath, $fileName)) {
                 throw new \Exception('文件保存失败');
             }
             
             // 生成访问URL
-            $url = '/uploads/' . str_replace('\\', '/', $saveName);
+            $url = '/uploads/voucher/' . date('Ymd') . '/' . $fileName;
             
             return [
                 'success' => true,
                 'data' => [
-                    'name' => $file->getOriginalName(),
+                    'name' => $originalName,
                     'url' => $url,
-                    'path' => $saveName,
-                    'size' => $file->getSize(),
-                    'type' => $file->getOriginalMime(),
-                    'extension' => $file->extension(),
+                    'path' => 'voucher/' . date('Ymd') . '/' . $fileName,
+                    'size' => $fileSize,
+                    'type' => $fileMime,
+                    'extension' => $extension,
                     'upload_time' => date('Y-m-d H:i:s')
                 ]
             ];

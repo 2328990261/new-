@@ -80,7 +80,7 @@ defineEmits(['view', 'refund', 'reject'])
 
 const getStatusType = (payment) => {
   if (payment.status === 'pending') return 'warning'
-  if (payment.status === 'paid' && !payment.refund_status) return 'success'
+  if ((payment.status === 'paid' || payment.status === 'success') && !payment.refund_status) return 'success'
   if (payment.refund_status === 'pending') return 'warning'
   if (payment.refund_status === 'rejected') return 'danger'
   if (payment.refund_status === 'completed') return 'info'
@@ -89,7 +89,7 @@ const getStatusType = (payment) => {
 
 const getStatusText = (payment) => {
   if (payment.status === 'pending') return '待支付'
-  if (payment.status === 'paid' && !payment.refund_status) return '已支付'
+  if ((payment.status === 'paid' || payment.status === 'success') && !payment.refund_status) return '已支付'
   if (payment.refund_status === 'pending') return '退款待处理'
   if (payment.refund_status === 'rejected') return '退款驳回'
   if (payment.refund_status === 'completed') return '已退费'

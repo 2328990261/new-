@@ -14,6 +14,7 @@ const TeacherManage = () => import('@/views/admin/TeacherManage.vue')
 const PaymentManage = () => import('@/views/admin/PaymentManage.vue')
 const PaymentDataPanel = () => import('@/views/admin/PaymentDataPanel.vue')
 const PaymentStats = () => import('@/views/admin/PaymentStats.vue')
+const ApplicationManage = () => import('@/views/admin/ApplicationManage.vue')
 const SeoGuide = () => import('@/views/admin/SeoGuide.vue')
 const CityLightManage = () => import('@/views/admin/CityLightManage.vue')
 const DataImport = () => import('@/views/admin/DataImport.vue')
@@ -108,6 +109,12 @@ const routes = [
         meta: { title: '支付统计', keepAlive: true }
       },
       {
+        path: 'applications',
+        name: 'ApplicationManage',
+        component: ApplicationManage,
+        meta: { title: '投递管理', keepAlive: true }
+      },
+      {
         path: 'seo-guide',
         name: 'SeoGuide',
         component: SeoGuide,
@@ -193,6 +200,12 @@ router.beforeEach(async (to, from, next) => {
   }
   
   next()
+})
+
+// 路由后置守卫 - 设置页面标题
+router.afterEach((to) => {
+  const title = to.meta.title || '管理后台'
+  document.title = `${title} - 家教91管理平台`
 })
 
 export default router

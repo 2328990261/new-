@@ -79,7 +79,7 @@
                 style="width: 100%"
               >
             <el-option label="待支付" value="pending"></el-option>
-            <el-option label="已支付" value="paid"></el-option>
+            <el-option label="已支付" value="success"></el-option>
             <el-option label="已取消" value="cancelled"></el-option>
               </el-select>
             </el-form-item>
@@ -141,10 +141,13 @@
                 <el-option 
                   v-for="dispatcher in dispatcherList" 
                   :key="dispatcher.id" 
-                  :label="dispatcher.nickname" 
+                  :label="dispatcher.nickname || dispatcher.username" 
                   :value="dispatcher.id"
                 ></el-option>
               </el-select>
+              <div v-if="dispatcherList.length === 0" style="color: #999; font-size: 12px; margin-top: 5px;">
+                暂无客服数据
+              </div>
             </el-form-item>
           </el-col>
         </el-row>
@@ -211,7 +214,7 @@
         <el-table-column v-if="isColumnVisible('status')" label="状态" width="120">
           <template #default="{ row }">
             <el-tag v-if="row.status === 'pending'" type="warning">待支付</el-tag>
-            <el-tag v-else-if="row.status === 'paid' && !row.refund_status" type="success">已支付</el-tag>
+            <el-tag v-else-if="(row.status === 'paid' || row.status === 'success') && !row.refund_status" type="success">已支付</el-tag>
             <el-tag v-else-if="row.refund_status === 'pending'" type="warning">退款待处理</el-tag>
             <el-tag v-else-if="row.refund_status === 'rejected'" type="danger">退款驳回</el-tag>
             <el-tag v-else-if="row.refund_status === 'completed'" type="info">已退费</el-tag>
@@ -660,7 +663,7 @@ const getList = async () => {
     }
 
     const res = await getPaymentList(params)
-    if (res.code === 200) {
+    if (res.success || res.code === 200) {
       paymentList.value = res.data.list || []
       pagination.total = res.data.total || 0
     }
@@ -708,7 +711,7 @@ const getStatistics = async () => {
     }
 
     const res = await getPaymentStatistics(params)
-    if (res.code === 200) {
+    if (res.success || res.code === 200) {
       statistics.totalPaidAmount = res.data.total_paid_amount || 0
       statistics.totalRefundedAmount = res.data.total_refunded_amount || 0
       statistics.totalActualAmount = res.data.total_actual_amount || 0
@@ -748,7 +751,7 @@ const handleReset = () => {
 const handleView = async (row) => {
   try {
     const res = await getPaymentDetail(row.id)
-    if (res.code === 200) {
+    if (res.success || res.code === 200) {
       currentPayment.value = res.data
       viewDialogVisible.value = true
     }
@@ -786,7 +789,7 @@ const confirmRefund = async () => {
       refund_amount: refundForm.refundAmount,
       remark: refundForm.remark
     })
-    if (res.code === 200) {
+    if (res.success || res.code === 200) {
       ElMessage.success('退款成功')
       refundDialogVisible.value = false
       getList()
@@ -823,7 +826,7 @@ const confirmReject = async () => {
       id: rejectForm.id,
       reject_reason: rejectForm.rejectReason
     })
-    if (res.code === 200) {
+    if (res.success || res.code === 200) {
       ElMessage.success('驳回成功')
       rejectDialogVisible.value = false
       getList()

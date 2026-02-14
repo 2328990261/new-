@@ -157,7 +157,7 @@ Route::group('admin/api', function () {
         Route::get('payments/agreement', 'admin.Payment/getAgreement');
         Route::post('payments/agreement/:id', 'admin.Payment/updateAgreement');
         Route::get('payments/statistics', 'admin.Payment/statistics');
-        Route::get('payments/dispatchers', 'admin.Payment/getDispatchers');
+        Route::get('payments/dispatchers', 'admin.Payment/dispatchers');
         Route::post('payments/refund/process', 'admin.Payment/processRefund');
         Route::post('payments/refund/reject', 'admin.Payment/rejectRefund');
         Route::get('payments/refund/:id', 'admin.Payment/refundDetail');
@@ -168,13 +168,21 @@ Route::group('admin/api', function () {
         Route::get('teachers/statistics', 'admin.Teacher/statistics');  // 统计信息（必须在 teachers/:id 之前）
         Route::post('teachers/batch-delete', 'admin.Teacher/batchDelete');  // 批量删除
         Route::post('teachers/batch-update-status', 'admin.Teacher/batchUpdateStatus');  // 批量更新状态
-        Route::get('teachers', 'admin.Teacher/index');
-        Route::get('teachers/:id', 'admin.Teacher/read');
+        Route::get('teachers/:id', 'admin.Teacher/read');  // 获取单个教师详情（必须在 teachers 之前）
+        Route::get('teachers', 'admin.Teacher/index');  // 获取教师列表
         Route::put('teachers/:id', 'admin.Teacher/update');  // 更新教师信息
         Route::post('teachers/:id/review', 'admin.Teacher/review');
         Route::post('teachers/:id/update-status', 'admin.Teacher/updateStatus');
         Route::post('teachers/:id/set-top', 'admin.Teacher/setTop');
         Route::delete('teachers/:id', 'admin.Teacher/delete');
+        
+        // 简历投递管理
+        Route::get('resume-applications/statistics', 'admin.ResumeApplication/statistics');  // 统计信息
+        Route::post('resume-applications/batch-review', 'admin.ResumeApplication/batchReview');  // 批量审核
+        Route::post('resume-applications/review', 'admin.ResumeApplication/review');  // 审核投递
+        Route::get('resume-applications/:id', 'admin.ResumeApplication/read');  // 获取投递详情
+        Route::get('resume-applications', 'admin.ResumeApplication/index');  // 获取投递列表
+        Route::delete('resume-applications/:id', 'admin.ResumeApplication/delete');  // 删除投递记录
         
         // 城市点亮管理
         Route::get('city-lights', 'admin.CityLight/index');

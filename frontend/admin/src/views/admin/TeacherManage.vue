@@ -7,7 +7,7 @@
           <el-card shadow="hover" class="stat-card" @click="handleStatClick('')">
             <div class="stat-content">
               <div class="stat-label">全部教师</div>
-              <div class="stat-value">{{ total || 0 }}</div>
+              <div class="stat-value">{{ statistics.total || 0 }}</div>
             </div>
           </el-card>
         </el-col>
@@ -98,7 +98,7 @@
               <span class="tab-label">
                 <el-icon><List /></el-icon>
                 全部
-                <el-badge :value="total" :max="999" class="tab-badge" />
+                <el-badge :value="statistics.total" :max="999" class="tab-badge" />
               </span>
             </template>
           </el-tab-pane>
@@ -205,134 +205,422 @@
     </el-card>
 
     <!-- 查看详情弹窗 -->
-    <el-dialog v-model="detailVisible" title="教师详情" width="900px">
-      <el-descriptions :column="2" border v-if="currentTeacher">
-        <el-descriptions-item label="ID">{{ currentTeacher.id }}</el-descriptions-item>
-        <el-descriptions-item label="姓名">{{ currentTeacher.name }}</el-descriptions-item>
-        <el-descriptions-item label="性别">{{ currentTeacher.gender }}</el-descriptions-item>
-        <el-descriptions-item label="手机号">{{ currentTeacher.phone }}</el-descriptions-item>
-        <el-descriptions-item label="微信号">{{ currentTeacher.wechat_id }}</el-descriptions-item>
-        <el-descriptions-item label="邮箱">{{ currentTeacher.email || '未填写' }}</el-descriptions-item>
-        <el-descriptions-item label="学校">{{ currentTeacher.school }}</el-descriptions-item>
-        <el-descriptions-item label="专业">{{ currentTeacher.major }}</el-descriptions-item>
-        <el-descriptions-item label="教师类型">
-          {{ getTeacherTypeLabel(currentTeacher.teacher_type, currentTeacher.grade_level, currentTeacher.education_level) }}
-        </el-descriptions-item>
-        <el-descriptions-item label="认证状态" :span="2">
-          <div style="display: flex; gap: 8px;">
-            <el-tag :type="currentTeacher.real_name_verified ? 'success' : 'info'" size="small">
-              实名认证: {{ currentTeacher.real_name_verified ? '已认证' : '未认证' }}
-            </el-tag>
-            <el-tag :type="currentTeacher.education_verified ? 'success' : 'info'" size="small">
-              学历认证: {{ currentTeacher.education_verified ? '已认证' : '未认证' }}
-            </el-tag>
-            <el-tag :type="currentTeacher.teacher_verified ? 'success' : 'info'" size="small">
-              教师认证: {{ currentTeacher.teacher_verified ? '已认证' : '未认证' }}
-            </el-tag>
-          </div>
-        </el-descriptions-item>
-        <el-descriptions-item label="审核状态">
-          <el-tag v-if="currentTeacher.review_status === 'pending'" type="warning">待审核</el-tag>
-          <el-tag v-else-if="currentTeacher.review_status === 'approved'" type="success">已通过</el-tag>
-          <el-tag v-else-if="currentTeacher.review_status === 'rejected'" type="danger">已拒绝</el-tag>
-          <el-tag v-else type="info">未审核</el-tag>
-        </el-descriptions-item>
-        <el-descriptions-item label="注册时间" :span="2">{{ currentTeacher.create_time }}</el-descriptions-item>
-        <el-descriptions-item label="个人优势" :span="2">
-          {{ currentTeacher.personal_advantage || '未填写' }}
-        </el-descriptions-item>
-        <el-descriptions-item label="优势标签" :span="2">
-          <el-tag 
-            v-for="tag in (currentTeacher.advantage_tags || [])" 
-            :key="tag" 
-            size="small" 
-            style="margin-right: 5px"
-          >
-            {{ tag }}
-          </el-tag>
-          <span v-if="!currentTeacher.advantage_tags || currentTeacher.advantage_tags.length === 0">未选择</span>
-        </el-descriptions-item>
-        <el-descriptions-item label="头像" :span="2">
-          <el-image 
-            v-if="currentTeacher.avatar" 
+    <el-dialog v-model="detailVisible" title="教师详情" width="1000px" top="5vh">
+      <div v-if="currentTeacher" style="max-height: 70vh; overflow-y: auto;">
+        <!-- 头像 -->
+        <div style="text-align: center; margin-bottom: 20px;">
+          <el-avatar 
             :src="currentTeacher.avatar" 
-            style="width: 100px; height: 100px; border-radius: 50%"
-            fit="cover"
-            :preview-src-list="[currentTeacher.avatar]"
-          />
-          <span v-else>未上传</span>
-        </el-descriptions-item>
-      </el-descriptions>
-      
-      <!-- 教学经历 -->
-      <div v-if="currentTeacher?.experiences?.length" style="margin-top: 20px">
-        <h4>教学经历</h4>
-        <el-timeline>
-          <el-timeline-item 
-            v-for="(exp, index) in currentTeacher.experiences" 
-            :key="index"
-            :timestamp="`${exp.start_date} - ${exp.end_date}`"
-            placement="top"
+            :size="120"
+            style="border: 3px solid #f0f0f0;"
           >
-            <el-card>
-              <h4>{{ exp.subject }}</h4>
-              <p v-if="exp.location">地点：{{ exp.location }}</p>
-              <p>{{ exp.description }}</p>
-            </el-card>
-          </el-timeline-item>
-        </el-timeline>
-      </div>
-      
-      <!-- 教学风采照片 -->
-      <div v-if="currentTeacher?.teaching_photos?.length" style="margin-top: 20px">
-        <h4>教学风采</h4>
-        <el-image
-          v-for="(photo, index) in currentTeacher.teaching_photos"
-          :key="index"
-          :src="photo"
-          :preview-src-list="currentTeacher.teaching_photos"
-          fit="cover"
-          style="width: 100px; height: 100px; margin-right: 10px; border-radius: 8px"
-        />
+            {{ currentTeacher.name?.charAt(0) || '?' }}
+          </el-avatar>
+          <div style="margin-top: 10px; font-size: 18px; font-weight: 600; color: #303133;">
+            {{ currentTeacher.name }}
+          </div>
+        </div>
+
+        <!-- 基本信息 -->
+        <el-divider content-position="left">
+          <span style="font-weight: 600; font-size: 16px;">基本信息</span>
+        </el-divider>
+        <el-descriptions :column="2" border>
+          <el-descriptions-item label="教师ID">{{ currentTeacher.id }}</el-descriptions-item>
+          <el-descriptions-item label="关联账号ID">{{ currentTeacher.account_id }}</el-descriptions-item>
+          <el-descriptions-item label="性别">{{ currentTeacher.gender }}</el-descriptions-item>
+          <el-descriptions-item label="微信号">{{ currentTeacher.wechat_id }}</el-descriptions-item>
+          <el-descriptions-item label="微信昵称">{{ currentTeacher.wechat_nickname }}</el-descriptions-item>
+          <el-descriptions-item label="OpenID">{{ currentTeacher.openid }}</el-descriptions-item>
+          <el-descriptions-item label="籍贯">{{ currentTeacher.hometown }}</el-descriptions-item>
+          <el-descriptions-item label="出生年份">{{ currentTeacher.birth_year }}</el-descriptions-item>
+          <el-descriptions-item label="教龄">{{ currentTeacher.teaching_years ? currentTeacher.teaching_years + '年' : '' }}</el-descriptions-item>
+        </el-descriptions>
+
+        <!-- 联系方式 -->
+        <el-divider content-position="left">
+          <span style="font-weight: 600; font-size: 16px;">联系方式</span>
+          <el-button 
+            :icon="showContactInfo ? 'Hide' : 'View'" 
+            size="small" 
+            type="primary" 
+            link
+            @click="showContactInfo = !showContactInfo"
+            style="margin-left: 12px;"
+          >
+            {{ showContactInfo ? '隐藏' : '显示' }}
+          </el-button>
+        </el-divider>
+        <el-descriptions v-if="showContactInfo" :column="2" border>
+          <el-descriptions-item label="手机号">{{ currentTeacher.phone }}</el-descriptions-item>
+          <el-descriptions-item label="邮箱">{{ currentTeacher.email }}</el-descriptions-item>
+        </el-descriptions>
+        <div v-else style="text-align: center; padding: 20px; background: #f5f7fa; border-radius: 8px; color: #909399;">
+          <el-icon style="font-size: 24px; margin-bottom: 8px;"><Lock /></el-icon>
+          <div>联系方式已隐藏，点击上方"显示"按钮查看</div>
+        </div>
+
+        <!-- 位置信息 -->
+        <el-divider content-position="left">
+          <span style="font-weight: 600; font-size: 16px;">位置信息</span>
+        </el-divider>
+        <el-descriptions :column="2" border>
+          <el-descriptions-item label="所在省份">{{ currentTeacher.location_province }}</el-descriptions-item>
+          <el-descriptions-item label="所在城市">{{ currentTeacher.location_city }}</el-descriptions-item>
+          <el-descriptions-item label="所在区县">{{ currentTeacher.location_district }}</el-descriptions-item>
+          <el-descriptions-item label="详细地址" :span="2">{{ currentTeacher.location_address }}</el-descriptions-item>
+        </el-descriptions>
+
+        <!-- 教育信息 -->
+        <el-divider content-position="left">
+          <span style="font-weight: 600; font-size: 16px;">教育信息</span>
+        </el-divider>
+        <el-descriptions :column="2" border>
+          <el-descriptions-item label="学校">{{ currentTeacher.school }}</el-descriptions-item>
+          <el-descriptions-item label="专业">{{ currentTeacher.major }}</el-descriptions-item>
+          <el-descriptions-item label="教师类型">
+            {{ currentTeacher.teacher_type ? getTeacherTypeLabel(currentTeacher.teacher_type, currentTeacher.grade_level, currentTeacher.education_level) : '' }}
+          </el-descriptions-item>
+          <el-descriptions-item label="年级/学历">
+            {{ currentTeacher.grade_level ? getGradeLevelLabel(currentTeacher.grade_level) : (currentTeacher.education_level ? getEducationLevelLabel(currentTeacher.education_level) : currentTeacher.education) }}
+          </el-descriptions-item>
+        </el-descriptions>
+
+        <!-- 教学信息 -->
+        <el-divider content-position="left">
+          <span style="font-weight: 600; font-size: 16px;">教学信息</span>
+        </el-divider>
+        <el-descriptions :column="2" border>
+          <el-descriptions-item label="时薪">{{ currentTeacher.hourly_rate ? currentTeacher.hourly_rate + '元/小时' : '' }}</el-descriptions-item>
+          <el-descriptions-item label="科目ID列表">{{ currentTeacher.subject_ids }}</el-descriptions-item>
+          <el-descriptions-item label="科目名称" :span="2">
+            <template v-if="currentTeacher.subject_names && currentTeacher.subject_names.length > 0">
+              <el-tag v-for="(subject, idx) in currentTeacher.subject_names" :key="idx" size="small" style="margin-right: 5px;">
+                {{ subject }}
+              </el-tag>
+            </template>
+          </el-descriptions-item>
+          <el-descriptions-item label="区域ID列表">{{ currentTeacher.district_ids }}</el-descriptions-item>
+          <el-descriptions-item label="区域名称" :span="2">
+            <template v-if="currentTeacher.district_names && currentTeacher.district_names.length > 0">
+              <el-tag v-for="(district, idx) in currentTeacher.district_names" :key="idx" size="small" type="success" style="margin-right: 5px;">
+                {{ district }}
+              </el-tag>
+            </template>
+          </el-descriptions-item>
+        </el-descriptions>
+
+        <!-- 个人介绍 -->
+        <el-divider content-position="left">
+          <span style="font-weight: 600; font-size: 16px;">个人介绍</span>
+        </el-divider>
+        <el-descriptions :column="1" border>
+          <el-descriptions-item label="自我介绍">
+            <div style="white-space: pre-wrap;">{{ currentTeacher.self_intro }}</div>
+          </el-descriptions-item>
+          <el-descriptions-item label="个人优势">
+            <div style="white-space: pre-wrap;">{{ currentTeacher.personal_advantage }}</div>
+          </el-descriptions-item>
+          <el-descriptions-item label="优势标签">
+            <template v-if="currentTeacher.advantage_tags && currentTeacher.advantage_tags.length > 0">
+              <el-tag v-for="tag in currentTeacher.advantage_tags" :key="tag" size="small" type="warning" style="margin-right: 5px;">
+                {{ tag }}
+              </el-tag>
+            </template>
+          </el-descriptions-item>
+        </el-descriptions>
+
+        <!-- 教学经历 -->
+        <el-divider content-position="left">
+          <span style="font-weight: 600; font-size: 16px;">教学经历</span>
+        </el-divider>
+        <div v-if="currentTeacher.experience && currentTeacher.experience.length > 0" style="margin-bottom: 20px;">
+          <el-timeline>
+            <el-timeline-item 
+              v-for="(exp, index) in currentTeacher.experience" 
+              :key="index"
+              :timestamp="exp.start_date && exp.end_date ? `${exp.start_date} - ${exp.end_date}` : ''"
+              placement="top"
+            >
+              <el-card shadow="hover">
+                <h4 style="margin: 0 0 8px 0;">{{ exp.subject }}</h4>
+                <p v-if="exp.location" style="margin: 4px 0; color: #606266;">
+                  <el-icon><Location /></el-icon> 地点：{{ exp.location }}
+                </p>
+                <p style="margin: 4px 0; color: #606266;">{{ exp.description }}</p>
+              </el-card>
+            </el-timeline-item>
+          </el-timeline>
+        </div>
+        <div v-else style="color: #909399; text-align: center; padding: 20px;">暂无教学经历</div>
+
+        <!-- 教学风采照片 -->
+        <el-divider content-position="left">
+          <span style="font-weight: 600; font-size: 16px;">教学风采照片</span>
+        </el-divider>
+        <div v-if="currentTeacher.teaching_photos && currentTeacher.teaching_photos.length > 0" style="display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 20px;">
+          <el-image
+            v-for="(photo, index) in currentTeacher.teaching_photos"
+            :key="index"
+            :src="photo"
+            :preview-src-list="currentTeacher.teaching_photos"
+            fit="cover"
+            style="width: 120px; height: 120px; border-radius: 8px; cursor: pointer; border: 2px solid #e4e7ed;"
+          />
+        </div>
+        <div v-else style="color: #909399; text-align: center; padding: 20px;">暂无教学风采照片</div>
+
+        <!-- 认证审核 -->
+        <el-divider content-position="left">
+          <span style="font-weight: 600; font-size: 16px;">认证审核</span>
+        </el-divider>
+        
+        <!-- 实名认证 -->
+        <div style="margin-bottom: 24px;">
+          <div style="display: flex; align-items: center; margin-bottom: 12px;">
+            <span style="font-size: 15px; font-weight: 500; color: #303133; margin-right: 12px;">实名认证</span>
+            <el-tag :type="currentTeacher.real_name_verified ? 'success' : 'info'" size="small">
+              {{ currentTeacher.real_name_verified ? '已认证' : '未认证' }}
+            </el-tag>
+            <span style="margin-left: 8px; color: #909399; font-size: 13px;">（身份证明）</span>
+          </div>
+          <div v-if="currentTeacher.id_card_front || currentTeacher.id_card_back" style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px;">
+            <div v-if="currentTeacher.id_card_front">
+              <div style="font-size: 13px; color: #909399; margin-bottom: 6px;">身份证正面</div>
+              <el-image
+                :src="currentTeacher.id_card_front"
+                :preview-src-list="[currentTeacher.id_card_front]"
+                fit="cover"
+                style="width: 100%; height: 160px; border-radius: 8px; cursor: pointer; border: 2px solid #e4e7ed;"
+              />
+            </div>
+            <div v-if="currentTeacher.id_card_back">
+              <div style="font-size: 13px; color: #909399; margin-bottom: 6px;">身份证反面</div>
+              <el-image
+                :src="currentTeacher.id_card_back"
+                :preview-src-list="[currentTeacher.id_card_back]"
+                fit="cover"
+                style="width: 100%; height: 160px; border-radius: 8px; cursor: pointer; border: 2px solid #e4e7ed;"
+              />
+            </div>
+          </div>
+          <div v-else style="color: #909399; font-size: 13px; padding: 12px; background: #f5f7fa; border-radius: 6px;">
+            暂无身份证明材料
+          </div>
+        </div>
+
+        <!-- 学历认证 -->
+        <div style="margin-bottom: 24px;">
+          <div style="display: flex; align-items: center; margin-bottom: 12px;">
+            <span style="font-size: 15px; font-weight: 500; color: #303133; margin-right: 12px;">学历认证</span>
+            <el-tag :type="currentTeacher.education_verified ? 'success' : 'info'" size="small">
+              {{ currentTeacher.education_verified ? '已认证' : '未认证' }}
+            </el-tag>
+            <span style="margin-left: 8px; color: #909399; font-size: 13px;">（学历证明）</span>
+          </div>
+          <div v-if="currentTeacher.education_certificate">
+            <el-image
+              :src="currentTeacher.education_certificate"
+              :preview-src-list="[currentTeacher.education_certificate]"
+              fit="cover"
+              style="width: 100%; max-width: 400px; height: 160px; border-radius: 8px; cursor: pointer; border: 2px solid #e4e7ed;"
+            />
+          </div>
+          <div v-else style="color: #909399; font-size: 13px; padding: 12px; background: #f5f7fa; border-radius: 6px;">
+            暂无学历证明材料
+          </div>
+        </div>
+
+        <!-- 教师认证 -->
+        <div style="margin-bottom: 24px;">
+          <div style="display: flex; align-items: center; margin-bottom: 12px;">
+            <span style="font-size: 15px; font-weight: 500; color: #303133; margin-right: 12px;">教师认证</span>
+            <el-tag :type="currentTeacher.teacher_verified ? 'success' : 'info'" size="small">
+              {{ currentTeacher.teacher_verified ? '已认证' : '未认证' }}
+            </el-tag>
+            <span style="margin-left: 8px; color: #909399; font-size: 13px;">（教师证明）</span>
+          </div>
+          <div v-if="currentTeacher.teacher_certificate">
+            <el-image
+              :src="currentTeacher.teacher_certificate"
+              :preview-src-list="[currentTeacher.teacher_certificate]"
+              fit="cover"
+              style="width: 100%; max-width: 400px; height: 160px; border-radius: 8px; cursor: pointer; border: 2px solid #e4e7ed;"
+            />
+          </div>
+          <div v-else style="color: #909399; font-size: 13px; padding: 12px; background: #f5f7fa; border-radius: 6px;">
+            暂无教师资格证材料
+          </div>
+        </div>
       </div>
       
       <template #footer>
         <el-button @click="detailVisible = false">关闭</el-button>
+        <el-button type="primary" @click="handleEditFromDetail">编辑</el-button>
       </template>
     </el-dialog>
 
     <!-- 编辑弹窗 -->
-    <el-dialog v-model="editVisible" title="编辑教师信息" width="700px">
+    <el-dialog v-model="editVisible" title="编辑教师信息" width="900px" top="5vh">
       <el-form 
         ref="editFormRef" 
         :model="editForm" 
         label-width="120px"
         v-if="editForm"
       >
-        <el-form-item label="姓名" prop="name">
-          <el-input v-model="editForm.name" />
+        <el-divider content-position="left">基本信息</el-divider>
+        <el-row :gutter="20">
+          <el-col :span="12">
+            <el-form-item label="姓名" prop="name">
+              <el-input v-model="editForm.name" />
+            </el-form-item>
+          </el-col>
+          <el-col :span="12">
+            <el-form-item label="性别" prop="gender">
+              <el-radio-group v-model="editForm.gender">
+                <el-radio label="男">男</el-radio>
+                <el-radio label="女">女</el-radio>
+              </el-radio-group>
+            </el-form-item>
+          </el-col>
+        </el-row>
+        
+        <el-row :gutter="20">
+          <el-col :span="12">
+            <el-form-item label="手机号" prop="phone">
+              <el-input v-model="editForm.phone" />
+            </el-form-item>
+          </el-col>
+          <el-col :span="12">
+            <el-form-item label="微信号" prop="wechat_id">
+              <el-input v-model="editForm.wechat_id" />
+            </el-form-item>
+          </el-col>
+        </el-row>
+        
+        <el-row :gutter="20">
+          <el-col :span="12">
+            <el-form-item label="微信昵称" prop="wechat_nickname">
+              <el-input v-model="editForm.wechat_nickname" />
+            </el-form-item>
+          </el-col>
+          <el-col :span="12">
+            <el-form-item label="邮箱" prop="email">
+              <el-input v-model="editForm.email" />
+            </el-form-item>
+          </el-col>
+        </el-row>
+        
+        <el-divider content-position="left">教育信息</el-divider>
+        <el-row :gutter="20">
+          <el-col :span="12">
+            <el-form-item label="学历" prop="education">
+              <el-input v-model="editForm.education" />
+            </el-form-item>
+          </el-col>
+          <el-col :span="12">
+            <el-form-item label="学校" prop="school">
+              <el-input v-model="editForm.school" />
+            </el-form-item>
+          </el-col>
+        </el-row>
+        
+        <el-row :gutter="20">
+          <el-col :span="12">
+            <el-form-item label="专业" prop="major">
+              <el-input v-model="editForm.major" />
+            </el-form-item>
+          </el-col>
+          <el-col :span="12">
+            <el-form-item label="教师类型" prop="teacher_type">
+              <el-select v-model="editForm.teacher_type" placeholder="请选择">
+                <el-option label="在读本科生" value="undergraduate" />
+                <el-option label="在读研究生" value="graduate_student" />
+                <el-option label="在读博士生" value="doctoral_student" />
+                <el-option label="毕业生" value="graduated" />
+                <el-option label="专职老师" value="professional" />
+              </el-select>
+            </el-form-item>
+          </el-col>
+        </el-row>
+        
+        <el-row :gutter="20">
+          <el-col :span="12">
+            <el-form-item label="年级层次" prop="grade_level">
+              <el-select v-model="editForm.grade_level" placeholder="请选择">
+                <el-option label="准大一" value="pre_freshman" />
+                <el-option label="大一" value="freshman" />
+                <el-option label="大二" value="sophomore" />
+                <el-option label="大三" value="junior" />
+                <el-option label="大四" value="senior" />
+                <el-option label="大五" value="fifth_year" />
+                <el-option label="研一" value="graduate_first" />
+                <el-option label="研二" value="graduate_second" />
+                <el-option label="研三" value="graduate_third" />
+                <el-option label="博一" value="doctoral_first" />
+                <el-option label="博二" value="doctoral_second" />
+                <el-option label="博三" value="doctoral_third" />
+                <el-option label="博四" value="doctoral_fourth" />
+                <el-option label="博五" value="doctoral_fifth" />
+              </el-select>
+            </el-form-item>
+          </el-col>
+          <el-col :span="12">
+            <el-form-item label="学历层次" prop="education_level">
+              <el-select v-model="editForm.education_level" placeholder="请选择">
+                <el-option label="大专" value="associate" />
+                <el-option label="本科" value="bachelor" />
+                <el-option label="研究生" value="master" />
+                <el-option label="博士" value="doctorate" />
+              </el-select>
+            </el-form-item>
+          </el-col>
+        </el-row>
+        
+        <el-divider content-position="left">教学信息</el-divider>
+        <el-form-item label="时薪" prop="hourly_rate">
+          <el-input-number v-model="editForm.hourly_rate" :min="0" :precision="2" />
+          <span style="margin-left: 10px; color: #909399;">元/小时</span>
         </el-form-item>
-        <el-form-item label="性别" prop="gender">
-          <el-radio-group v-model="editForm.gender">
-            <el-radio label="男">男</el-radio>
-            <el-radio label="女">女</el-radio>
-          </el-radio-group>
+        
+        <el-row :gutter="20">
+          <el-col :span="12">
+            <el-form-item label="科目ID列表" prop="subject_ids">
+              <el-input v-model="editForm.subject_ids" placeholder="逗号分隔，如：1,2,3" />
+            </el-form-item>
+          </el-col>
+          <el-col :span="12">
+            <el-form-item label="科目名称" prop="subject_names">
+              <el-input v-model="editForm.subject_names" placeholder="逗号分隔，如：数学,英语,物理" />
+            </el-form-item>
+          </el-col>
+        </el-row>
+        
+        <el-row :gutter="20">
+          <el-col :span="12">
+            <el-form-item label="区域ID列表" prop="district_ids">
+              <el-input v-model="editForm.district_ids" placeholder="逗号分隔，如：1,2,3" />
+            </el-form-item>
+          </el-col>
+          <el-col :span="12">
+            <el-form-item label="区域名称" prop="district_names">
+              <el-input v-model="editForm.district_names" placeholder="逗号分隔，如：海淀区,朝阳区" />
+            </el-form-item>
+          </el-col>
+        </el-row>
+        
+        <el-divider content-position="left">个人介绍</el-divider>
+        <el-form-item label="自我介绍" prop="self_intro">
+          <el-input 
+            v-model="editForm.self_intro" 
+            type="textarea" 
+            :rows="4"
+            maxlength="500"
+            show-word-limit
+            placeholder="请输入自我介绍"
+          />
         </el-form-item>
-        <el-form-item label="手机号" prop="phone">
-          <el-input v-model="editForm.phone" />
-        </el-form-item>
-        <el-form-item label="微信号" prop="wechat_id">
-          <el-input v-model="editForm.wechat_id" />
-        </el-form-item>
-        <el-form-item label="邮箱" prop="email">
-          <el-input v-model="editForm.email" />
-        </el-form-item>
-        <el-form-item label="学校" prop="school">
-          <el-input v-model="editForm.school" />
-        </el-form-item>
-        <el-form-item label="专业" prop="major">
-          <el-input v-model="editForm.major" />
-        </el-form-item>
+        
         <el-form-item label="个人优势" prop="personal_advantage">
           <el-input 
             v-model="editForm.personal_advantage" 
@@ -340,10 +628,167 @@
             :rows="4"
             maxlength="300"
             show-word-limit
+            placeholder="请输入个人优势描述"
           />
         </el-form-item>
+        
+        <el-form-item label="优势标签">
+          <el-select
+            v-model="editForm.advantage_tags"
+            multiple
+            filterable
+            allow-create
+            placeholder="选择或输入标签"
+            style="width: 100%"
+          >
+            <el-option label="耐心细致" value="耐心细致" />
+            <el-option label="经验丰富" value="经验丰富" />
+            <el-option label="因材施教" value="因材施教" />
+            <el-option label="提分快" value="提分快" />
+            <el-option label="善于沟通" value="善于沟通" />
+            <el-option label="责任心强" value="责任心强" />
+            <el-option label="方法独特" value="方法独特" />
+            <el-option label="亲和力强" value="亲和力强" />
+            <el-option label="严格要求" value="严格要求" />
+            <el-option label="激发兴趣" value="激发兴趣" />
+          </el-select>
+          <div style="color: #909399; font-size: 12px; margin-top: 5px;">
+            可以选择预设标签或输入自定义标签
+          </div>
+        </el-form-item>
+        
+        <el-form-item label="教学经历">
+          <div v-for="(exp, index) in editFormExperiences" :key="index" style="margin-bottom: 15px; padding: 15px; border: 1px solid #dcdfe6; border-radius: 4px;">
+            <el-row :gutter="10">
+              <el-col :span="8">
+                <el-form-item label="开始时间" label-width="80px">
+                  <el-date-picker
+                    v-model="exp.start_date"
+                    type="month"
+                    placeholder="选择月份"
+                    format="YYYY-MM"
+                    value-format="YYYY-MM"
+                    style="width: 100%"
+                  />
+                </el-form-item>
+              </el-col>
+              <el-col :span="8">
+                <el-form-item label="结束时间" label-width="80px">
+                  <el-date-picker
+                    v-model="exp.end_date"
+                    type="month"
+                    placeholder="选择月份"
+                    format="YYYY-MM"
+                    value-format="YYYY-MM"
+                    style="width: 100%"
+                  />
+                </el-form-item>
+              </el-col>
+              <el-col :span="8">
+                <el-form-item label="科目" label-width="80px">
+                  <el-input v-model="exp.subject" placeholder="如：数学" />
+                </el-form-item>
+              </el-col>
+            </el-row>
+            <el-row :gutter="10">
+              <el-col :span="12">
+                <el-form-item label="地点" label-width="80px">
+                  <el-input v-model="exp.location" placeholder="如：北京市" />
+                </el-form-item>
+              </el-col>
+              <el-col :span="12">
+                <el-form-item label="操作" label-width="80px">
+                  <el-button type="danger" size="small" @click="removeExperience(index)">删除</el-button>
+                </el-form-item>
+              </el-col>
+            </el-row>
+            <el-form-item label="描述" label-width="80px">
+              <el-input v-model="exp.description" type="textarea" :rows="2" placeholder="教学经历描述" />
+            </el-form-item>
+          </div>
+          <el-button type="primary" size="small" @click="addExperience">添加教学经历</el-button>
+        </el-form-item>
+        
+        <el-form-item label="照片信息">
+          <el-row :gutter="20">
+            <el-col :span="12">
+              <div style="margin-bottom: 10px; font-weight: 500;">头像</div>
+              <el-upload
+                :show-file-list="false"
+                :on-success="handleAvatarSuccess"
+                :before-upload="beforeAvatarUpload"
+                action="/api/admin/upload/image"
+                :headers="{ Authorization: 'Bearer ' + getToken() }"
+                :data="{ type: 'teacher' }"
+                accept="image/*"
+              >
+                <div style="position: relative; display: inline-block; cursor: pointer;">
+                  <el-avatar 
+                    :src="editFormPhotos.avatar" 
+                    :size="100"
+                    style="border: 2px solid #f0f0f0;"
+                  >
+                    {{ editForm.name?.charAt(0) || '?' }}
+                  </el-avatar>
+                  <div style="position: absolute; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); border-radius: 50%; display: flex; align-items: center; justify-content: center; opacity: 0; transition: opacity 0.3s;" class="upload-overlay">
+                    <span style="color: white; font-size: 12px;">点击更换</span>
+                  </div>
+                </div>
+              </el-upload>
+            </el-col>
+            <el-col :span="12">
+              <div style="margin-bottom: 10px; font-weight: 500;">教学风采照片</div>
+              <div style="display: flex; flex-wrap: wrap; gap: 10px;">
+                <div v-for="(photo, index) in editFormPhotos.teaching_photos" :key="index" style="position: relative;">
+                  <el-image 
+                    v-if="photo"
+                    :src="photo" 
+                    style="width: 80px; height: 80px; border-radius: 8px; cursor: pointer; border: 2px solid #e4e7ed;"
+                    fit="cover"
+                    :preview-src-list="editFormPhotos.teaching_photos.filter(p => p)"
+                  />
+                  <el-button 
+                    type="danger" 
+                    size="small" 
+                    circle
+                    icon="Close"
+                    style="position: absolute; top: -8px; right: -8px; width: 20px; height: 20px; padding: 0; font-size: 12px;"
+                    @click="removeTeachingPhoto(index)"
+                  />
+                </div>
+                <el-upload
+                  :show-file-list="false"
+                  :on-success="(response) => handleTeachingPhotoSuccess(response)"
+                  :before-upload="beforeAvatarUpload"
+                  action="/api/admin/upload/image"
+                  :headers="{ Authorization: 'Bearer ' + getToken() }"
+                  :data="{ type: 'teacher' }"
+                  accept="image/*"
+                >
+                  <div style="width: 80px; height: 80px; border: 2px dashed #d9d9d9; border-radius: 8px; display: flex; align-items: center; justify-content: center; cursor: pointer; background: #fafafa;">
+                    <div style="text-align: center; color: #8c939d;">
+                      <el-icon style="font-size: 20px;"><Plus /></el-icon>
+                      <div style="font-size: 11px; margin-top: 2px;">添加</div>
+                    </div>
+                  </div>
+                </el-upload>
+              </div>
+              <div style="color: #909399; font-size: 12px; margin-top: 8px;">点击图片可预览，点击"+"号上传新照片</div>
+            </el-col>
+          </el-row>
+        </el-form-item>
+        
+        <el-divider content-position="left">其他设置</el-divider>
         <el-form-item label="置顶" prop="is_top">
           <el-switch v-model="editForm.is_top" :active-value="1" :inactive-value="0" />
+        </el-form-item>
+        
+        <el-form-item label="账号状态" prop="status">
+          <el-radio-group v-model="editForm.status">
+            <el-radio label="active">激活</el-radio>
+            <el-radio label="inactive">未激活</el-radio>
+            <el-radio label="disabled">禁用</el-radio>
+          </el-radio-group>
         </el-form-item>
       </el-form>
       
@@ -426,116 +871,108 @@
           <span v-else style="color: #909399;">未上传</span>
         </el-form-item>
         
-        <el-divider content-position="left">认证材料</el-divider>
-        
-        <!-- 实名认证材料 -->
-        <el-form-item label="身份证正面">
-          <div v-if="reviewForm.id_card_front" class="photo-preview">
-            <el-image 
-              :src="reviewForm.id_card_front" 
-              :preview-src-list="[reviewForm.id_card_front]"
-              fit="cover"
-              style="width: 200px; height: 130px; border-radius: 8px; cursor: pointer;"
-            />
-          </div>
-          <el-tag v-else type="warning" size="small">未上传</el-tag>
-        </el-form-item>
-        
-        <el-form-item label="身份证反面">
-          <div v-if="reviewForm.id_card_back" class="photo-preview">
-            <el-image 
-              :src="reviewForm.id_card_back" 
-              :preview-src-list="[reviewForm.id_card_back]"
-              fit="cover"
-              style="width: 200px; height: 130px; border-radius: 8px; cursor: pointer;"
-            />
-          </div>
-          <el-tag v-else type="warning" size="small">未上传</el-tag>
-        </el-form-item>
-        
-        <!-- 学历认证材料 -->
-        <el-form-item label="学历证明">
-          <div v-if="reviewForm.education_certificate" class="photo-preview">
-            <el-image 
-              :src="reviewForm.education_certificate" 
-              :preview-src-list="[reviewForm.education_certificate]"
-              fit="cover"
-              style="width: 200px; height: 130px; border-radius: 8px; cursor: pointer;"
-            />
-          </div>
-          <el-tag v-else type="warning" size="small">未上传</el-tag>
-        </el-form-item>
-        
-        <!-- 教师认证材料 -->
-        <el-form-item label="教师资格证">
-          <div v-if="reviewForm.teacher_certificate" class="photo-preview">
-            <el-image 
-              :src="reviewForm.teacher_certificate" 
-              :preview-src-list="[reviewForm.teacher_certificate]"
-              fit="cover"
-              style="width: 200px; height: 130px; border-radius: 8px; cursor: pointer;"
-            />
-          </div>
-          <el-tag v-else type="warning" size="small">未上传</el-tag>
-        </el-form-item>
-        
         <el-divider content-position="left">认证审核</el-divider>
         
         <!-- 实名认证 -->
         <el-form-item label="实名认证">
-          <el-switch 
-            v-model="reviewForm.real_name_verified" 
-            :active-value="1" 
-            :inactive-value="0"
-            :disabled="!reviewForm.id_card_front && !reviewForm.id_card_back"
-            active-text="已认证"
-            inactive-text="未认证"
-            active-color="#67c23a"
-          />
-          <span style="margin-left: 12px; color: #909399; font-size: 13px;">
-            （身份证明）
-          </span>
-          <el-tag v-if="!reviewForm.id_card_front && !reviewForm.id_card_back" type="warning" size="small" style="margin-left: 8px;">
-            未上传证明材料
-          </el-tag>
+          <div style="display: block; width: 100%;">
+            <div style="margin-bottom: 12px;">
+              <el-switch 
+                v-model="reviewForm.real_name_verified" 
+                :active-value="1" 
+                :inactive-value="0"
+                :disabled="!reviewForm.id_card_front && !reviewForm.id_card_back"
+                active-text="已认证"
+                inactive-text="未认证"
+                active-color="#67c23a"
+              />
+              <span style="margin-left: 12px; color: #909399; font-size: 13px;">（身份证明）</span>
+              <el-tag v-if="!reviewForm.id_card_front && !reviewForm.id_card_back" type="warning" size="small" style="margin-left: 8px;">
+                未上传证明材料
+              </el-tag>
+            </div>
+            <!-- 身份证材料 -->
+            <div v-if="reviewForm.id_card_front || reviewForm.id_card_back" style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px;">
+              <div v-if="reviewForm.id_card_front">
+                <div style="font-size: 13px; color: #909399; margin-bottom: 6px;">身份证正面</div>
+                <el-image 
+                  :src="reviewForm.id_card_front" 
+                  :preview-src-list="[reviewForm.id_card_front]"
+                  fit="cover"
+                  style="width: 100%; height: 150px; border-radius: 8px; cursor: pointer; border: 2px solid #e4e7ed;"
+                />
+              </div>
+              <div v-if="reviewForm.id_card_back">
+                <div style="font-size: 13px; color: #909399; margin-bottom: 6px;">身份证反面</div>
+                <el-image 
+                  :src="reviewForm.id_card_back" 
+                  :preview-src-list="[reviewForm.id_card_back]"
+                  fit="cover"
+                  style="width: 100%; height: 150px; border-radius: 8px; cursor: pointer; border: 2px solid #e4e7ed;"
+                />
+              </div>
+            </div>
+          </div>
         </el-form-item>
         
         <!-- 学历认证 -->
         <el-form-item label="学历认证">
-          <el-switch 
-            v-model="reviewForm.education_verified" 
-            :active-value="1" 
-            :inactive-value="0"
-            :disabled="!reviewForm.education_certificate"
-            active-text="已认证"
-            inactive-text="未认证"
-            active-color="#67c23a"
-          />
-          <span style="margin-left: 12px; color: #909399; font-size: 13px;">
-            （学历证明）
-          </span>
-          <el-tag v-if="!reviewForm.education_certificate" type="warning" size="small" style="margin-left: 8px;">
-            未上传证明材料
-          </el-tag>
+          <div style="display: block; width: 100%;">
+            <div style="margin-bottom: 12px;">
+              <el-switch 
+                v-model="reviewForm.education_verified" 
+                :active-value="1" 
+                :inactive-value="0"
+                :disabled="!reviewForm.education_certificate"
+                active-text="已认证"
+                inactive-text="未认证"
+                active-color="#67c23a"
+              />
+              <span style="margin-left: 12px; color: #909399; font-size: 13px;">（学历证明）</span>
+              <el-tag v-if="!reviewForm.education_certificate" type="warning" size="small" style="margin-left: 8px;">
+                未上传证明材料
+              </el-tag>
+            </div>
+            <!-- 学历证明材料 -->
+            <div v-if="reviewForm.education_certificate">
+              <el-image 
+                :src="reviewForm.education_certificate" 
+                :preview-src-list="[reviewForm.education_certificate]"
+                fit="cover"
+                style="width: 100%; max-width: 350px; height: 150px; border-radius: 8px; cursor: pointer; border: 2px solid #e4e7ed;"
+              />
+            </div>
+          </div>
         </el-form-item>
         
         <!-- 教师认证 -->
         <el-form-item label="教师认证">
-          <el-switch 
-            v-model="reviewForm.teacher_verified" 
-            :active-value="1" 
-            :inactive-value="0"
-            :disabled="!reviewForm.teacher_certificate"
-            active-text="已认证"
-            inactive-text="未认证"
-            active-color="#67c23a"
-          />
-          <span style="margin-left: 12px; color: #909399; font-size: 13px;">
-            （教师证明）
-          </span>
-          <el-tag v-if="!reviewForm.teacher_certificate" type="warning" size="small" style="margin-left: 8px;">
-            未上传证明材料
-          </el-tag>
+          <div style="display: block; width: 100%;">
+            <div style="margin-bottom: 12px;">
+              <el-switch 
+                v-model="reviewForm.teacher_verified" 
+                :active-value="1" 
+                :inactive-value="0"
+                :disabled="!reviewForm.teacher_certificate"
+                active-text="已认证"
+                inactive-text="未认证"
+                active-color="#67c23a"
+              />
+              <span style="margin-left: 12px; color: #909399; font-size: 13px;">（教师证明）</span>
+              <el-tag v-if="!reviewForm.teacher_certificate" type="warning" size="small" style="margin-left: 8px;">
+                未上传证明材料
+              </el-tag>
+            </div>
+            <!-- 教师资格证材料 -->
+            <div v-if="reviewForm.teacher_certificate">
+              <el-image 
+                :src="reviewForm.teacher_certificate" 
+                :preview-src-list="[reviewForm.teacher_certificate]"
+                fit="cover"
+                style="width: 100%; max-width: 350px; height: 150px; border-radius: 8px; cursor: pointer; border: 2px solid #e4e7ed;"
+              />
+            </div>
+          </div>
         </el-form-item>
         
         <el-divider content-position="left">审核状态</el-divider>
@@ -619,9 +1056,9 @@ export default {
 <script setup>
 import { ref, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { List, CircleCheck, Clock, CircleClose, Lock, Delete, DocumentDelete, Search, Setting } from '@element-plus/icons-vue'
+import { List, CircleCheck, Clock, CircleClose, Lock, Delete, DocumentDelete, Search, Setting, Location, Plus, Close } from '@element-plus/icons-vue'
 import TeacherCard from '@/components/teacher/TeacherCard.vue'
-import { getTeacherList, updateTeacherStatus, setTeacherTop, deleteTeacher, batchDeleteTeachers, batchUpdateTeacherStatus, updateTeacher, getTeacherStatistics, reviewTeacher } from '@/api/teacher'
+import { getTeacherList, updateTeacherStatus, setTeacherTop, deleteTeacher, batchDeleteTeachers, batchUpdateTeacherStatus, updateTeacher, getTeacherStatistics, reviewTeacher, getTeacherDetail } from '@/api/teacher'
 
 const loading = ref(false)
 const saveLoading = ref(false)
@@ -655,6 +1092,11 @@ const reviewVisible = ref(false)
 const currentTeacher = ref(null)
 const editForm = ref(null)
 const reviewForm = ref(null)
+const showContactInfo = ref(false) // 控制联系方式显示/隐藏
+
+// 编辑表单的辅助数据
+const editFormExperiences = ref([])
+const editFormPhotos = ref({ avatar: '', teaching_photos: [] })
 
 const selectedRows = ref([])
 
@@ -816,15 +1258,208 @@ const clearSelection = () => {
 }
 
 // 查看详情
-const handleView = (row) => {
-  currentTeacher.value = row
-  detailVisible.value = true
+const handleView = async (row) => {
+  try {
+    loading.value = true
+    showContactInfo.value = false // 重置联系方式显示状态
+    const res = await getTeacherDetail(row.id)
+    
+    if (res.success) {
+      currentTeacher.value = res.data
+      detailVisible.value = true
+    } else {
+      ElMessage.error(res.error || '获取详情失败')
+    }
+  } catch (error) {
+    console.error('获取详情失败:', error)
+    ElMessage.error('获取详情失败')
+  } finally {
+    loading.value = false
+  }
+}
+
+// 从详情页打开编辑
+const handleEditFromDetail = () => {
+  const formData = { ...currentTeacher.value }
+  
+  // 处理优势标签
+  if (formData.advantage_tags) {
+    if (typeof formData.advantage_tags === 'string') {
+      try {
+        formData.advantage_tags = JSON.parse(formData.advantage_tags)
+      } catch (e) {
+        formData.advantage_tags = []
+      }
+    }
+  } else {
+    formData.advantage_tags = []
+  }
+  
+  // 处理教学经历
+  if (formData.experience) {
+    if (typeof formData.experience === 'string') {
+      try {
+        editFormExperiences.value = JSON.parse(formData.experience)
+      } catch (e) {
+        editFormExperiences.value = []
+      }
+    } else if (Array.isArray(formData.experience)) {
+      editFormExperiences.value = [...formData.experience]
+    } else {
+      editFormExperiences.value = []
+    }
+  } else {
+    editFormExperiences.value = []
+  }
+  
+  // 处理照片信息
+  if (formData.photos) {
+    if (typeof formData.photos === 'string') {
+      try {
+        editFormPhotos.value = JSON.parse(formData.photos)
+      } catch (e) {
+        editFormPhotos.value = { avatar: '', teaching_photos: [] }
+      }
+    } else if (typeof formData.photos === 'object') {
+      editFormPhotos.value = {
+        avatar: formData.photos.avatar || '',
+        teaching_photos: Array.isArray(formData.photos.teaching_photos) ? [...formData.photos.teaching_photos] : []
+      }
+    } else {
+      editFormPhotos.value = { avatar: '', teaching_photos: [] }
+    }
+  } else {
+    editFormPhotos.value = { avatar: '', teaching_photos: [] }
+  }
+  
+  editForm.value = formData
+  detailVisible.value = false
+  editVisible.value = true
 }
 
 // 编辑
 const handleEdit = (row) => {
-  editForm.value = { ...row }
+  const formData = { ...row }
+  
+  // 处理优势标签
+  if (formData.advantage_tags) {
+    if (typeof formData.advantage_tags === 'string') {
+      try {
+        formData.advantage_tags = JSON.parse(formData.advantage_tags)
+      } catch (e) {
+        formData.advantage_tags = []
+      }
+    }
+  } else {
+    formData.advantage_tags = []
+  }
+  
+  // 处理教学经历
+  if (formData.experience) {
+    if (typeof formData.experience === 'string') {
+      try {
+        editFormExperiences.value = JSON.parse(formData.experience)
+      } catch (e) {
+        editFormExperiences.value = []
+      }
+    } else if (Array.isArray(formData.experience)) {
+      editFormExperiences.value = [...formData.experience]
+    } else {
+      editFormExperiences.value = []
+    }
+  } else {
+    editFormExperiences.value = []
+  }
+  
+  // 处理照片信息
+  if (formData.photos) {
+    if (typeof formData.photos === 'string') {
+      try {
+        editFormPhotos.value = JSON.parse(formData.photos)
+      } catch (e) {
+        editFormPhotos.value = { avatar: '', teaching_photos: [] }
+      }
+    } else if (typeof formData.photos === 'object') {
+      editFormPhotos.value = {
+        avatar: formData.photos.avatar || '',
+        teaching_photos: Array.isArray(formData.photos.teaching_photos) ? [...formData.photos.teaching_photos] : []
+      }
+    } else {
+      editFormPhotos.value = { avatar: '', teaching_photos: [] }
+    }
+  } else {
+    editFormPhotos.value = { avatar: '', teaching_photos: [] }
+  }
+  
+  editForm.value = formData
   editVisible.value = true
+}
+
+// 添加教学经历
+const addExperience = () => {
+  editFormExperiences.value.push({
+    start_date: '',
+    end_date: '',
+    subject: '',
+    location: '',
+    description: ''
+  })
+}
+
+// 删除教学经历
+const removeExperience = (index) => {
+  editFormExperiences.value.splice(index, 1)
+}
+
+// 添加教学照片
+const addTeachingPhoto = () => {
+  editFormPhotos.value.teaching_photos.push('')
+}
+
+// 删除教学照片
+const removeTeachingPhoto = (index) => {
+  editFormPhotos.value.teaching_photos.splice(index, 1)
+}
+
+// 获取token
+const getToken = () => {
+  return localStorage.getItem('admin_token') || ''
+}
+
+// 上传前验证
+const beforeAvatarUpload = (file) => {
+  const isImage = file.type.startsWith('image/')
+  const isLt5M = file.size / 1024 / 1024 < 5
+
+  if (!isImage) {
+    ElMessage.error('只能上传图片文件!')
+    return false
+  }
+  if (!isLt5M) {
+    ElMessage.error('图片大小不能超过 5MB!')
+    return false
+  }
+  return true
+}
+
+// 头像上传成功
+const handleAvatarSuccess = (response) => {
+  if (response.success) {
+    editFormPhotos.value.avatar = response.data.url
+    ElMessage.success('头像上传成功')
+  } else {
+    ElMessage.error(response.error || '上传失败')
+  }
+}
+
+// 教学照片上传成功
+const handleTeachingPhotoSuccess = (response) => {
+  if (response.success) {
+    editFormPhotos.value.teaching_photos.push(response.data.url)
+    ElMessage.success('照片上传成功')
+  } else {
+    ElMessage.error(response.error || '上传失败')
+  }
 }
 
 // 审核
@@ -859,7 +1494,47 @@ const handleReview = (row) => {
 const handleSaveEdit = async () => {
   try {
     saveLoading.value = true
-    const res = await updateTeacher(editForm.value.id, editForm.value)
+    
+    const submitData = { ...editForm.value }
+    
+    // 处理优势标签 - 确保是数组
+    if (Array.isArray(submitData.advantage_tags)) {
+      // 已经是数组，直接使用
+    } else {
+      submitData.advantage_tags = []
+    }
+    
+    // 处理教学经历 - 从辅助数组获取
+    submitData.experiences = editFormExperiences.value.filter(exp => 
+      exp.subject || exp.location || exp.description
+    )
+    
+    // 处理照片信息 - 从辅助对象获取
+    submitData.avatar = editFormPhotos.value.avatar || ''
+    submitData.teaching_photos = editFormPhotos.value.teaching_photos.filter(photo => photo)
+    
+    // 只提交数据库中存在的字段
+    const fieldsToSubmit = [
+      'id', 'name', 'gender', 'phone', 'wechat_id', 'wechat_nickname', 'openid', 'email',
+      'education', 'school', 'major', 'teacher_type', 'grade_level', 'education_level',
+      'hourly_rate', 'subject_ids', 'subject_names', 'district_ids', 'district_names',
+      'self_intro', 'personal_advantage', 'advantage_tags',
+      'status', 'is_top', 'experiences', 'avatar', 'teaching_photos'
+    ]
+    
+    const finalData = {}
+    fieldsToSubmit.forEach(field => {
+      if (submitData[field] !== undefined) {
+        finalData[field] = submitData[field]
+      }
+    })
+    
+    // 确保数字类型正确
+    if (finalData.hourly_rate) {
+      finalData.hourly_rate = parseFloat(finalData.hourly_rate)
+    }
+    
+    const res = await updateTeacher(finalData.id, finalData)
     
     if (res.success) {
       ElMessage.success('更新成功')
@@ -1090,6 +1765,44 @@ const getTeacherTypeLabel = (type, gradeLevel, educationLevel) => {
   }
   
   return label
+}
+
+// 获取年级层次标签
+const getGradeLevelLabel = (gradeLevel) => {
+  if (!gradeLevel) return ''
+  
+  const gradeMap = {
+    pre_freshman: '准大一',
+    freshman: '大一',
+    sophomore: '大二',
+    junior: '大三',
+    senior: '大四',
+    fifth_year: '大五',
+    graduate_first: '研一',
+    graduate_second: '研二',
+    graduate_third: '研三',
+    doctoral_first: '博一',
+    doctoral_second: '博二',
+    doctoral_third: '博三',
+    doctoral_fourth: '博四',
+    doctoral_fifth: '博五'
+  }
+  
+  return gradeMap[gradeLevel] || gradeLevel
+}
+
+// 获取学历层次标签
+const getEducationLevelLabel = (educationLevel) => {
+  if (!educationLevel) return ''
+  
+  const eduMap = {
+    associate: '大专',
+    bachelor: '本科',
+    master: '研究生',
+    doctorate: '博士'
+  }
+  
+  return eduMap[educationLevel] || educationLevel
 }
 
 onMounted(() => {
@@ -1334,5 +2047,13 @@ onMounted(() => {
     min-width: 0;
   }
 }
-</style>
 
+/* 上传组件样式 */
+.upload-overlay:hover {
+  opacity: 1 !important;
+}
+
+:deep(.el-upload) {
+  display: block;
+}
+</style>

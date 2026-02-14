@@ -82,7 +82,6 @@ request.interceptors.response.use(
   error => {
     if (error.response?.status === 401) {
       ElMessage.error('登录已过期，请重新登录')
-      // 清除用户信息并跳转到登录页
       const userStore = useUserStore()
       userStore.logout()
       router.push('/login')

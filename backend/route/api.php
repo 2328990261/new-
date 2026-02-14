@@ -63,6 +63,12 @@ Route::group('api', function () {
     Route::get('teacher-register/advantage-tags', 'api.TeacherRegister/getAdvantageTags');
     Route::get('teacher-register/check-phone', 'api.TeacherRegister/checkPhone');
     
+    // 投递管理
+    Route::post('application/apply', 'api.Application/apply');
+    Route::get('application/my-list', 'api.Application/myList');
+    Route::get('application/detail/:id', 'api.Application/detail');
+    Route::post('application/cancel/:id', 'api.Application/cancel');
+    
     // 支付相关
     Route::get('payment/search', 'api.Payment/search');
     Route::get('payment/query', 'api.Payment/query');

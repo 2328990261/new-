@@ -85,15 +85,20 @@ class Teacher extends BaseController
                     $itemArray['teaching_photos'] = $photos['teaching_photos'] ?? [];
                 }
                 
-                // 确保 experience 字段返回正确的结构
-                if (isset($itemArray['experience'])) {
-                    $itemArray['experiences'] = $item->experience; // 使用获取器
-                }
+                // 使用获取器返回解析后的experience数组
+                $itemArray['experience'] = $item->experience ?? [];
                 
                 // 确保认证字段为整数类型
                 $itemArray['real_name_verified'] = (int)($itemArray['real_name_verified'] ?? 0);
                 $itemArray['education_verified'] = (int)($itemArray['education_verified'] ?? 0);
                 $itemArray['teacher_verified'] = (int)($itemArray['teacher_verified'] ?? 0);
+                $itemArray['is_top'] = (int)($itemArray['is_top'] ?? 0);
+                
+                // 确保所有字段都存在，即使为空
+                $itemArray['self_intro'] = $itemArray['self_intro'] ?? '';
+                $itemArray['wechat_nickname'] = $itemArray['wechat_nickname'] ?? '';
+                $itemArray['openid'] = $itemArray['openid'] ?? '';
+                $itemArray['last_login_time'] = $itemArray['last_login_time'] ?? null;
                 
                 $data[] = $itemArray;
             }
@@ -132,9 +137,33 @@ class Teacher extends BaseController
                 return json(['success' => false, 'error' => '教师不存在']);
             }
             
+            $data = $teacher->toArray();
+            
+            // 确保 photos 字段返回正确的结构
+            if (isset($data['photos'])) {
+                $photos = $teacher->photos; // 使用获取器
+                $data['avatar'] = $photos['avatar'] ?? '';
+                $data['teaching_photos'] = $photos['teaching_photos'] ?? [];
+            }
+            
+            // 使用获取器返回解析后的experience数组
+            $data['experience'] = $teacher->experience ?? [];
+            
+            // 确保认证字段为整数类型
+            $data['real_name_verified'] = (int)($data['real_name_verified'] ?? 0);
+            $data['education_verified'] = (int)($data['education_verified'] ?? 0);
+            $data['teacher_verified'] = (int)($data['teacher_verified'] ?? 0);
+            $data['is_top'] = (int)($data['is_top'] ?? 0);
+            
+            // 确保所有字段都存在，即使为空
+            $data['self_intro'] = $data['self_intro'] ?? '';
+            $data['wechat_nickname'] = $data['wechat_nickname'] ?? '';
+            $data['openid'] = $data['openid'] ?? '';
+            $data['last_login_time'] = $data['last_login_time'] ?? null;
+            
             return json([
                 'success' => true,
-                'data' => $teacher
+                'data' => $data
             ]);
             
         } catch (\Exception $e) {
@@ -395,8 +424,10 @@ class Teacher extends BaseController
             
             // 允许更新的字段
             $allowedFields = [
-                'name', 'gender', 'phone', 'wechat_id', 'email',
-                'school', 'major', 'teacher_type', 'grade_level', 'education_level',
+                'name', 'gender', 'phone', 'wechat_id', 'wechat_nickname', 'openid', 'email',
+                'hometown', 'teaching_years', 'birth_year',
+                'location_province', 'location_city', 'location_district', 'location_address',
+                'education', 'school', 'major', 'teacher_type', 'grade_level', 'education_level',
                 'hourly_rate', 'subject_ids', 'subject_names', 'district_ids', 'district_names',
                 'experience', 'experiences', 'self_intro', 'personal_advantage',
                 'advantage_tags', 'photos', 'avatar', 'teaching_photos',

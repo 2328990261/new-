@@ -119,7 +119,7 @@
 
       <!-- 第六行：操作按钮 -->
       <div class="card-actions" @click.stop>
-        <el-button size="small" type="primary" @click="$emit('edit', teacher)">
+        <el-button size="small" type="primary" @click="$emit('view', teacher)">
           查看
         </el-button>
         <el-button size="small" type="success" @click="$emit('review', teacher)">

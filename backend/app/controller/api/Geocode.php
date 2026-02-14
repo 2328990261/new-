@@ -27,8 +27,7 @@ class Geocode extends BaseController
             }
             
             // 腾讯地图API密钥（需要在腾讯地图开放平台申请）
-            // 注意：.env文件中使用[TENCENT]段落，所以这里要用 tencent.tencent_map_key
-            $key = env('tencent.tencent_map_key', '');
+            $key = env('TENCENT_MAP_KEY', '');
             
             if (empty($key)) {
                 // 如果没有配置密钥，返回简单的提示

@@ -200,6 +200,7 @@ export const useTabsStore = defineStore('tabs', {
         '/tutor': '家教信息', 
         '/teachers': '教师管理',
         '/orders': '订单管理',
+        '/applications': '投递管理',
         '/dashboard': '仪表盘',
         '/admin': '管理员',
         '/mini-users': '小程序用户',

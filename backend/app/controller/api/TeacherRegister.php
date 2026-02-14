@@ -97,6 +97,9 @@ class TeacherRegister extends BaseController
     {
         $data = $this->request->post();
         
+        // 记录接收到的数据用于调试
+        \think\facade\Log::info('Teacher Register Submit Data:', $data);
+        
         // 验证必填字段
         $validate = Validate::rule([
             'name' => 'require|max:50',
@@ -172,12 +175,35 @@ class TeacherRegister extends BaseController
                 $data['advantage_tags'] = json_encode($data['advantage_tags'], JSON_UNESCAPED_UNICODE);
             }
             
+            // 只保留数据库中存在的字段
+            $allowedFields = [
+                'name', 'gender', 'phone', 'wechat_id', 'wechat_nickname', 'openid', 'email',
+                'hometown', 'teaching_years', 'birth_year',
+                'location_province', 'location_city', 'location_district', 'location_address',
+                'location_longitude', 'location_latitude',
+                'education', 'school', 'major', 'teacher_type', 'grade_level', 'education_level',
+                'hourly_rate', 'subject_ids', 'subject_names', 'district_ids', 'district_names',
+                'experience', 'self_intro', 'personal_advantage', 'advantage_tags', 'photos',
+                'id_card_front', 'id_card_back', 'education_certificate', 'teacher_certificate'
+            ];
+            
+            $insertData = [];
+            foreach ($allowedFields as $field) {
+                if (isset($data[$field])) {
+                    $insertData[$field] = $data[$field];
+                }
+            }
+            
             // 设置默认状态
-            $data['status'] = 'active';  // 账号激活
-            $data['review_status'] = 'pending';  // 待审核
+            $insertData['status'] = 'active';  // 账号激活
+            $insertData['review_status'] = 'pending';  // 待审核
+            $insertData['real_name_verified'] = 0;
+            $insertData['education_verified'] = 0;
+            $insertData['teacher_verified'] = 0;
+            $insertData['is_top'] = 0;
             
             // 创建教师记录
-            $teacher = Teacher::create($data);
+            $teacher = Teacher::create($insertData);
             
             // 清除注册进度
             if (!empty($data['openid'])) {

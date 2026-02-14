@@ -161,7 +161,7 @@
           </el-link>
           <el-tag type="success" size="small" style="margin-left: 8px">已转化</el-tag>
         </el-descriptions-item>
-        <el-descriptions-item label="提交时间">{{ currentOrder.create_time }}</el-descriptions-item>
+        <el-descriptions-item v-if="currentOrder.create_time" label="提交时间">{{ currentOrder.create_time }}</el-descriptions-item>
         <el-descriptions-item v-if="currentOrder.audit_time" label="审核时间">{{ currentOrder.audit_time }}</el-descriptions-item>
         <el-descriptions-item v-if="currentOrder.reject_reason" label="拒绝原因">
           <span class="reject-reason">{{ currentOrder.reject_reason }}</span>
@@ -322,8 +322,17 @@ const loadData = async () => {
     
     const res = await getOrderList(params)
     if (res && res.data) {
-      tableData.value = res.data || []
-      total.value = res.total || 0
+      // 确保 tableData 是数组
+      if (Array.isArray(res.data)) {
+        tableData.value = res.data
+        total.value = res.total || 0
+      } else if (res.data.list && Array.isArray(res.data.list)) {
+        tableData.value = res.data.list
+        total.value = res.data.total || 0
+      } else {
+        tableData.value = []
+        total.value = 0
+      }
     } else {
       tableData.value = []
       total.value = 0
