@@ -100,30 +100,48 @@ export default {
 			// 保存角色到本地存储
 			uni.setStorageSync('userRole', this.selectedRole)
 			
-			// 显示提示
-			uni.showToast({
-				title: this.selectedRole === 'parent' ? '已选择家长身份' : '已选择老师身份',
-				icon: 'success',
-				duration: 1500
-			})
+			console.log('选择的角色:', this.selectedRole)
+			console.log('已保存到本地存储')
 			
-			// 延迟跳转
-			setTimeout(() => {
-				this.navigateToHome(this.selectedRole)
-			}, 1500)
+			// 立即跳转，不需要等待toast
+			this.navigateToHome(this.selectedRole)
 		},
 		
 		// 根据角色跳转到对应首页
 		navigateToHome(role) {
+			console.log('准备跳转，角色:', role)
+			
 			if (role === 'parent') {
 				// 家长跳转到AI预约页面
+				console.log('跳转到家长首页: /pages/ai-booking/index')
 				uni.reLaunch({
-					url: '/pages/ai-booking/index'
+					url: '/pages/ai-booking/index',
+					success: () => {
+						console.log('跳转成功')
+					},
+					fail: (err) => {
+						console.error('跳转失败:', err)
+						uni.showToast({
+							title: '跳转失败',
+							icon: 'none'
+						})
+					}
 				})
 			} else if (role === 'teacher') {
-				// 老师跳转到生源信息页面（tabBar第一个）
-				uni.switchTab({
-					url: '/pages/tutor-list/index'
+				// 老师跳转到生源信息页面（使用 reLaunch 而不是 switchTab，因为使用的是自定义 tabBar）
+				console.log('跳转到老师首页: /pages/tutor-list/index')
+				uni.reLaunch({
+					url: '/pages/tutor-list/index',
+					success: () => {
+						console.log('跳转成功')
+					},
+					fail: (err) => {
+						console.error('跳转失败:', err)
+						uni.showToast({
+							title: '跳转失败',
+							icon: 'none'
+						})
+					}
 				})
 			}
 		}
