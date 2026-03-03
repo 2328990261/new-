@@ -51,6 +51,18 @@ Route::group('api', function () {
     Route::get('teaching-info/get', 'api.TeachingInfo/get');
     Route::post('teaching-info/save', 'api.TeachingInfo/save');
     
+    // 投递管理
+    Route::get('my-applications', 'api.Application/myList');
+    Route::get('application/my-list', 'api.Application/myList');
+    Route::get('application/:id', 'api.Application/detail');
+    Route::get('application/detail/:id', 'api.Application/detail');
+    
+    // 收藏管理
+    Route::get('favorite-tutor/list', 'api.Favorite/list');
+    Route::post('favorite-tutor/add', 'api.Favorite/add');
+    Route::post('favorite-tutor/remove', 'api.Favorite/remove');
+    Route::get('favorite-tutor/check', 'api.Favorite/check');
+    
     // 支付相关
     Route::get('payment/search', 'api.Payment/search');
     Route::get('payment/query', 'api.Payment/query');
