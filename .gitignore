@@ -1,0 +1,74 @@
+# 依赖和包
+node_modules/
+vendor/
+composer.lock
+package-lock.json
+
+# 环境配置（敏感信息）
+.env
+.env.local
+.env.*.local
+
+# 运行时文件
+runtime/
+*.log
+*.pid
+
+# 编译输出
+dist/
+build/
+
+# IDE 配置
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# 操作系统文件
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# 临时文件和缓存
+tmp/
+temp/
+cache/
+*.tmp
+*.cache
+
+# phpMyAdmin 临时文件
+**/phpMyAdmin*/tmp/
+**/phpMyAdmin*/config.inc.php
+
+# 上传文件
+uploads/
+upload/
+public/uploads/
+public/upload/
+
+# 数据库备份
+*.sql.gz
+*.sql.zip
+**/myjiajiao*.sql
+
+# 测试文件
+test_*.php
+*_test.php
+
+# 小程序（作为子模块管理）
+预约家教小程序/
+
+# 部署相关（deployment 文件夹保留，但排除敏感配置）
+deployment/backend/.env
+deployment/backend/runtime/
+deployment/backend/public/uploads/
+deployment/backend/public/phpMyAdmin*/tmp/
+
+# Windows 批处理文件（保留必要的）
+# 启动服务.bat
+# 编译生产文件.bat
+# 生成部署包.bat
+
+# 文档（保留必要的 README 和技术文档）
+# *.md 不全部排除，只排除特定的
