@@ -336,9 +336,24 @@ export default {
 			}
 			
 			this.showConfirmDialog = false
-			uni.navigateBack()
-			// 触发父页面的提交
-			uni.$emit('confirmSubmit')
+			
+			// 获取上一页的页面实例
+			const pages = getCurrentPages()
+			const prevPage = pages[pages.length - 2]
+			
+			if (prevPage) {
+				// 直接调用上一页的提交方法
+				if (typeof prevPage.submitRegistration === 'function') {
+					prevPage.submitRegistration()
+				} else if (typeof prevPage.$vm?.submitRegistration === 'function') {
+					prevPage.$vm.submitRegistration()
+				}
+			}
+			
+			// 返回上一页
+			setTimeout(() => {
+				uni.navigateBack()
+			}, 100)
 		}
 	}
 }
