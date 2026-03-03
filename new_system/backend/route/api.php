@@ -3,6 +3,12 @@
 use think\facade\Route;
 
 Route::group('api', function () {
+    // 通用数据接口
+    Route::get('cities/all', 'api.Common/cities');
+    Route::get('cities/:city_id/districts', 'api.Common/districts');
+    Route::get('grades/all', 'api.Common/grades');
+    Route::get('subjects/all', 'api.Common/subjects');
+    
     // 家教信息查询
     Route::get('tutor/list', 'api.Tutor/list');
     Route::get('tutor/detail/:id', 'api.Tutor/detail');
@@ -40,6 +46,10 @@ Route::group('api', function () {
     Route::get('teacher/list', 'api.Teacher/list');
     Route::get('teacher/detail/:id', 'api.Teacher/detail');
     Route::post('teacher/book', 'api.Teacher/book');
+    
+    // 授课信息
+    Route::get('teaching-info/get', 'api.TeachingInfo/get');
+    Route::post('teaching-info/save', 'api.TeachingInfo/save');
     
     // 支付相关
     Route::get('payment/search', 'api.Payment/search');

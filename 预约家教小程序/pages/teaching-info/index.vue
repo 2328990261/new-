@@ -362,23 +362,56 @@ export default {
 		},
 		
 		loadTeachingInfo() {
+			// 使用auth工具检查登录状态
 			const userInfo = uni.getStorageSync('userInfo')
-			if (!userInfo || !userInfo.openid) {
-				uni.showToast({
-					title: '请先登录',
-					icon: 'none'
+			
+			// 详细的登录状态检查
+			if (!userInfo) {
+				console.error('用户信息不存在')
+				uni.showModal({
+					title: '未登录',
+					content: '请先登录后再查看授课信息',
+					showCancel: false,
+					success: () => {
+						uni.navigateTo({
+							url: '/pages/login/index'
+						})
+					}
 				})
 				return
 			}
+			
+			// 检查必要的用户标识
+			if (!userInfo.openid && !userInfo.phone) {
+				console.error('用户信息不完整', userInfo)
+				uni.showModal({
+					title: '登录信息不完整',
+					content: '请重新登录',
+					showCancel: false,
+					success: () => {
+						// 清除登录信息
+						uni.removeStorageSync('userInfo')
+						uni.removeStorageSync('token')
+						uni.navigateTo({
+							url: '/pages/login/index'
+						})
+					}
+				})
+				return
+			}
+			
+			console.log('加载授课信息，用户信息:', userInfo)
 			
 			uni.request({
 				url: envConfig.API_BASE_URL + '/api/teaching-info/get',
 				method: 'GET',
 				data: {
-					openid: userInfo.openid,
+					openid: userInfo.openid || '',
 					phone: userInfo.phone || ''
 				},
 				success: (res) => {
+					console.log('获取授课信息响应:', res)
+					
 					if (res.data.success && res.data.data) {
 						const data = res.data.data
 						this.formData = {
@@ -392,7 +425,33 @@ export default {
 							email_notify: data.email_notify || 0,
 							email: data.email || ''
 						}
+					} else if (!res.data.success) {
+						console.error('获取授课信息失败:', res.data.error)
+						// 如果是未登录错误，提示重新登录
+						if (res.data.error && res.data.error.includes('不存在')) {
+							uni.showModal({
+								title: '提示',
+								content: '您还未注册教师账号，请先完成教师注册',
+								showCancel: true,
+								cancelText: '取消',
+								confirmText: '去注册',
+								success: (modalRes) => {
+									if (modalRes.confirm) {
+										uni.navigateTo({
+											url: '/pages/teacher-register/index'
+										})
+									}
+								}
+							})
+						}
 					}
+				},
+				fail: (err) => {
+					console.error('请求失败:', err)
+					uni.showToast({
+						title: '网络错误',
+						icon: 'none'
+					})
 				}
 			})
 		},
@@ -580,13 +639,44 @@ export default {
 			}
 			
 			const userInfo = uni.getStorageSync('userInfo')
-			if (!userInfo || !userInfo.openid) {
-				uni.showToast({
-					title: '请先登录',
-					icon: 'none'
+			
+			// 详细的登录状态检查
+			if (!userInfo) {
+				console.error('用户信息不存在')
+				uni.showModal({
+					title: '未登录',
+					content: '请先登录后再保存授课信息',
+					showCancel: false,
+					success: () => {
+						uni.navigateTo({
+							url: '/pages/login/index'
+						})
+					}
 				})
 				return
 			}
+			
+			// 检查必要的用户标识
+			if (!userInfo.openid && !userInfo.phone) {
+				console.error('用户信息不完整', userInfo)
+				uni.showModal({
+					title: '登录信息不完整',
+					content: '请重新登录',
+					showCancel: false,
+					success: () => {
+						// 清除登录信息
+						uni.removeStorageSync('userInfo')
+						uni.removeStorageSync('token')
+						uni.navigateTo({
+							url: '/pages/login/index'
+						})
+					}
+				})
+				return
+			}
+			
+			console.log('保存授课信息，用户信息:', userInfo)
+			console.log('提交的数据:', this.formData)
 			
 			uni.showLoading({
 				title: '保存中...'
@@ -596,12 +686,14 @@ export default {
 				url: envConfig.API_BASE_URL + '/api/teaching-info/save',
 				method: 'POST',
 				data: {
-					openid: userInfo.openid,
+					openid: userInfo.openid || '',
 					phone: userInfo.phone || '',
 					...this.formData
 				},
 				success: (res) => {
 					uni.hideLoading()
+					
+					console.log('保存授课信息响应:', res)
 					
 					if (res.data.success) {
 						uni.showToast({
@@ -613,16 +705,38 @@ export default {
 							this.goBack()
 						}, 1500)
 					} else {
-						uni.showToast({
-							title: res.data.error || '保存失败',
-							icon: 'none'
-						})
+						console.error('保存失败:', res.data.error)
+						
+						// 如果是教师信息不存在的错误，提示去注册
+						if (res.data.error && res.data.error.includes('不存在')) {
+							uni.showModal({
+								title: '提示',
+								content: '您还未注册教师账号，请先完成教师注册',
+								showCancel: true,
+								cancelText: '取消',
+								confirmText: '去注册',
+								success: (modalRes) => {
+									if (modalRes.confirm) {
+										uni.navigateTo({
+											url: '/pages/teacher-register/index'
+										})
+									}
+								}
+							})
+						} else {
+							uni.showToast({
+								title: res.data.error || '保存失败',
+								icon: 'none',
+								duration: 2000
+							})
+						}
 					}
 				},
-				fail: () => {
+				fail: (err) => {
 					uni.hideLoading()
+					console.error('请求失败:', err)
 					uni.showToast({
-						title: '网络错误',
+						title: '网络错误，请重试',
 						icon: 'none'
 					})
 				}
