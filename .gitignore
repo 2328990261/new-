@@ -56,8 +56,11 @@ public/upload/
 test_*.php
 *_test.php
 
-# 小程序（作为子模块管理）
-预约家教小程序/
+# 小程序内部文件排除
+预约家教小程序/.git/
+预约家教小程序/node_modules/
+预约家教小程序/unpackage/
+预约家教小程序/package-lock.json
 
 # 部署相关（deployment 文件夹保留，但排除敏感配置）
 deployment/backend/.env
