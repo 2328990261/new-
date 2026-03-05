@@ -1,4 +1,4 @@
-import request from './config'
+﻿import request from '@/utils/request'
 
 // SSL证书配置API
 
@@ -7,7 +7,7 @@ import request from './config'
  */
 export function getSslConfigs() {
   return request({
-    url: '/admin/ssl-config',
+    url: '/ssl-config',
     method: 'get'
   })
 }
@@ -17,7 +17,7 @@ export function getSslConfigs() {
  */
 export function getSslConfig(id) {
   return request({
-    url: `/admin/ssl-config/${id}`,
+    url: `/ssl-config/${id}`,
     method: 'get'
   })
 }
@@ -27,7 +27,7 @@ export function getSslConfig(id) {
  */
 export function createSslConfig(data) {
   return request({
-    url: '/admin/ssl-config',
+    url: '/ssl-config',
     method: 'post',
     data
   })
@@ -38,7 +38,7 @@ export function createSslConfig(data) {
  */
 export function updateSslConfig(id, data) {
   return request({
-    url: `/admin/ssl-config/${id}`,
+    url: `/ssl-config/${id}`,
     method: 'put',
     data
   })
@@ -49,7 +49,7 @@ export function updateSslConfig(id, data) {
  */
 export function deleteSslConfig(id) {
   return request({
-    url: `/admin/ssl-config/${id}`,
+    url: `/ssl-config/${id}`,
     method: 'delete'
   })
 }
@@ -59,7 +59,7 @@ export function deleteSslConfig(id) {
  */
 export function applySslCertificate(id) {
   return request({
-    url: `/admin/ssl-config/${id}/apply`,
+    url: `/ssl-config/${id}/apply`,
     method: 'post'
   })
 }
@@ -69,7 +69,7 @@ export function applySslCertificate(id) {
  */
 export function renewSslCertificate(id) {
   return request({
-    url: `/admin/ssl-config/${id}/renew`,
+    url: `/ssl-config/${id}/renew`,
     method: 'post'
   })
 }
@@ -79,7 +79,7 @@ export function renewSslCertificate(id) {
  */
 export function checkSslStatus(id) {
   return request({
-    url: `/admin/ssl-config/${id}/status`,
+    url: `/ssl-config/${id}/status`,
     method: 'get'
   })
 }
@@ -89,7 +89,7 @@ export function checkSslStatus(id) {
  */
 export function batchRenewSslCertificates() {
   return request({
-    url: '/admin/ssl-config/batch-renew',
+    url: '/ssl-config/batch-renew',
     method: 'post'
   })
 }

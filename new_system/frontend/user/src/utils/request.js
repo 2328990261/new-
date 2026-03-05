@@ -1,9 +1,14 @@
 import axios from 'axios'
 import { ElMessage } from 'element-plus'
 
+// 获取环境变量配置的API基础路径
+// 本地开发: /api (通过Vite代理转发到 http://localhost:8088/api)
+// 生产环境: /api (通过Nginx代理转发到后端PHP服务)
+const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || '/api'
+
 // 创建axios实例
 const request = axios.create({
-  baseURL: '/api', // API基础路径
+  baseURL: apiBaseUrl, // 从环境变量读取API基础路径
   timeout: 30000, // 请求超时时间
   headers: {
     'Content-Type': 'application/json'
@@ -35,14 +40,25 @@ request.interceptors.response.use(
       return res
     }
     
-    // 如果有错误信息，显示错误提示
-    if (res.error || res.msg) {
+    // 检查是否需要静默失败
+    const silentError = response.config.__silentError
+    
+    // 如果有错误信息且不是静默模式，显示错误提示
+    if (!silentError && (res.error || res.msg)) {
       ElMessage.error(res.error || res.msg || '请求失败')
     }
     
     return res
   },
   error => {
+    // 检查是否需要静默失败
+    const silentError = error.config?.__silentError
+    
+    // 如果是静默模式，直接返回错误，不显示提示
+    if (silentError) {
+      return Promise.reject(error)
+    }
+    
     // 处理不同的错误状态
     if (error.response) {
       switch (error.response.status) {

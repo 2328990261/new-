@@ -3,6 +3,7 @@ namespace app\service;
 
 use app\model\EmailSubscription;
 use app\model\TutorOrder;
+use app\model\EmailLog;
 use think\facade\Db;
 use PHPMailer\PHPMailer\PHPMailer;
 use PHPMailer\PHPMailer\Exception;
@@ -12,6 +13,75 @@ use PHPMailer\PHPMailer\Exception;
  */
 class EmailService
 {
+    /**
+     * 配置PHPMailer实例（统一配置，提高性能）
+     */
+    private static function configureSMTP($mail, $config)
+    {
+        // SMTP基础配置
+        $mail->CharSet = 'UTF-8';
+        $mail->isSMTP();
+        $mail->Host = $config['smtp_host'];
+        $mail->SMTPAuth = true;
+        $mail->Username = $config['smtp_username'];
+        $mail->Password = $config['smtp_password'];
+        
+        // SSL/TLS配置
+        if ($config['smtp_secure']) {
+            $mail->SMTPSecure = PHPMailer::ENCRYPTION_SMTPS; // SSL
+        } else {
+            $mail->SMTPSecure = PHPMailer::ENCRYPTION_STARTTLS; // TLS
+        }
+        $mail->Port = $config['smtp_port'] ?: 465;
+        
+        // 性能优化配置
+        $mail->Timeout = 10; // 减少超时时间
+        $mail->SMTPKeepAlive = true; // 保持连接，批量发送时复用
+        $mail->SMTPOptions = array(
+            'ssl' => array(
+                'verify_peer' => false,
+                'verify_peer_name' => false,
+                'allow_self_signed' => true
+            )
+        );
+        
+        // 发件人
+        $mail->setFrom($config['from_email'], $config['from_name'] ?: '家教信息平台');
+    }
+    
+    /**
+     * 通用邮件发送方法（用于重发等场景）
+     */
+    public function sendMail($to, $subject, $body, $toName = '')
+    {
+        // 获取邮件配置
+        $config = Db::name('notification_config')->find(1);
+        
+        if (!$config || !$config['smtp_host']) {
+            throw new \Exception('邮件配置未设置');
+        }
+        
+        if (!$config['email_enabled']) {
+            throw new \Exception('邮件通知未启用');
+        }
+        
+        $mail = new PHPMailer(true);
+        
+        // 使用统一配置方法
+        self::configureSMTP($mail, $config);
+        
+        // 收件人
+        $mail->addAddress($to, $toName);
+        
+        // 邮件内容
+        $mail->isHTML(true);
+        $mail->Subject = $subject;
+        $mail->Body = $body;
+        
+        $mail->send();
+        return true;
+    }
+    
     /**
      * 发送家长预约通知给管理员
      */
@@ -27,28 +97,8 @@ class EmailService
             
             $mail = new PHPMailer(true);
             
-            // SMTP配置
-            $mail->CharSet = 'UTF-8';
-            $mail->isSMTP();
-            $mail->Host = $config['smtp_host'];
-            $mail->SMTPAuth = true;
-            $mail->Username = $config['smtp_username'];
-            $mail->Password = $config['smtp_password'];
-            $mail->SMTPSecure = $config['smtp_secure'] ? PHPMailer::ENCRYPTION_SMTPS : '';
-            $mail->Port = $config['smtp_port'] ?: 465;
-            
-            // 超时和SSL设置
-            $mail->Timeout = 10;
-            $mail->SMTPOptions = array(
-                'ssl' => array(
-                    'verify_peer' => false,
-                    'verify_peer_name' => false,
-                    'allow_self_signed' => true
-                )
-            );
-            
-            // 发件人
-            $mail->setFrom($config['from_email'], $config['from_name'] ?: '家教信息平台');
+            // 使用统一配置方法
+            self::configureSMTP($mail, $config);
             
             // 收件人
             $mail->addAddress($admin->email);
@@ -62,9 +112,34 @@ class EmailService
             $mail->Body = $body;
             
             $mail->send();
+            
+            // 记录成功日志
+            EmailLog::log([
+                'email_type' => EmailLog::TYPE_BOOKING,
+                'recipient_email' => $admin->email,
+                'recipient_name' => $admin->nickname ?? null,
+                'subject' => $mail->Subject,
+                'body' => $body,
+                'related_id' => $order->id,
+                'status' => EmailLog::STATUS_SENT,
+                'send_time' => date('Y-m-d H:i:s')
+            ]);
+            
             return true;
             
         } catch (Exception $e) {
+            // 记录失败日志
+            EmailLog::log([
+                'email_type' => EmailLog::TYPE_BOOKING,
+                'recipient_email' => $admin->email ?? null,
+                'recipient_name' => $admin->nickname ?? null,
+                'subject' => '新的家教需求预约通知 - ' . $order->order_no,
+                'related_id' => $order->id,
+                'status' => EmailLog::STATUS_FAILED,
+                'error_msg' => $e->getMessage(),
+                'send_time' => date('Y-m-d H:i:s')
+            ]);
+            
             trace('预约通知邮件发送失败: ' . $e->getMessage(), 'error');
             throw $e;
         }
@@ -199,28 +274,8 @@ class EmailService
             
             $mail = new PHPMailer(true);
             
-            // SMTP配置
-            $mail->CharSet = 'UTF-8';
-            $mail->isSMTP();
-            $mail->Host = $config['smtp_host'];
-            $mail->SMTPAuth = true;
-            $mail->Username = $config['smtp_username'];
-            $mail->Password = $config['smtp_password'];
-            $mail->SMTPSecure = $config['smtp_secure'] ? PHPMailer::ENCRYPTION_SMTPS : '';
-            $mail->Port = $config['smtp_port'] ?: 465;
-            
-            // 超时和SSL设置
-            $mail->Timeout = 10;
-            $mail->SMTPOptions = array(
-                'ssl' => array(
-                    'verify_peer' => false,
-                    'verify_peer_name' => false,
-                    'allow_self_signed' => true
-                )
-            );
-            
-            // 发件人
-            $mail->setFrom($config['from_email'], $config['from_name'] ?: '家教信息平台');
+            // 使用统一配置方法
+            self::configureSMTP($mail, $config);
             
             // 收件人
             $mail->addAddress($to);
@@ -269,41 +324,255 @@ class EmailService
      */
     private function logEmailSend($email, $orderId, $success, $errorMsg = '')
     {
-        Db::name('email_logs')->insert([
-            'email' => $email,
-            'order_id' => $orderId,
+        EmailLog::log([
+            'email_type' => EmailLog::TYPE_ORDER,
+            'recipient_email' => $email,
             'subject' => '新家教信息通知',
-            'status' => $success ? 1 : 0,
+            'related_id' => $orderId,
+            'status' => $success ? EmailLog::STATUS_SENT : EmailLog::STATUS_FAILED,
             'error_msg' => $errorMsg,
             'send_time' => date('Y-m-d H:i:s')
         ]);
     }
     
     /**
-     * 测试邮件发送
+     * 发送线索指派通知给客服（同步方式）
      */
-    public function sendTestEmail($to)
+    public static function sendLeadAssignNotification($admin, $lead)
     {
         try {
+            // 检查管理员是否有邮箱
+            if (empty($admin->email)) {
+                throw new \Exception('管理员邮箱未设置');
+            }
+            
+            // 获取邮件配置
             $config = Db::name('notification_config')->find(1);
             
             if (!$config || !$config['smtp_host']) {
-                return ['success' => false, 'message' => '邮件配置未设置'];
+                throw new \Exception('邮件配置未设置');
             }
             
             $mail = new PHPMailer(true);
             
+            // 使用统一配置方法
+            self::configureSMTP($mail, $config);
+            
+            // 收件人
+            $mail->addAddress($admin->email, $admin->nickname);
+            
+            // 邮件内容
+            $mail->isHTML(true);
+            $mail->Subject = '新线索指派通知 - ' . $lead->lead_no;
+            
+            // 构建邮件内容
+            $body = self::renderLeadAssignTemplate($lead);
+            $mail->Body = $body;
+            
+            $mail->send();
+            
+            // 记录成功日志
+            EmailLog::log([
+                'email_type' => EmailLog::TYPE_LEAD_ASSIGN,
+                'recipient_email' => $admin->email,
+                'recipient_name' => $admin->nickname ?? null,
+                'subject' => $mail->Subject,
+                'body' => $body,
+                'related_id' => $lead->id,
+                'status' => EmailLog::STATUS_SENT,
+                'send_time' => date('Y-m-d H:i:s')
+            ]);
+            
+            trace('线索指派邮件发送成功: ' . $admin->email, 'info');
+            return true;
+            
+        } catch (Exception $e) {
+            // 记录失败日志
+            EmailLog::log([
+                'email_type' => EmailLog::TYPE_LEAD_ASSIGN,
+                'recipient_email' => $admin->email ?? null,
+                'recipient_name' => $admin->nickname ?? null,
+                'subject' => '新线索指派通知 - ' . $lead->lead_no,
+                'related_id' => $lead->id,
+                'status' => EmailLog::STATUS_FAILED,
+                'error_msg' => $e->getMessage(),
+                'send_time' => date('Y-m-d H:i:s')
+            ]);
+            
+            trace('线索指派邮件发送失败: ' . $e->getMessage(), 'error');
+            throw $e;
+        }
+    }
+    
+    /**
+     * 异步发送线索指派通知（仅添加到队列，不立即发送）
+     */
+    public static function sendLeadAssignNotificationAsync($admin, $lead)
+    {
+        try {
+            // 检查管理员是否有邮箱
+            if (empty($admin->email)) {
+                trace('管理员邮箱未设置，跳过邮件通知: admin_id=' . $admin->id, 'info');
+                return;
+            }
+            
+            // 仅添加到队列，不立即发送，避免阻塞
+            $subject = '新线索指派通知 - ' . $lead->lead_no;
+            $body = self::renderLeadAssignTemplate($lead);
+            
+            \app\model\EmailQueue::create([
+                'email_type' => \app\model\EmailQueue::TYPE_LEAD_ASSIGN,
+                'recipient_email' => $admin->email,
+                'recipient_name' => $admin->nickname,
+                'subject' => $subject,
+                'body' => $body,
+                'related_id' => $lead->id,
+                'status' => \app\model\EmailQueue::STATUS_PENDING,
+                'created_at' => date('Y-m-d H:i:s')
+            ]);
+            
+            trace('线索指派邮件已加入队列: admin_id=' . $admin->id . ', lead_id=' . $lead->id . ', email=' . $admin->email, 'info');
+            
+        } catch (\Exception $e) {
+            // 即使队列失败也不影响主流程
+            trace('添加邮件到队列失败（不影响主流程）: ' . $e->getMessage(), 'info');
+        }
+    }
+    
+    /**
+     * 渲染线索指派邮件模板
+     */
+    private static function renderLeadAssignTemplate($lead)
+    {
+        $cityName = $lead->city ? $lead->city->name : '';
+        $districtName = $lead->district ? $lead->district->name : '';
+        
+        // 获取系统配置中的管理后台地址
+        $adminUrl = env('ADMIN_URL', 'http://localhost:5174');
+        $leadDetailUrl = $adminUrl . '/#/lead-follow/' . $lead->id;
+        
+        $html = '<div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">';
+        $html .= '<div style="background: #667eea; color: white; padding: 20px; text-align: center;">';
+        $html .= '<h2 style="margin: 0;">新线索指派通知</h2>';
+        $html .= '</div>';
+        
+        // 紧急提醒和跟进按钮放在最前面
+        $html .= '<div style="padding: 20px; background: #f9f9f9;">';
+        $html .= '<div style="margin-bottom: 15px; padding: 20px; background: #fff3cd; border-left: 4px solid #ffc107; border-radius: 3px; text-align: center;">';
+        $html .= '<p style="margin: 0 0 15px 0; color: #856404; font-size: 18px; font-weight: bold;">';
+        $html .= '⏰ 请在1小时内联系客户并更新跟进情况';
+        $html .= '</p>';
+        $html .= '<p style="margin: 0 0 15px 0;">';
+        $html .= '<a href="' . $leadDetailUrl . '" style="display: inline-block; padding: 12px 30px; background: #667eea; color: white; text-decoration: none; border-radius: 5px; font-weight: bold; font-size: 16px;">👉 立即跟进此线索</a>';
+        $html .= '</p>';
+        $html .= '<p style="margin: 0; font-size: 12px; color: #856404;">';
+        $html .= '跟进链接：<span style="user-select: all; background: #fff; padding: 5px 10px; border-radius: 3px; display: inline-block; margin-top: 5px; word-break: break-all;">' . htmlspecialchars($leadDetailUrl) . '</span>';
+        $html .= '</p>';
+        $html .= '</div>';
+        
+        $html .= '<div style="background: white; padding: 20px; border-radius: 5px; margin-bottom: 15px;">';
+        $html .= '<p style="margin: 10px 0;"><strong>线索编号：</strong>' . htmlspecialchars($lead->lead_no) . '</p>';
+        
+        if ($lead->contact_name || $lead->phone) {
+            $html .= '<p style="margin: 10px 0;"><strong>客户信息：</strong>';
+            if ($lead->contact_name) {
+                $html .= htmlspecialchars($lead->contact_name) . ' ';
+            }
+            if ($lead->phone) {
+                $html .= htmlspecialchars($lead->phone);
+            }
+            $html .= '</p>';
+        }
+        
+        if ($cityName || $districtName) {
+            $html .= '<p style="margin: 10px 0;"><strong>城市区域：</strong>' . htmlspecialchars($cityName . ' ' . $districtName) . '</p>';
+        }
+        
+        if ($lead->grade) {
+            $html .= '<p style="margin: 10px 0;"><strong>年级：</strong>' . htmlspecialchars($lead->grade) . '</p>';
+        }
+        
+        if ($lead->subject) {
+            $html .= '<p style="margin: 10px 0;"><strong>科目：</strong>' . htmlspecialchars($lead->subject) . '</p>';
+        }
+        
+        $html .= '</div>';
+        
+        $html .= '<div style="background: white; padding: 20px; border-radius: 5px; margin-bottom: 15px;">';
+        $html .= '<p style="margin: 0 0 10px 0;"><strong>需求详情：</strong></p>';
+        $html .= '<div style="background: #f8f9fa; padding: 15px; border-left: 4px solid #667eea; line-height: 1.6;">';
+        $html .= nl2br(htmlspecialchars($lead->raw_content));
+        $html .= '</div>';
+        $html .= '</div>';
+        
+        $html .= '</div>';
+        
+        $html .= '<div style="text-align: center; padding: 20px; color: #999; font-size: 12px;">';
+        $html .= '<p style="margin: 0;">此邮件由系统自动发送，请勿直接回复。</p>';
+        $html .= '<p style="margin: 5px 0 0 0;">如无法点击按钮，请复制以下链接到浏览器：</p>';
+        $html .= '<p style="margin: 5px 0 0 0; word-break: break-all;">' . $leadDetailUrl . '</p>';
+        $html .= '</div>';
+        
+        $html .= '</div>';
+        
+        return $html;
+    }
+    
+    /**
+     * 发送测试邮件
+     */
+    public function sendTestEmail($email)
+    {
+        try {
+            // 获取邮件配置
+            $config = Db::name('notification_config')->find(1);
+            
+            if (!$config || !$config['smtp_host']) {
+                return ['success' => false, 'error' => '邮件配置未设置'];
+            }
+            
+            if (!$config['email_enabled']) {
+                return ['success' => false, 'error' => '邮件通知未启用，请先在配置中启用邮件通知'];
+            }
+            
+            // 验证必要配置
+            if (empty($config['smtp_host'])) {
+                return ['success' => false, 'error' => 'SMTP服务器地址未设置'];
+            }
+            if (empty($config['smtp_username'])) {
+                return ['success' => false, 'error' => 'SMTP用户名未设置'];
+            }
+            if (empty($config['smtp_password'])) {
+                return ['success' => false, 'error' => 'SMTP密码未设置'];
+            }
+            
+            // QQ邮箱特殊提示
+            if (strpos($config['smtp_host'], 'qq.com') !== false) {
+                if (strlen($config['smtp_password']) < 16) {
+                    return ['success' => false, 'error' => 'QQ邮箱需要使用授权码，不是登录密码。授权码通常是16位字母，请在QQ邮箱设置中生成授权码'];
+                }
+            }
+            
+            $mail = new PHPMailer(true);
+            
+            // SMTP配置
             $mail->CharSet = 'UTF-8';
             $mail->isSMTP();
             $mail->Host = $config['smtp_host'];
             $mail->SMTPAuth = true;
             $mail->Username = $config['smtp_username'];
             $mail->Password = $config['smtp_password'];
-            $mail->SMTPSecure = $config['smtp_secure'] ? PHPMailer::ENCRYPTION_SMTPS : '';
+            
+            // SSL/TLS配置
+            if ($config['smtp_secure']) {
+                $mail->SMTPSecure = PHPMailer::ENCRYPTION_SMTPS; // SSL
+            } else {
+                $mail->SMTPSecure = PHPMailer::ENCRYPTION_STARTTLS; // TLS
+            }
             $mail->Port = $config['smtp_port'] ?: 465;
             
-            // 超时和SSL设置
-            $mail->Timeout = 10;
+            // 超时和SSL设置 - 关键：禁用SSL证书验证
+            $mail->Timeout = 30;
             $mail->SMTPOptions = array(
                 'ssl' => array(
                     'verify_peer' => false,
@@ -312,19 +581,58 @@ class EmailService
                 )
             );
             
+            // 发件人
             $mail->setFrom($config['from_email'], $config['from_name'] ?: '家教信息平台');
-            $mail->addAddress($to);
             
+            // 收件人
+            $mail->addAddress($email);
+            
+            // 邮件内容
             $mail->isHTML(true);
-            $mail->Subject = '测试邮件';
-            $mail->Body = '<h1>邮件配置测试</h1><p>如果您收到这封邮件，说明邮件配置正确！</p>';
+            $mail->Subject = '测试邮件 - 邮件配置测试';
+            
+            $body = '<div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">';
+            $body .= '<h2 style="color: #667eea;">邮件配置测试</h2>';
+            $body .= '<p>这是一封测试邮件，用于验证邮件配置是否正确。</p>';
+            $body .= '<div style="background: #f5f5f5; padding: 15px; border-radius: 5px; margin: 20px 0;">';
+            $body .= '<p style="margin: 5px 0;"><strong>发送时间：</strong>' . date('Y-m-d H:i:s') . '</p>';
+            $body .= '<p style="margin: 5px 0;"><strong>SMTP服务器：</strong>' . htmlspecialchars($config['smtp_host']) . '</p>';
+            $body .= '<p style="margin: 5px 0;"><strong>发件人：</strong>' . htmlspecialchars($config['from_email']) . '</p>';
+            $body .= '</div>';
+            $body .= '<p style="color: #28a745;">✓ 如果您收到此邮件，说明邮件配置正确！</p>';
+            $body .= '</div>';
+            
+            $mail->Body = $body;
             
             $mail->send();
-            return ['success' => true, 'message' => '测试邮件发送成功'];
+            
+            // 记录成功日志
+            EmailLog::log([
+                'email_type' => EmailLog::TYPE_TEST,
+                'recipient_email' => $email,
+                'subject' => $mail->Subject,
+                'body' => $body,
+                'status' => EmailLog::STATUS_SENT,
+                'send_time' => date('Y-m-d H:i:s')
+            ]);
+            
+            return ['success' => true, 'message' => '测试邮件发送成功，请检查收件箱'];
             
         } catch (Exception $e) {
-            return ['success' => false, 'message' => '发送失败: ' . $e->getMessage()];
+            // 记录失败日志
+            EmailLog::log([
+                'email_type' => EmailLog::TYPE_TEST,
+                'recipient_email' => $email,
+                'subject' => '测试邮件 - 邮件配置测试',
+                'status' => EmailLog::STATUS_FAILED,
+                'error_msg' => $e->getMessage(),
+                'send_time' => date('Y-m-d H:i:s')
+            ]);
+            
+            trace('测试邮件发送失败: ' . $e->getMessage(), 'error');
+            return ['success' => false, 'error' => '发送失败：' . $e->getMessage()];
         }
     }
+    
 }
 

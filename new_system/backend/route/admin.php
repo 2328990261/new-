@@ -2,17 +2,24 @@
 // 管理后台路由
 use think\facade\Route;
 
-// 管理员认证相关路由（不需要认证）
-Route::group('admin', function () {
+// 管理员认证相关路由（改为 admin/api 前缀，避免与前端路由冲突）
+Route::group('admin/api', function () {
     // 登录注册
     Route::post('login', 'admin.Auth/login');
     Route::post('register', 'admin.Auth/register');
     Route::get('info', 'admin.Auth/check');
     
+    // 🔓 无需认证的公共接口
+    Route::post('leads/recognize', 'admin.Lead/recognize');  // 线索智能识别（无需登录）
+    Route::post('tutors/recognize', 'admin.Tutor/recognize');  // 家教订单智能识别（无需登录）
+    
     // 需要认证的路由
     Route::group(function () {
         // 退出登录
         Route::post('logout', 'admin.Auth/logout');
+        
+        // 文件上传
+        Route::post('upload/image', 'admin.Upload/image');
         
         // 仪表盘统计
         Route::get('dashboard/stats', 'admin.Dashboard/stats');
@@ -29,6 +36,9 @@ Route::group('admin', function () {
         Route::put('provinces/:id/toggle', 'admin.Province/toggle');
         
         // 城市管理
+        // 注意：具体路由必须放在通用路由之前
+        Route::get('cities/all', 'admin.City/all');  // 获取所有城市（不分页）
+        Route::get('cities/:city_id/districts', 'admin.District/getByCityId');  // 获取城市下的区域列表（必须在 cities/:id 之前）
         Route::get('cities', 'admin.City/index');
         Route::post('cities', 'admin.City/save');
         Route::put('cities/:id', 'admin.City/update');
@@ -40,7 +50,6 @@ Route::group('admin', function () {
         Route::post('districts', 'admin.District/save');
         Route::put('districts/:id', 'admin.District/update');
         Route::delete('districts/:id', 'admin.District/delete');
-        Route::get('cities/:city_id/districts', 'admin.District/getByCityId');
         Route::put('districts/:id/toggle', 'admin.District/toggleStatus');
         
         // 科目管理
@@ -56,14 +65,20 @@ Route::group('admin', function () {
         // 家教订单管理
         // 注意：具体路由必须放在通用路由之前，否则会被通用路由拦截
         Route::post('tutors/recognize', 'admin.Tutor/recognize');
+        Route::post('tutors/batch-create', 'admin.Tutor/batchCreate');
+        Route::post('admin/tutors/batch-create', 'admin.Tutor/batchCreate');
         Route::post('tutors/batch-delete', 'admin.Tutor/batchDelete');
         Route::post('tutors/batch-copy', 'admin.Tutor/batchCopy');
+        Route::post('tutors/auto-assign-all', 'admin.Tutor/autoAssignAll');
         Route::get('tutors/stats/dashboard', 'admin.Tutor/statistics');
         Route::get('tutors/stats/by-city', 'admin.Tutor/cityStats');
         
         // 批量修复路由
         Route::get('tutor-fix/check-need-fix', 'admin.TutorFix/checkNeedFix');
         Route::post('tutor-fix/batch-recognize', 'admin.TutorFix/batchRecognize');
+        
+        // 数据导入路由（从旧系统SQL导入）
+        Route::post('data-import/upload-sql', 'admin.DataImport/uploadSql');
         
         Route::get('tutors', 'admin.Tutor/index');
         Route::get('tutors/:id', 'admin.Tutor/read');
@@ -88,19 +103,42 @@ Route::group('admin', function () {
         Route::get('notification/logs', 'admin.Notification/logs');
         Route::delete('notification/subscriptions/:id', 'admin.Notification/deleteSubscription');
         
+        // 邮箱日志管理（通知模块子模块）
+        Route::get('email-logs/statistics', 'admin.EmailLog/getStatistics');
+        Route::post('email-logs/clean', 'admin.EmailLog/cleanOldLogs');
+        Route::post('email-logs/batch-delete', 'admin.EmailLog/batchDelete');
+        Route::post('email-logs/:id/resend', 'admin.EmailLog/resend');
+        Route::get('email-logs/:id', 'admin.EmailLog/getDetail');
+        Route::get('email-logs', 'admin.EmailLog/getList');
+        Route::delete('email-logs/:id', 'admin.EmailLog/delete');
+        
+        // 邮件订阅管理
+        Route::get('email-subscriptions/stats', 'admin.EmailSubscription/stats');
+        Route::post('email-subscriptions/batch-status', 'admin.EmailSubscription/batchStatus');
+        Route::get('email-subscriptions/:id', 'admin.EmailSubscription/detail');
+        Route::get('email-subscriptions', 'admin.EmailSubscription/list');
+        Route::post('email-subscriptions', 'admin.EmailSubscription/create');
+        Route::put('email-subscriptions/:id', 'admin.EmailSubscription/update');
+        Route::delete('email-subscriptions/:id', 'admin.EmailSubscription/delete');
+        
         // 兼容旧的email路由（逐步废弃）
         Route::get('email/config', 'admin.Notification/getConfig');
         Route::post('email/config', 'admin.Notification/updateConfig');
-        Route::post('email/test', 'admin.Notification/testEmail');
         Route::get('email/subscriptions', 'admin.Notification/subscriptions');
         Route::get('email/logs', 'admin.Notification/logs');
         Route::delete('email/subscriptions/:id', 'admin.Notification/deleteSubscription');
         
-        // 管理员管理
-        Route::get('admins', 'admin.AdminManage/index');
+        // 管理员管理（注意：更具体的路由要放在前面）
+        Route::get('admins/stats', 'admin.AdminManage/getAdminStats');
         Route::get('admins/dispatchers', 'admin.AdminManage/getDispatchers');
+        Route::get('admins/customer-services', 'admin.AdminManage/getCustomerServices');
+        Route::get('admins/all-customer-services', 'admin.AdminManage/getAllCustomerServices');
+        Route::get('admins/team-leaders', 'admin.AdminManage/getTeamLeaders');
+        Route::put('admins/batch-leader', 'admin.AdminManage/batchUpdateLeader');
+        Route::get('admins', 'admin.AdminManage/index');
         Route::post('admins', 'admin.AdminManage/save');
         Route::put('admins/:id', 'admin.AdminManage/update');
+        Route::put('admins/:id/wechat-qrcode', 'admin.AdminManage/updateWechatQrcode');
         Route::delete('admins/:id', 'admin.AdminManage/delete');
         
         // 派单管理
@@ -112,24 +150,40 @@ Route::group('admin', function () {
         
         // 支付管理
         // 注意：具体路由必须放在通用路由之前
+        Route::get('payments/today-amount', 'admin.Payment/todayAmount');  // 今日交易额
+        Route::get('payments/data-panel', 'admin.Payment/dataPanel');  // 数据面板
         Route::get('payments/config', 'admin.Payment/getConfig');
         Route::post('payments/config/:id', 'admin.Payment/updateConfig');
-        Route::post('payments/test', 'admin.Payment/testConfig');
         Route::get('payments/agreement', 'admin.Payment/getAgreement');
         Route::post('payments/agreement/:id', 'admin.Payment/updateAgreement');
         Route::get('payments/statistics', 'admin.Payment/statistics');
+        Route::get('payments/dispatchers', 'admin.Payment/dispatchers');
         Route::post('payments/refund/process', 'admin.Payment/processRefund');
         Route::post('payments/refund/reject', 'admin.Payment/rejectRefund');
         Route::get('payments/refund/:id', 'admin.Payment/refundDetail');
         Route::get('payments', 'admin.Payment/list');
-        Route::get('payments/:id', 'admin.Payment/detail');
+        Route::get('payments/:id', 'admin.Payment/read');
         
         // 教师管理
-        Route::get('teachers', 'admin.Teacher/index');
-        Route::get('teachers/:id', 'admin.Teacher/read');
+        Route::get('teachers/statistics', 'admin.Teacher/statistics');  // 统计信息（必须在 teachers/:id 之前）
+        Route::post('teachers/batch-delete', 'admin.Teacher/batchDelete');  // 批量删除
+        Route::post('teachers/batch-update-status', 'admin.Teacher/batchUpdateStatus');  // 批量更新状态
+        Route::post('teachers/generate-poster', 'admin.Teacher/generatePoster');  // 生成教师海报
+        Route::get('teachers/:id', 'admin.Teacher/read');  // 获取单个教师详情（必须在 teachers 之前）
+        Route::get('teachers', 'admin.Teacher/index');  // 获取教师列表
+        Route::put('teachers/:id', 'admin.Teacher/update');  // 更新教师信息
         Route::post('teachers/:id/review', 'admin.Teacher/review');
+        Route::post('teachers/:id/update-status', 'admin.Teacher/updateStatus');
         Route::post('teachers/:id/set-top', 'admin.Teacher/setTop');
         Route::delete('teachers/:id', 'admin.Teacher/delete');
+        
+        // 简历投递管理
+        Route::get('resume-applications/statistics', 'admin.ResumeApplication/statistics');  // 统计信息
+        Route::post('resume-applications/batch-review', 'admin.ResumeApplication/batchReview');  // 批量审核
+        Route::post('resume-applications/review', 'admin.ResumeApplication/review');  // 审核投递
+        Route::get('resume-applications/:id', 'admin.ResumeApplication/read');  // 获取投递详情
+        Route::get('resume-applications', 'admin.ResumeApplication/index');  // 获取投递列表
+        Route::delete('resume-applications/:id', 'admin.ResumeApplication/delete');  // 删除投递记录
         
         // 城市点亮管理
         Route::get('city-lights', 'admin.CityLight/index');
@@ -144,9 +198,77 @@ Route::group('admin', function () {
         Route::get('seo/sitemap', 'admin.SeoConfig/sitemap');
         Route::put('seo/sitemap/:id', 'admin.SeoConfig/updateSitemap');
         
+        // SSL证书管理
+        Route::get('ssl-config', 'admin.SslConfig/getConfig');
+        Route::post('ssl-config', 'admin.SslConfig/updateConfig');
+        Route::post('ssl-config/upload', 'admin.SslConfig/uploadCert');
+        Route::delete('ssl-config/:id', 'admin.SslConfig/deleteCert');
+        
+        // 网站基础配置管理
+        Route::get('site-config', 'admin.SiteConfig/getConfig');
+        Route::post('site-config', 'admin.SiteConfig/updateConfig');
+        
+        // 网站横幅管理
+        Route::post('site-banners/batch-sort', 'admin.SiteBanner/batchUpdateSort');
+        Route::put('site-banners/:id/toggle', 'admin.SiteBanner/toggleStatus');
+        Route::get('site-banners', 'admin.SiteBanner/index');
+        Route::get('site-banners/:id', 'admin.SiteBanner/read');
+        Route::post('site-banners', 'admin.SiteBanner/save');
+        Route::put('site-banners/:id', 'admin.SiteBanner/update');
+        Route::delete('site-banners/:id', 'admin.SiteBanner/delete');
+        
+        // 文件上传
+        Route::post('upload/image', 'admin.Upload/uploadImage');
+        Route::post('upload/delete', 'admin.Upload/deleteImage');
+        
+        // 线索管理
+        // 注意：具体路由必须放在通用路由之前，否则会被通用路由拦截
+        Route::get('leads/stats', 'admin.Lead/stats');
+        // Route::post('leads/recognize', 'admin.Lead/recognize'); // 已移到公共接口区域
+        Route::post('leads/batch-assign', 'admin.Lead/batchAssign');
+        Route::post('leads/:id/follow', 'admin.Lead/addFollow');
+        Route::get('leads/:id/convert-to-tutor-format', 'admin.Lead/convertToTutorFormat');
+        Route::get('leads/:id/convert-to-tutor-order', 'admin.Lead/convertToTutorOrder');
+        Route::get('leads/:id/follow-logs', 'admin.Lead/followLogs');
+        Route::post('leads/upload-invalid-image', 'admin.Lead/uploadInvalidImage');
+        Route::post('leads/parse', 'admin.Lead/parse');
+        Route::post('leads/convert-content-to-tutor-order', 'admin.Lead/convertContentToTutorOrder');
+        Route::put('leads/:id/status', 'admin.Lead/updateStatus'); // 必须放在 leads/:id 之前
+        Route::get('leads/:id', 'admin.Lead/read');
+        Route::get('leads', 'admin.Lead/index');
+        Route::post('leads', 'admin.Lead/save');
+        Route::put('leads/:id', 'admin.Lead/update');
+        Route::delete('leads/:id', 'admin.Lead/delete');
+        
+        // 小程序用户管理
+        Route::get('mini-users/stats', 'admin.MiniProgramUser/stats');
+        Route::get('mini-users/:id', 'admin.MiniProgramUser/detail');
+        Route::get('mini-users', 'admin.MiniProgramUser/list');
+        Route::post('mini-users/batch-delete', 'admin.MiniProgramUser/batchDelete');
+        Route::put('mini-users/:id', 'admin.MiniProgramUser/update');
+        Route::delete('mini-users/:id', 'admin.MiniProgramUser/delete');
+        
+        // 支付配置管理
+        // 测试接口必须最先定义
+        Route::rule('payment-config/test', 'admin.PaymentConfig/testPaymentConfig', 'POST');
+        Route::rule('payments/config/test', 'admin.PaymentConfig/testPaymentConfig', 'POST');
+        
+        // 其他配置接口
+        Route::get('payment-config/get', 'admin.PaymentConfig/getConfig');
+        Route::post('payment-config/save', 'admin.PaymentConfig/saveConfig');
+        Route::get('payments/config', 'admin.PaymentConfig/getConfig');
+        Route::post('payments/config', 'admin.PaymentConfig/saveConfig');
+        
     })->middleware(\app\middleware\Auth::class);
     
 })->middleware(\app\middleware\Cors::class);
 
 return [];
 
+
+        // 订阅消息日志管理
+        Route::get('subscribe-message-log/list', 'admin.SubscribeMessageLog/list');
+        Route::get('subscribe-message-log/stats', 'admin.SubscribeMessageLog/stats');
+        Route::get('subscribe-message-log/detail/:id', 'admin.SubscribeMessageLog/detail');
+        Route::delete('subscribe-message-log/delete/:id', 'admin.SubscribeMessageLog/delete');
+        Route::post('subscribe-message-log/batch-delete', 'admin.SubscribeMessageLog/batchDelete');

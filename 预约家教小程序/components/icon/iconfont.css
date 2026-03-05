@@ -1,11 +1,6 @@
-/* 使用 uni-icons 的图标字体 */
-@font-face {
-  font-family: 'iconfont';
-  src: url('data:application/x-font-woff2;charset=utf-8;base64,d09GMgABAAAAABHcAAsAAAAAI6QAABGNAAEAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHFQGYACEXAqsbKc8ATYCJANACzYABCAFhGcHgVIbKRwjooqVE9kn2Hcjps1VQKF4+P/9vu1z3x2TJE1ilmbRDI1GJUK1kiAhEaKJ1qZB/P+f7+Y9b+Zt6Sz4AE6AbC7N5mq1Wi12qxW7VYvVakW1WvwHuO9+fv4Hv/f7vO/zfp4HQRAEQRAEQRAEQRAEQRAEQRAEQfD/Pz9P+gEgCALB/z8PAAEAQBD8/78AABAEQRD8/78AABAE/w8AAAQB') format('woff2');
-}
-
+/* 使用 uni-ui 图标 */
 .iconfont {
-  font-family: 'iconfont' !important;
+  font-family: 'uniicons' !important;
   font-style: normal;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;

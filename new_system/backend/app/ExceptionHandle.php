@@ -51,8 +51,20 @@ class ExceptionHandle extends Handle
     public function render($request, Throwable $e): Response
     {
         // 添加自定义异常处理机制
+        
+        // 如果是 JSON 编码错误，特殊处理
+        if ($e instanceof \InvalidArgumentException && 
+            strpos($e->getMessage(), 'Malformed UTF-8') !== false) {
+            
+            // 返回友好的错误信息
+            return json([
+                'code' => 500,
+                'msg' => '数据编码错误，请联系管理员',
+                'data' => null
+            ]);
+        }
 
-        // 其他错误交给系统处理
+        // 其他异常继续使用父类处理
         return parent::render($request, $e);
     }
 }

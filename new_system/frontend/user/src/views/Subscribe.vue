@@ -36,18 +36,15 @@
               clearable
               style="width: 100%"
             >
-              <el-option-group
-                v-for="(cities, level) in cityGroups"
-                :key="level"
-                :label="level"
+              <el-option
+                v-for="city in cities"
+                :key="city.id"
+                :label="city.name"
+                :value="city.id"
               >
-                <el-option
-                  v-for="city in cities"
-                  :key="city.id"
-                  :label="city.name"
-                  :value="city.id"
-                />
-              </el-option-group>
+                <span>{{ city.name }}</span>
+                <el-tag v-if="city.is_hot" type="success" size="small" style="margin-left: 8px">热门</el-tag>
+              </el-option>
             </el-select>
           </el-form-item>
 
@@ -62,18 +59,12 @@
               collapse-tags-tooltip
               style="width: 100%"
             >
-              <el-option-group
-                v-for="(subjects, category) in subjectGroups"
-                :key="category"
-                :label="category"
-              >
-                <el-option
-                  v-for="subject in subjects"
-                  :key="subject.id"
-                  :label="subject.name"
-                  :value="subject.id"
-                />
-              </el-option-group>
+              <el-option
+                v-for="subject in subjects"
+                :key="subject.id"
+                :label="subject.name"
+                :value="subject.id"
+              />
             </el-select>
           </el-form-item>
 
@@ -91,6 +82,7 @@
               <el-option label="小学" value="小学" />
               <el-option label="初中" value="初中" />
               <el-option label="高中" value="高中" />
+              <el-option label="成人" value="成人" />
             </el-select>
           </el-form-item>
 
@@ -132,8 +124,8 @@ import { getCities, getSubjects } from '@/api/tutor'
 
 const formRef = ref()
 const loading = ref(false)
-const cityGroups = ref({})
-const subjectGroups = ref({})
+const cities = ref([])
+const subjects = ref([])
 
 const form = reactive({
   email: '',
@@ -153,14 +145,54 @@ const rules = {
   // subject_id 改为非必填，已删除验证规则
 }
 
-onMounted(async () => {
-  // 加载城市数据
-  const citiesRes = await getCities()
-  cityGroups.value = citiesRes.data
+// 加载数据（带重试机制）
+const loadDataWithRetry = async () => {
+  let retries = 0
+  const maxRetries = 3
+  
+  while (retries < maxRetries) {
+    try {
+      // 并发加载数据
+      const [citiesRes, subjectsRes] = await Promise.all([
+        getCities(),
+        getSubjects()
+      ])
+      
+      // 加载城市数据
+      if (citiesRes && citiesRes.data) {
+        cities.value = citiesRes.data
+      }
+      
+      // 加载科目数据
+      if (subjectsRes && subjectsRes.data) {
+        const subjectGroups = subjectsRes.data || {}
+        const flatSubjects = []
+        Object.keys(subjectGroups).forEach(category => {
+          if (Array.isArray(subjectGroups[category])) {
+            flatSubjects.push(...subjectGroups[category])
+          }
+        })
+        subjects.value = flatSubjects
+      }
+      
+      // 成功加载，退出循环
+      return
+    } catch (error) {
+      retries++
+      if (retries < maxRetries) {
+        // 等待后重试，等待时间递增
+        await new Promise(resolve => setTimeout(resolve, 1000 * retries))
+      }
+    }
+  }
+  
+  if (retries >= maxRetries) {
+    ElMessage.error('数据加载失败，请刷新页面重试')
+  }
+}
 
-  // 加载科目数据
-  const subjectsRes = await getSubjects()
-  subjectGroups.value = subjectsRes.data
+onMounted(async () => {
+  await loadDataWithRetry()
 })
 
 const handleSubscribe = async () => {

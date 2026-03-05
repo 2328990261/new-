@@ -1,82 +1,5 @@
 <template>
   <div class="home">
-    <!-- 顶部导航栏 -->
-    <header class="top-navbar">
-      <div class="navbar-container">
-        <div class="navbar-left">
-          <div class="logo-section">
-            <el-icon class="logo-icon" :size="32"><Reading /></el-icon>
-            <span class="logo-text">家教平台</span>
-          </div>
-        </div>
-        
-        <nav class="navbar-center">
-          <router-link to="/" class="nav-item active">
-            <el-icon><HomeFilled /></el-icon>
-            <span>首页</span>
-          </router-link>
-          <router-link to="/teachers" class="nav-item">
-            <el-icon><User /></el-icon>
-            <span>优秀教师</span>
-          </router-link>
-          <router-link to="/city-light" class="nav-item">
-            <el-icon><LocationFilled /></el-icon>
-            <span>点亮城市</span>
-          </router-link>
-          <router-link to="/payment" class="nav-item">
-            <el-icon><Wallet /></el-icon>
-            <span>订单支付</span>
-          </router-link>
-        </nav>
-        
-        <div class="navbar-right">
-          <el-button type="primary" size="small" @click="router.push('/subscribe')">
-            <el-icon><BellFilled /></el-icon>
-            <span>订阅通知</span>
-          </el-button>
-          <el-button size="small" @click="router.push('/teacher-login')">
-            <el-icon><User /></el-icon>
-            <span>教师登录</span>
-          </el-button>
-        </div>
-        
-        <!-- 移动端菜单按钮 -->
-        <div class="mobile-menu-btn" @click="showMobileMenu = !showMobileMenu">
-          <el-icon :size="24"><Menu /></el-icon>
-        </div>
-      </div>
-      
-      <!-- 移动端菜单 -->
-      <transition name="slide-down">
-        <div v-if="showMobileMenu" class="mobile-menu">
-          <router-link to="/" class="mobile-nav-item" @click="showMobileMenu = false">
-            <el-icon><HomeFilled /></el-icon>
-            <span>首页</span>
-          </router-link>
-          <router-link to="/teachers" class="mobile-nav-item" @click="showMobileMenu = false">
-            <el-icon><User /></el-icon>
-            <span>优秀教师</span>
-          </router-link>
-          <router-link to="/city-light" class="mobile-nav-item" @click="showMobileMenu = false">
-            <el-icon><LocationFilled /></el-icon>
-            <span>点亮城市</span>
-          </router-link>
-          <router-link to="/payment" class="mobile-nav-item" @click="showMobileMenu = false">
-            <el-icon><Wallet /></el-icon>
-            <span>订单支付</span>
-          </router-link>
-          <router-link to="/subscribe" class="mobile-nav-item" @click="showMobileMenu = false">
-            <el-icon><BellFilled /></el-icon>
-            <span>订阅通知</span>
-          </router-link>
-          <router-link to="/teacher-login" class="mobile-nav-item" @click="showMobileMenu = false">
-            <el-icon><User /></el-icon>
-            <span>教师登录</span>
-          </router-link>
-        </div>
-      </transition>
-    </header>
-
     <!-- Hero 区域 - 轮播图-->
     <div class="hero-section">
       <div class="hero-bg-decoration">
@@ -85,163 +8,94 @@
         <div class="circle circle-3"></div>
       </div>
       
-      <!-- 轮播容器 -->
-      <div class="hero-carousel">
-        <!-- Banner 1: 默认搜索 -->
-        <transition name="fade">
-          <div v-show="currentBanner === 0" class="banner-slide banner-default">
-            <div class="hero-content">
-              <div class="hero-badge">
-                <el-icon><Star /></el-icon>
-                <span>优质家教信息平台</span>
-              </div>
-              
-              <h1 class="hero-title">
-                找家教，就这<span class="highlight">么简单</span>
-              </h1>
-              
-              <p class="hero-subtitle">
-                <el-icon><Location /></el-icon>
-                覆盖全国多个城市
-                <span class="divider">|</span>
-                <el-icon><Reading /></el-icon>
-                数十种科目选择
-                <span class="divider">|</span>
-                <el-icon><Clock /></el-icon>
-                实时更新信息
-              </p>
-              
-              <div class="search-box">
-                <div class="search-container">
-                  <el-icon class="search-prefix-icon"><Search /></el-icon>
-                  <el-input
-                    v-model="keyword"
-                    placeholder="搜一搜：城市/科目/年级..."
-                    size="large"
-                    clearable
-                    @keyup.enter="handleSearch"
-                    @focus="searchFocused = true"
-                    @blur="searchFocused = false"
-                    class="search-input"
-                  />
-                  <el-button 
-                    type="primary" 
-                    size="large" 
-                    @click="handleSearch"
-                    class="search-btn"
-                  >
-                    搜索
-                  </el-button>
-                </div>
-                
-                <!-- 分享按钮 -->
-                <div class="share-buttons">
-                  <el-button 
-                    type="success" 
-                    size="small" 
-                    @click="shareToWechat"
-                    class="share-btn"
-                  >
-                    <el-icon><Share /></el-icon>
-                    分享给好友
-                  </el-button>
-                  <el-button 
-                    type="warning" 
-                    size="small" 
-                    @click="shareToTimeline"
-                    class="share-btn"
-                  >
-                    <el-icon><Share /></el-icon>
-                    分享到朋友圈
-                  </el-button>
-                </div>
-              </div>
-
-              <!-- 热门标签 -->
-              <div class="hot-tags">
-                <div class="hot-tag-label">
-                  <el-icon><TrendCharts /></el-icon>
-                  <span>热搜</span>
-                </div>
-                <div class="hot-tag-list">
-                  <div 
-                    v-for="(tag, index) in hotTags" 
-                    :key="tag" 
-                    @click="quickSearch(tag)"
-                    class="hot-tag-item"
-                    :class="{ 'hot-top': index < 3 }"
-                  >
-                    <span class="tag-index" v-if="index < 3">{{ index + 1 }}</span>
-                    <span class="tag-text">{{ tag }}</span>
-                    <el-icon class="tag-icon"><ArrowRight /></el-icon>
-                  </div>
-                </div>
-              </div>
-            </div>
+      <!-- 主内容区 -->
+      <div class="hero-content">
+        <div class="hero-badge">
+          <el-icon><Star /></el-icon>
+          <span>优质家教信息平台</span>
+        </div>
+        
+        <h1 class="hero-title">
+          找家教，就这<span class="highlight">么简单</span>
+        </h1>
+        
+        <p class="hero-subtitle">
+          <el-icon><Location /></el-icon>
+          覆盖全国多个城市
+          <span class="divider">|</span>
+          <el-icon><Reading /></el-icon>
+          数十种科目选择
+          <span class="divider">|</span>
+          <el-icon><Clock /></el-icon>
+          实时更新信息
+        </p>
+        
+        <div class="search-box">
+          <div class="search-container">
+            <el-icon class="search-prefix-icon"><Search /></el-icon>
+            <el-input
+              v-model="keyword"
+              placeholder="搜一搜：城市/科目/年级..."
+              size="large"
+              clearable
+              @keyup.enter="handleSearch"
+              @focus="searchFocused = true"
+              @blur="searchFocused = false"
+              class="search-input"
+            />
+            <el-button 
+              type="primary" 
+              size="large" 
+              @click="handleSearch"
+              class="search-btn"
+            >
+              搜索
+            </el-button>
           </div>
-        </transition>
-
-        <!-- Banner 2: 点亮城市 -->
-        <transition name="fade">
-          <div v-show="currentBanner === 1" class="banner-slide banner-city-light">
-            <div class="hero-content">
-              <div class="city-light-banner">
-                <div class="banner-icon">
-                  <span class="icon-large">🏙️</span>
-                  <span class="sparkle">✨</span>
-                </div>
-                <h1 class="banner-title">
-                  <span class="gradient-text">点亮你的城市</span>
-                </h1>
-                <p class="banner-subtitle">
-                  集结 <span class="highlight-number">1000</span> 位市民的力量
-                  <br/>
-                  即刻开通你所在城市的家教服务！
-                </p>
-                <div class="banner-stats">
-                  <div class="stat-item">
-                    <div class="stat-number">{{ cityLightStats.totalCities }}+</div>
-                    <div class="stat-label">待点亮城市</div>
-                  </div>
-                  <div class="stat-divider"></div>
-                  <div class="stat-item">
-                    <div class="stat-number">{{ cityLightStats.totalLights }}+</div>
-                    <div class="stat-label">市民已参与</div>
-                  </div>
-                  <div class="stat-divider"></div>
-                  <div class="stat-item">
-                    <div class="stat-number">{{ cityLightStats.nearComplete }}</div>
-                    <div class="stat-label">即将开通</div>
-                  </div>
-                </div>
-                <button class="cta-button" @click="goToCityLight">
-                  <span class="button-icon">🚀</span>
-                  <span class="button-text">立即点亮</span>
-                  <el-icon class="button-arrow"><ArrowRight /></el-icon>
-                </button>
-              </div>
-            </div>
+          
+          <!-- 分享按钮 -->
+          <div class="share-buttons">
+            <el-button 
+              type="success" 
+              size="small" 
+              @click="shareToWechat"
+              class="share-btn"
+            >
+              <el-icon><Share /></el-icon>
+              分享给好友
+            </el-button>
+            <el-button 
+              type="warning" 
+              size="small" 
+              @click="shareToTimeline"
+              class="share-btn"
+            >
+              <el-icon><Share /></el-icon>
+              分享到朋友圈
+            </el-button>
           </div>
-        </transition>
-
-        <!-- 轮播指示器 -->
-        <div class="carousel-indicators">
-          <button 
-            v-for="i in 2" 
-            :key="i" 
-            class="indicator-dot"
-            :class="{ 'active': currentBanner === i - 1 }"
-            @click="currentBanner = i - 1"
-          ></button>
         </div>
 
-        <!-- 轮播控制按钮 -->
-        <button class="carousel-control prev" @click="prevBanner">
-          <el-icon><ArrowLeft /></el-icon>
-        </button>
-        <button class="carousel-control next" @click="nextBanner">
-          <el-icon><ArrowRight /></el-icon>
-        </button>
+        <!-- 热门标签 -->
+        <div class="hot-tags">
+          <div class="hot-tag-label">
+            <el-icon><TrendCharts /></el-icon>
+            <span>热搜</span>
+          </div>
+          <div class="hot-tag-list">
+            <div 
+              v-for="(tag, index) in hotTags" 
+              :key="tag" 
+              @click="quickSearch(tag)"
+              class="hot-tag-item"
+              :class="{ 'hot-top': index < 3 }"
+            >
+              <span class="tag-index" v-if="index < 3">{{ index + 1 }}</span>
+              <span class="tag-text">{{ tag }}</span>
+              <el-icon class="tag-icon"><ArrowRight /></el-icon>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
 
@@ -266,18 +120,48 @@
     <div class="sticky-search-area" :class="{ 'is-compact': isFilterCompact }">
       <div class="container">
         <!-- 筛选面板 - 玻璃态效果 -->
-        <transition name="filter-collapse">
-          <div v-show="!isFilterCompact" class="filter-wrapper">
-            <FilterPanel @search="handleFilterSearch" @reset="handleReset" />
-          </div>
-        </transition>
+        <div v-show="!isFilterCompact" class="filter-wrapper">
+          <FilterPanel @search="handleFilterSearch" @reset="handleReset" />
+        </div>
         
         <!-- 列表标题和Tab - 现代化设计 -->
         <div class="list-section">
           <div class="tab-row">
-            <!-- 折叠后的快速筛选条（与Tab并排） -->
-            <transition name="quick-filter-fade">
-              <div v-show="isFilterCompact" class="quick-filter-inline">
+            <!-- Tab容器 -->
+            <div class="tab-container">
+              <div class="tab-nav">
+                <div 
+                  class="tab-item"
+                  :class="{ 'active': activeTab === 'all' }"
+                  @click="changeTab('all')"
+                >
+                  <el-icon class="tab-icon"><Grid /></el-icon>
+                  <span class="tab-text">全部</span>
+                  <span class="tab-count">{{ total }}</span>
+                </div>
+                <div 
+                  class="tab-item tab-hot"
+                  :class="{ 'active': activeTab === 'recommend' }"
+                  @click="changeTab('recommend')"
+                >
+                  <el-icon class="tab-icon"><Sunny /></el-icon>
+                  <span class="tab-text">推荐</span>
+                  <div class="hot-indicator">
+                    <el-icon class="hot-icon"><Lightning /></el-icon>
+                    <span>HOT</span>
+                  </div>
+                </div>
+              </div>
+              <div class="tab-indicator" :style="indicatorStyle"></div>
+            </div>
+            
+            <!-- 统计信息（与Tab并排） -->
+            <div class="stats-info">
+              <span class="result-count">共 {{ total }} 条</span>
+            </div>
+
+            <!-- 折叠后的快速筛选条（排在最右侧） -->
+            <div v-show="isFilterCompact" class="quick-filter-inline">
                 <el-button 
                   type="primary" 
                   size="small" 
@@ -331,40 +215,6 @@
                   </el-tag>
                 </div>
               </div>
-            </transition>
-
-            <!-- Tab容器 -->
-            <div class="tab-container">
-              <div class="tab-nav">
-                <div 
-                  class="tab-item"
-                  :class="{ 'active': activeTab === 'all' }"
-                  @click="changeTab('all')"
-                >
-                  <el-icon class="tab-icon"><Grid /></el-icon>
-                  <span class="tab-text">全部</span>
-                  <span class="tab-count">{{ total }}</span>
-                </div>
-                <div 
-                  class="tab-item tab-hot"
-                  :class="{ 'active': activeTab === 'recommend' }"
-                  @click="changeTab('recommend')"
-                >
-                  <el-icon class="tab-icon"><Sunny /></el-icon>
-                  <span class="tab-text">推荐</span>
-                  <div class="hot-indicator">
-                    <el-icon class="hot-icon"><Lightning /></el-icon>
-                    <span>HOT</span>
-                  </div>
-                </div>
-              </div>
-              <div class="tab-indicator" :style="indicatorStyle"></div>
-            </div>
-            
-            <!-- 统计信息（与Tab并排） -->
-            <div class="stats-info">
-              <span class="result-count">共 {{ total }} 条</span>
-            </div>
           </div>
         </div>
       </div>
@@ -374,21 +224,18 @@
 
       <!-- 家教列表 -->
       <div v-loading="loading" class="tutor-list" element-loading-text="加载中...">
-        <transition-group name="list" tag="div">
-          <el-row :gutter="20" key="list">
-            <el-col 
-              v-for="(tutor, index) in tutorList" 
-              :key="tutor.id" 
-              :xs="24" 
-              :sm="12" 
-              :md="8"
-              class="tutor-col"
-              :style="{ animationDelay: `${index * 0.05}s` }"
-            >
-              <TutorCard :tutor="tutor" @view-detail="viewDetail" />
-            </el-col>
-          </el-row>
-        </transition-group>
+        <el-row :gutter="20">
+          <el-col 
+            v-for="tutor in tutorList" 
+            :key="tutor.id" 
+            :xs="24" 
+            :sm="12" 
+            :md="8"
+            class="tutor-col"
+          >
+            <TutorCard :tutor="tutor" @view-detail="viewDetail" @show-contact="showContactDialog" />
+          </el-col>
+        </el-row>
 
         <!-- 空状态 -->
         <div v-if="!loading && tutorList.length === 0" class="empty-state">
@@ -425,22 +272,75 @@
     <el-backtop :right="30" :bottom="30" class="rocket-backtop">
       <div class="rocket-icon">🚀</div>
     </el-backtop>
+
+    <!-- 联系信息弹窗 -->
+    <el-dialog
+      v-model="contactDialogVisible"
+      title="派单组联系方式"
+      width="400px"
+      :close-on-click-modal="false"
+      center
+    >
+      <div class="contact-dialog">
+        <div class="contact-card" v-if="currentDispatcher">
+          <div class="contact-row">
+            <span class="contact-label-text">昵称</span>
+            <div class="contact-content">
+              <span class="contact-text">{{ currentDispatcher?.nickname || currentDispatcher?.username || '暂无' }}</span>
+              <el-button 
+                size="small" 
+                text
+                @click="copyText(currentDispatcher?.nickname || currentDispatcher?.username)"
+                class="copy-icon-btn"
+              >
+                <el-icon><DocumentCopy /></el-icon>
+              </el-button>
+            </div>
+          </div>
+
+          <div class="contact-row" v-if="currentDispatcher?.contact">
+            <span class="contact-label-text">微信号</span>
+            <div class="contact-content">
+              <span class="contact-text wechat">{{ currentDispatcher.contact }}</span>
+              <el-button 
+                size="small" 
+                text
+                @click="copyText(currentDispatcher.contact)"
+                class="copy-icon-btn"
+              >
+                <el-icon><DocumentCopy /></el-icon>
+              </el-button>
+            </div>
+          </div>
+        </div>
+
+        <div class="contact-tips">
+          <el-icon><InfoFilled /></el-icon>
+          <span>点击复制按钮可复制微信号，然后添加微信联系派单员</span>
+        </div>
+      </div>
+      
+      <template #footer>
+        <el-button @click="contactDialogVisible = false">关闭</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
 <script setup>
 import { ref, reactive, onMounted, onUnmounted, computed } from 'vue'
 import { useRouter } from 'vue-router'
+import { ElMessage } from 'element-plus'
 import { 
   Search, Star, Location, Reading, Clock, List,
   DocumentDelete, RefreshRight, Document, Check, Loading, View, Grid,
-  TrendCharts, ArrowRight, Sunny, Lightning, ArrowLeft, Share,
-  HomeFilled, User, LocationFilled, Wallet, BellFilled, Menu, Filter
+  TrendCharts, ArrowRight, Sunny, Lightning, Share, Filter, User,
+  ChatDotRound, InfoFilled, DocumentCopy
 } from '@element-plus/icons-vue'
 import { getTutorList } from '@/api/tutor'
 import FilterPanel from '@/components/FilterPanel.vue'
 import TutorCard from '@/components/TutorCard.vue'
-import { shareToWechatFriend, shareToWechatTimeline } from '@/utils/wechatShare'
+import { initWechatShare, shareToWechatFriend, shareToWechatTimeline } from '@/utils/wechatShare'
 
 const router = useRouter()
 
@@ -455,19 +355,14 @@ const hasMore = computed(() => tutorList.value.length < total.value)
 const loadTrigger = ref(null)
 const activeTab = ref('all')
 
-// Banner轮播
-const currentBanner = ref(0)
-const cityLightStats = reactive({
-  totalCities: 0,
-  totalLights: 0,
-  nearComplete: 0
-})
-let bannerTimer = null
 const searchFocused = ref(false)
-const showMobileMenu = ref(false)
 const isFilterCompact = ref(false)
 const lastScrollTop = ref(0)
 let observer = null
+
+// 联系信息弹窗相关
+const contactDialogVisible = ref(false)
+const currentDispatcher = ref(null)
 
 // Tab指示器样式
 const indicatorStyle = computed(() => {
@@ -524,33 +419,30 @@ const searchParams = reactive({
   is_urgent: '' // 是否加急
 })
 
-onMounted(() => {
+onMounted(async () => {
   loadTutorList()
   setupIntersectionObserver()
   initViewCount()
   incrementViewCount()
-  loadCityLightStats()
-  startBannerCarousel()
   setupScrollListener()
+  
+  // 初始化微信分享
+  try {
+    await initWechatShare()
+  } catch (error) {
+    // 静默处理错误
+  }
 })
 
-// 设置滚动监听
+// 设置滚动监听（暂时禁用自动折叠）
 const setupScrollListener = () => {
-  window.addEventListener('scroll', handleScroll)
+  // window.addEventListener('scroll', handleScroll)
 }
 
-// 处理滚动事件
+// 处理滚动事件（暂时禁用自动折叠）
 const handleScroll = () => {
-  const scrollTop = window.pageYOffset || document.documentElement.scrollTop
-  
-  // 向下滚动超过300px时折叠筛选框
-  if (scrollTop > 300) {
-    isFilterCompact.value = true
-  } else {
-    isFilterCompact.value = false
-  }
-  
-  lastScrollTop.value = scrollTop
+  // const scrollTop = window.pageYOffset || document.documentElement.scrollTop
+  // lastScrollTop.value = scrollTop
 }
 
 // 切换筛选框展开/折叠
@@ -646,59 +538,7 @@ const formatNumber = (num) => {
   return num.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ',')
 }
 
-// Banner轮播控制
-const startBannerCarousel = () => {
-  stopBannerCarousel()
-  bannerTimer = setInterval(() => {
-    currentBanner.value = (currentBanner.value + 1) % 2
-  }, 5000) // 5秒切换
-}
-
-const stopBannerCarousel = () => {
-  if (bannerTimer) {
-    clearInterval(bannerTimer)
-    bannerTimer = null
-  }
-}
-
-const nextBanner = () => {
-  currentBanner.value = (currentBanner.value + 1) % 2
-  startBannerCarousel() // 重置自动轮播
-}
-
-const prevBanner = () => {
-  currentBanner.value = (currentBanner.value - 1 + 2) % 2
-  startBannerCarousel() // 重置自动轮播
-}
-
-// 加载城市点亮统计数据
-const loadCityLightStats = async () => {
-  try {
-    // 获取热门点亮城市
-    const response = await fetch('/api/city-light/hot')
-    const data = await response.json()
-    
-    if (data.success && data.data) {
-      cityLightStats.totalCities = data.data.length
-      cityLightStats.totalLights = data.data.reduce((sum, city) => sum + city.total_lights, 0)
-      cityLightStats.nearComplete = data.data.filter(city => city.progress_percent >= 80).length
-    }
-  } catch (error) {
-    console.error('加载城市点亮数据失败:', error)
-    // 使用默认值
-    cityLightStats.totalCities = 50
-    cityLightStats.totalLights = 2580
-    cityLightStats.nearComplete = 3
-  }
-}
-
-// 跳转到点亮城市页面
-const goToCityLight = () => {
-  router.push('/city-light')
-}
-
 onUnmounted(() => {
-  stopBannerCarousel()
   if (observer) {
     observer.disconnect()
   }
@@ -838,6 +678,70 @@ const viewDetail = (id) => {
   router.push(`/detail/${id}`)
 }
 
+// 显示联系信息弹窗
+const showContactDialog = (dispatcherInfo) => {
+  currentDispatcher.value = dispatcherInfo
+  contactDialogVisible.value = true
+}
+
+// 复制微信号信息
+const copyWechatInfo = () => {
+  if (!currentDispatcher.value) {
+    ElMessage.warning('没有可复制的内容')
+    return
+  }
+  
+  const nickname = currentDispatcher.value?.nickname || currentDispatcher.value?.username || '暂无'
+  const wechatId = currentDispatcher.value?.contact || '暂无微信号'
+  const content = `${nickname}：${wechatId}`
+  
+  copyText(content)
+}
+
+// 复制文本到剪贴板
+const copyText = (text) => {
+  if (!text) {
+    ElMessage.warning('没有可复制的内容')
+    return
+  }
+  
+  // 使用 Clipboard API
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(text).then(() => {
+      ElMessage.success('已复制到剪贴板')
+    }).catch(() => {
+      fallbackCopy(text)
+    })
+  } else {
+    fallbackCopy(text)
+  }
+}
+
+// 兼容性复制方法
+const fallbackCopy = (text) => {
+  const textArea = document.createElement('textarea')
+  textArea.value = text
+  textArea.style.position = 'fixed'
+  textArea.style.top = '-9999px'
+  textArea.style.left = '-9999px'
+  document.body.appendChild(textArea)
+  textArea.focus()
+  textArea.select()
+  
+  try {
+    const successful = document.execCommand('copy')
+    if (successful) {
+      ElMessage.success('已复制到剪贴板')
+    } else {
+      ElMessage.error('复制失败，请手动复制')
+    }
+  } catch (err) {
+    ElMessage.error('复制失败，请手动复制')
+  }
+  
+  document.body.removeChild(textArea)
+}
+
 const loadMore = () => {
   if (hasMore.value && !loadingMore.value && !loading.value) {
     currentPage.value++
@@ -862,220 +766,10 @@ const resetAndReload = () => {
 </script>
 
 <style scoped>
-/* 顶部导航栏 */
-.top-navbar {
-  position: sticky;
-  top: 0;
-  left: 0;
-  right: 0;
-  z-index: 1000;
-  background: white;
-  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
-  backdrop-filter: blur(10px);
-}
-
-.navbar-container {
-  max-width: 1400px;
-  margin: 0 auto;
-  padding: 0 24px;
-  height: 70px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-}
-
-.navbar-left {
-  flex-shrink: 0;
-}
-
-.logo-section {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  cursor: pointer;
-  transition: all 0.3s;
-}
-
-.logo-section:hover {
-  transform: scale(1.05);
-}
-
-.logo-icon {
-  color: #667eea;
-  filter: drop-shadow(0 2px 8px rgba(102, 126, 234, 0.3));
-}
-
-.logo-text {
-  font-size: 22px;
-  font-weight: 800;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
-  letter-spacing: 1px;
-}
-
-.navbar-center {
-  display: flex;
-  gap: 8px;
-  flex: 1;
-  justify-content: center;
-  max-width: 600px;
-}
-
-.nav-item {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 10px 20px;
-  border-radius: 12px;
-  color: #606266;
-  font-size: 15px;
-  font-weight: 600;
-  text-decoration: none;
-  transition: all 0.3s;
-  position: relative;
-}
-
-.nav-item::after {
-  content: '';
-  position: absolute;
-  bottom: 5px;
-  left: 50%;
-  width: 0;
-  height: 3px;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  border-radius: 2px;
-  transform: translateX(-50%);
-  transition: width 0.3s;
-}
-
-.nav-item:hover {
-  color: #667eea;
-  background: rgba(102, 126, 234, 0.06);
-}
-
-.nav-item:hover::after {
-  width: 60%;
-}
-
-.nav-item.active {
-  color: #667eea;
-  background: rgba(102, 126, 234, 0.1);
-}
-
-.nav-item.active::after {
-  width: 60%;
-}
-
-.navbar-right {
-  display: flex;
-  gap: 12px;
-  flex-shrink: 0;
-}
-
-.navbar-right .el-button {
-  border-radius: 20px;
-  font-weight: 600;
-}
-
-.mobile-menu-btn {
-  display: none;
-  cursor: pointer;
-  color: #667eea;
-  padding: 8px;
-  border-radius: 8px;
-  transition: all 0.3s;
-}
-
-.mobile-menu-btn:hover {
-  background: rgba(102, 126, 234, 0.1);
-}
-
-.mobile-menu {
-  position: absolute;
-  top: 70px;
-  left: 0;
-  right: 0;
-  background: white;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
-  padding: 12px;
-  display: none;
-}
-
-.mobile-nav-item {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 14px 16px;
-  color: #606266;
-  font-size: 15px;
-  font-weight: 600;
-  text-decoration: none;
-  border-radius: 12px;
-  transition: all 0.3s;
-  margin-bottom: 4px;
-}
-
-.mobile-nav-item:hover {
-  background: rgba(102, 126, 234, 0.1);
-  color: #667eea;
-}
-
-.mobile-nav-item:last-child {
-  margin-bottom: 0;
-}
-
-/* 移动端菜单动画 */
-.slide-down-enter-active, .slide-down-leave-active {
-  transition: all 0.3s ease;
-}
-
-.slide-down-enter-from {
-  opacity: 0;
-  transform: translateY(-10px);
-}
-
-.slide-down-leave-to {
-  opacity: 0;
-  transform: translateY(-10px);
-}
-
-/* 响应式 - 移动端显示菜单按钮 */
-@media (max-width: 992px) {
-  .navbar-center {
-    display: none;
-  }
-  
-  .navbar-right {
-    display: none;
-  }
-  
-  .mobile-menu-btn {
-    display: block;
-  }
-  
-  .mobile-menu {
-    display: block;
-  }
-}
-
+/* 响应式样式 */
 @media (max-width: 768px) {
-  .navbar-container {
-    padding: 0 16px;
-    height: 60px;
-  }
-  
-  .logo-text {
-    font-size: 18px;
-  }
-  
-  .mobile-menu {
-    top: 60px;
-  }
-  
   .sticky-search-area {
-    top: 60px !important;
+    top: 70px !important;
   }
   
   /* 移动端Tab行优化 */
@@ -1115,7 +809,7 @@ const resetAndReload = () => {
   position: relative;
   background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
   color: white;
-  padding: 100px 20px 80px;
+  padding: 70px 20px 80px; /* 顶部70px为导航栏预留空间 */
   text-align: center;
   overflow: hidden;
 }
@@ -1135,7 +829,6 @@ const resetAndReload = () => {
   position: absolute;
   border-radius: 50%;
   background: white;
-  animation: float 20s infinite ease-in-out;
 }
 
 .circle-1 {
@@ -1143,7 +836,6 @@ const resetAndReload = () => {
   height: 300px;
   top: -150px;
   left: -150px;
-  animation-delay: 0s;
 }
 
 .circle-2 {
@@ -1151,7 +843,6 @@ const resetAndReload = () => {
   height: 200px;
   top: 50%;
   right: -100px;
-  animation-delay: 5s;
 }
 
 .circle-3 {
@@ -1159,302 +850,11 @@ const resetAndReload = () => {
   height: 150px;
   bottom: -75px;
   left: 50%;
-  animation-delay: 10s;
-}
-
-@keyframes float {
-  0%, 100% {
-    transform: translateY(0) rotate(0deg);
-  }
-  50% {
-    transform: translateY(-50px) rotate(180deg);
-  }
 }
 
 .hero-content {
   position: relative;
   z-index: 1;
-}
-
-/* 轮播容器 */
-.hero-carousel {
-  position: relative;
-  width: 100%;
-  min-height: 420px;
-  overflow: visible;
-}
-
-.banner-slide {
-  position: absolute;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 420px;
-}
-
-/* Banner过渡动画 */
-.fade-enter-active, .fade-leave-active {
-  transition: opacity 0.5s;
-}
-
-.fade-enter-from {
-  opacity: 0;
-}
-
-.fade-leave-to {
-  opacity: 0;
-}
-
-/* 轮播指示器 */
-.carousel-indicators {
-  position: absolute;
-  bottom: 30px;
-  left: 50%;
-  transform: translateX(-50%);
-  display: flex;
-  gap: 12px;
-  z-index: 10;
-}
-
-.indicator-dot {
-  width: 12px;
-  height: 12px;
-  border-radius: 50%;
-  background: rgba(255, 255, 255, 0.4);
-  border: 2px solid rgba(255, 255, 255, 0.6);
-  cursor: pointer;
-  transition: all 0.3s;
-  padding: 0;
-}
-
-.indicator-dot:hover {
-  background: rgba(255, 255, 255, 0.7);
-  transform: scale(1.2);
-}
-
-.indicator-dot.active {
-  width: 32px;
-  border-radius: 6px;
-  background: white;
-}
-
-/* 轮播控制按钮 */
-.carousel-control {
-  position: absolute;
-  top: 50%;
-  transform: translateY(-50%);
-  width: 48px;
-  height: 48px;
-  border-radius: 50%;
-  background: rgba(255, 255, 255, 0.2);
-  backdrop-filter: blur(10px);
-  border: 2px solid rgba(255, 255, 255, 0.3);
-  color: white;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 20px;
-  transition: all 0.3s;
-  z-index: 10;
-  opacity: 0;
-}
-
-.hero-section:hover .carousel-control {
-  opacity: 1;
-}
-
-.carousel-control:hover {
-  background: rgba(255, 255, 255, 0.3);
-  border-color: rgba(255, 255, 255, 0.5);
-  transform: translateY(-50%) scale(1.1);
-}
-
-.carousel-control.prev {
-  left: 30px;
-}
-
-.carousel-control.next {
-  right: 30px;
-}
-
-/* 点亮城市Banner样式 */
-.banner-city-light {
-  background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
-}
-
-.city-light-banner {
-  text-align: center;
-  padding: 40px 30px;
-}
-
-.banner-icon {
-  position: relative;
-  display: inline-block;
-  margin-bottom: 30px;
-}
-
-.banner-icon .icon-large {
-  font-size: 80px;
-  display: block;
-  filter: drop-shadow(0 8px 24px rgba(255, 215, 0, 0.4));
-  animation: bounce-icon 2s ease-in-out infinite;
-}
-
-@keyframes bounce-icon {
-  0%, 100% {
-    transform: translateY(0);
-  }
-  50% {
-    transform: translateY(-20px);
-  }
-}
-
-.banner-icon .sparkle {
-  position: absolute;
-  top: -10px;
-  right: -10px;
-  font-size: 32px;
-  animation: sparkle-rotate 3s linear infinite;
-}
-
-@keyframes sparkle-rotate {
-  from {
-    transform: rotate(0deg);
-  }
-  to {
-    transform: rotate(360deg);
-  }
-}
-
-.banner-title {
-  font-size: 52px;
-  font-weight: 900;
-  margin-bottom: 24px;
-  text-shadow: 0 4px 20px rgba(255, 255, 255, 0.3);
-}
-
-.gradient-text {
-  background: linear-gradient(120deg, #FFD700, #FFA500, #FFD700);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
-  animation: gradient-shift 3s ease infinite;
-}
-
-@keyframes gradient-shift {
-  0%, 100% {
-    background-position: 0% 50%;
-  }
-  50% {
-    background-position: 100% 50%;
-  }
-}
-
-.banner-subtitle {
-  font-size: 20px;
-  line-height: 1.6;
-  opacity: 0.95;
-  margin-bottom: 40px;
-}
-
-.highlight-number {
-  color: #FFD700;
-  font-size: 32px;
-  font-weight: 900;
-  text-shadow: 0 0 20px rgba(255, 215, 0, 0.5);
-}
-
-.banner-stats {
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  gap: 40px;
-  margin-bottom: 40px;
-  flex-wrap: wrap;
-}
-
-.banner-stats .stat-item {
-  text-align: center;
-}
-
-.banner-stats .stat-number {
-  font-size: 36px;
-  font-weight: 900;
-  background: linear-gradient(120deg, #FFD700, #FF6B6B);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
-  margin-bottom: 8px;
-}
-
-.banner-stats .stat-label {
-  font-size: 14px;
-  opacity: 0.8;
-}
-
-.stat-divider {
-  width: 1px;
-  height: 40px;
-  background: rgba(255, 255, 255, 0.2);
-}
-
-.cta-button {
-  display: inline-flex;
-  align-items: center;
-  gap: 12px;
-  padding: 16px 40px;
-  font-size: 18px;
-  font-weight: 700;
-  background: linear-gradient(135deg, #FF6B6B 0%, #FF8E53 100%);
-  border: none;
-  border-radius: 50px;
-  color: white;
-  cursor: pointer;
-  box-shadow: 0 8px 30px rgba(255, 107, 107, 0.4);
-  transition: all 0.3s;
-  animation: pulse-cta 2s ease-in-out infinite;
-}
-
-@keyframes pulse-cta {
-  0%, 100% {
-    box-shadow: 0 8px 30px rgba(255, 107, 107, 0.4);
-  }
-  50% {
-    box-shadow: 0 12px 40px rgba(255, 107, 107, 0.6);
-  }
-}
-
-.cta-button:hover {
-  transform: translateY(-4px) scale(1.05);
-  box-shadow: 0 12px 40px rgba(255, 107, 107, 0.6);
-}
-
-.cta-button:active {
-  transform: translateY(-2px) scale(1.02);
-}
-
-.cta-button .button-icon {
-  font-size: 24px;
-  animation: rocket-fly 1.5s ease-in-out infinite;
-}
-
-@keyframes rocket-fly {
-  0%, 100% {
-    transform: translateY(0) rotate(0deg);
-  }
-  50% {
-    transform: translateY(-4px) rotate(-10deg);
-  }
-}
-
-.cta-button .button-arrow {
-  font-size: 20px;
-  transition: transform 0.3s;
-}
-
-.cta-button:hover .button-arrow {
-  transform: translateX(5px);
 }
 
 .hero-badge {
@@ -1467,7 +867,6 @@ const resetAndReload = () => {
   border-radius: 50px;
   font-size: 14px;
   margin-bottom: 30px;
-  animation: slideDown 0.6s ease-out;
 }
 
 .hero-title {
@@ -1475,7 +874,6 @@ const resetAndReload = () => {
   font-weight: 700;
   margin-bottom: 20px;
   line-height: 1.2;
-  animation: slideUp 0.6s ease-out;
 }
 
 .hero-title .highlight {
@@ -1483,16 +881,6 @@ const resetAndReload = () => {
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
-  animation: glow 2s ease-in-out infinite alternate;
-}
-
-@keyframes glow {
-  from {
-    filter: drop-shadow(0 0 10px rgba(245, 87, 108, 0.5));
-  }
-  to {
-    filter: drop-shadow(0 0 20px rgba(245, 87, 108, 0.8));
-  }
 }
 
 .hero-subtitle {
@@ -1504,52 +892,19 @@ const resetAndReload = () => {
   font-size: 16px;
   margin-bottom: 50px;
   opacity: 0.95;
-  animation: slideUp 0.6s ease-out 0.2s both;
 }
 
 .hero-subtitle .divider {
   margin: 0 5px;
 }
 
-@keyframes slideDown {
-  from {
-    opacity: 0;
-    transform: translateY(-30px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
-@keyframes slideUp {
-  from {
-    opacity: 0;
-    transform: translateY(30px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
 
 /* 搜索框 */
 .search-box {
   max-width: 800px;
   margin: 0 auto 30px;
-  animation: zoomIn 0.6s ease-out 0.4s both;
 }
 
-@keyframes zoomIn {
-  from {
-    opacity: 0;
-    transform: scale(0.9);
-  }
-  to {
-    opacity: 1;
-    transform: scale(1);
-  }
-}
 
 .search-container {
   position: relative;
@@ -1559,12 +914,10 @@ const resetAndReload = () => {
   border-radius: 60px;
   box-shadow: 0 10px 40px rgba(0, 0, 0, 0.15);
   padding: 8px 8px 8px 25px;
-  transition: all 0.3s;
 }
 
 .search-container:hover {
   box-shadow: 0 15px 50px rgba(0, 0, 0, 0.2);
-  transform: translateY(-2px);
 }
 
 .search-container:focus-within {
@@ -1583,12 +936,10 @@ const resetAndReload = () => {
   padding: 8px 16px;
   font-size: 14px;
   font-weight: 500;
-  transition: all 0.3s ease;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
 }
 
 .share-btn:hover {
-  transform: translateY(-2px);
   box-shadow: 0 6px 20px rgba(0, 0, 0, 0.15);
 }
 
@@ -1638,7 +989,6 @@ const resetAndReload = () => {
   background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
   border: none;
   box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4);
-  transition: all 0.3s;
   display: flex;
   align-items: center;
   gap: 6px;
@@ -1647,11 +997,6 @@ const resetAndReload = () => {
 .search-button:hover {
   background: linear-gradient(135deg, #764ba2 0%, #667eea 100%);
   box-shadow: 0 6px 20px rgba(102, 126, 234, 0.6);
-  transform: scale(1.05);
-}
-
-.search-button:active {
-  transform: scale(0.98);
 }
 
 .search-btn-icon {
@@ -1666,13 +1011,8 @@ const resetAndReload = () => {
   flex-wrap: wrap;
   gap: 12px;
   margin-top: 30px;
-  animation: fadeIn 0.6s ease-out 0.6s both;
 }
 
-@keyframes fadeIn {
-  from { opacity: 0; }
-  to { opacity: 1; }
-}
 
 /* 热门标签 - 现代化设计 */
 .hot-tag-label {
@@ -1709,20 +1049,8 @@ const resetAndReload = () => {
   color: white;
   font-size: 14px;
   cursor: pointer;
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
   position: relative;
   overflow: hidden;
-}
-
-.hot-tag-item::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: -100%;
-  width: 100%;
-  height: 100%;
-  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.3), transparent);
-  transition: left 0.5s;
 }
 
 .hot-tag-item:hover::before {
@@ -1731,13 +1059,8 @@ const resetAndReload = () => {
 
 .hot-tag-item:hover {
   background: rgba(255, 255, 255, 0.3);
-  transform: translateY(-2px);
   box-shadow: 0 6px 20px rgba(255, 255, 255, 0.25);
   border-color: rgba(255, 255, 255, 0.5);
-}
-
-.hot-tag-item:active {
-  transform: translateY(0) scale(0.98);
 }
 
 .hot-tag-item.hot-top {
@@ -1809,28 +1132,14 @@ const resetAndReload = () => {
   background: white;
   border-radius: 16px;
   box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
-  transition: all 0.3s;
-  animation: slideUp 0.6s ease-out both;
   min-height: 110px;
 }
 
 .stat-card:hover {
-  transform: translateY(-5px);
   box-shadow: 0 8px 30px rgba(0, 0, 0, 0.12);
 }
 
-.stat-card.stat-animated .stat-value {
-  animation: pulse 2s ease-in-out infinite;
-}
 
-@keyframes pulse {
-  0%, 100% {
-    transform: scale(1);
-  }
-  50% {
-    transform: scale(1.05);
-  }
-}
 
 .stat-icon {
   width: 60px;
@@ -1889,32 +1198,9 @@ const resetAndReload = () => {
   box-shadow: 0 1px 8px rgba(0, 0, 0, 0.06);
 }
 
-/* 筛选面板折叠动画 */
-.filter-collapse-enter-active,
-.filter-collapse-leave-active {
-  transition: all 0.3s ease;
-  max-height: 200px;
-  overflow: hidden;
-}
+/* 筛选面板折叠 */
 
-.filter-collapse-enter-from,
-.filter-collapse-leave-to {
-  opacity: 0;
-  max-height: 0;
-  margin-top: -20px;
-}
-
-/* 快速筛选条淡入淡出 */
-.quick-filter-fade-enter-active,
-.quick-filter-fade-leave-active {
-  transition: all 0.3s ease;
-}
-
-.quick-filter-fade-enter-from,
-.quick-filter-fade-leave-to {
-  opacity: 0;
-  transform: translateY(-10px);
-}
+/* 快速筛选条 */
 
 /* 容器 */
 .container {
@@ -1924,9 +1210,6 @@ const resetAndReload = () => {
 }
 
 /* 筛选面板包装 */
-.filter-wrapper {
-  animation: slideUp 0.6s ease-out;
-}
 
 /* 列表区域 */
 /* Tab容器 - 现代化设计 */
@@ -2036,7 +1319,6 @@ const resetAndReload = () => {
   font-weight: 600;
   color: #606266;
   cursor: pointer;
-  transition: all 0.3s ease;
   border-radius: 8px;
   user-select: none;
   white-space: nowrap;
@@ -2045,7 +1327,6 @@ const resetAndReload = () => {
 
 .tab-item .tab-icon {
   font-size: 18px;
-  transition: all 0.3s;
 }
 
 .tab-item .tab-text {
@@ -2064,7 +1345,6 @@ const resetAndReload = () => {
   font-size: 12px;
   font-weight: 700;
   color: #909399;
-  transition: all 0.3s;
 }
 
 .tab-item:hover {
@@ -2101,7 +1381,6 @@ const resetAndReload = () => {
   font-weight: 800;
   color: white;
   letter-spacing: 0.5px;
-  animation: pulse-hot 2s ease-in-out infinite;
   z-index: 10;
   border: 2px solid white;
 }
@@ -2110,14 +1389,6 @@ const resetAndReload = () => {
   font-size: 12px;
 }
 
-@keyframes pulse-hot {
-  0%, 100% {
-    transform: scale(1);
-  }
-  50% {
-    transform: scale(1.08);
-  }
-}
 
 .tab-item.tab-hot.active {
   background: linear-gradient(135deg, #FF6B6B 0%, #FF8E53 100%);
@@ -2147,35 +1418,8 @@ const resetAndReload = () => {
 }
 
 .tutor-col {
-  animation: fadeInUp 0.6s ease-out both;
   display: flex;
   width: 100%;
-}
-
-@keyframes fadeInUp {
-  from {
-    opacity: 0;
-    transform: translateY(20px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
-/* 列表动画 */
-.list-enter-active, .list-leave-active {
-  transition: all 0.5s ease;
-}
-
-.list-enter-from {
-  opacity: 0;
-  transform: translateY(30px);
-}
-
-.list-leave-to {
-  opacity: 0;
-  transform: scale(0.9);
 }
 
 /* 空状态 */
@@ -2193,16 +1437,6 @@ const resetAndReload = () => {
   font-size: 120px;
   color: #dcdfe6;
   margin-bottom: 24px;
-  animation: float 3s ease-in-out infinite;
-}
-
-@keyframes float {
-  0%, 100% {
-    transform: translateY(0);
-  }
-  50% {
-    transform: translateY(-10px);
-  }
 }
 
 .empty-text {
@@ -2291,7 +1525,7 @@ const resetAndReload = () => {
 @media (max-width: 768px) {
   /* Hero区域优化 */
   .hero-section {
-    padding: 80px 15px 60px;
+    padding: 60px 15px 60px; /* 顶部60px为移动端导航栏预留空间 */
   }
 
   .hero-title {
@@ -2588,18 +1822,12 @@ const resetAndReload = () => {
   background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
   border-radius: 50% !important;
   box-shadow: 0 2px 12px rgba(102, 126, 234, 0.3) !important;
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
   opacity: 0.9;
 }
 
 .rocket-backtop:hover {
   opacity: 1;
-  transform: translateY(-3px) scale(1.05) !important;
   box-shadow: 0 6px 20px rgba(102, 126, 234, 0.5) !important;
-}
-
-.rocket-backtop:active {
-  transform: translateY(-1px) scale(1.02) !important;
 }
 
 .rocket-icon {
@@ -2612,6 +1840,88 @@ const resetAndReload = () => {
 /* 滚动平滑 */
 * {
   scroll-behavior: smooth;
+}
+
+/* 联系信息弹窗样式 */
+.contact-dialog {
+  padding: 10px 0;
+}
+
+.contact-card {
+  background: #fafafa;
+  border-radius: 8px;
+  padding: 20px;
+  border: 1px solid #ebeef5;
+}
+
+.contact-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 0;
+}
+
+.contact-row:not(:last-child) {
+  border-bottom: 1px solid #ebeef5;
+}
+
+.contact-label-text {
+  font-size: 14px;
+  font-weight: 500;
+  color: #909399;
+  min-width: 60px;
+}
+
+.contact-content {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 1;
+  justify-content: flex-end;
+}
+
+.contact-text {
+  font-size: 15px;
+  color: #303133;
+  padding: 6px 12px;
+  background: white;
+  border-radius: 4px;
+  border: 1px solid #dcdfe6;
+}
+
+.contact-text.wechat {
+  font-family: 'Courier New', monospace;
+  letter-spacing: 0.5px;
+  color: #409eff;
+  font-weight: 500;
+}
+
+.contact-tips {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 20px;
+  padding: 12px 16px;
+  background: #f8f9fa;
+  border-radius: 4px;
+  font-size: 13px;
+  color: #666;
+}
+
+.contact-tips .el-icon {
+  font-size: 16px;
+  color: #999;
+}
+
+/* 复制按钮图标样式 */
+.copy-icon-btn {
+  color: #909399 !important;
+  padding: 4px !important;
+}
+
+.copy-icon-btn:hover {
+  color: #409eff !important;
+  background: #ecf5ff !important;
 }
 </style>
 

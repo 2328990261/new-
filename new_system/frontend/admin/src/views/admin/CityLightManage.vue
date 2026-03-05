@@ -67,19 +67,20 @@
         </div>
       </template>
 
-      <!-- 搜索筛�?-->
+      <!-- 搜索筛选 -->
       <el-form :inline="true" class="search-form">
-        <el-form-item label="状�?>
-          <el-select v-model="searchParams.status" placeholder="全部" clearable @change="loadData">
-            <el-option label="未开�? :value="0" />
-            <el-option label="已开�? :value="1" />
+        <el-form-item label="状态">
+          <el-select v-model="searchParams.status" placeholder="全部" clearable style="width: 150px" @change="loadData">
+            <el-option label="未开通" :value="0"></el-option>
+            <el-option label="已开通" :value="1"></el-option>
           </el-select>
         </el-form-item>
         <el-form-item label="城市名称">
           <el-input 
             v-model="searchParams.keyword" 
-            placeholder="搜索城市" 
+            placeholder="输入城市名称搜索" 
             clearable 
+            style="width: 200px"
             @keyup.enter="loadData"
             @clear="loadData"
           />
@@ -105,11 +106,11 @@
           </template>
         </el-table-column>
         <el-table-column prop="total_lights" label="点亮人数" width="100" align="center" />
-        <el-table-column label="状�? width="100" align="center">
+        <el-table-column label="状态" width="100" align="center">
           <template #default="{ row }">
-            <el-tag v-if="row.status === 1" type="success">已开�?/el-tag>
-            <el-tag v-else-if="row.can_open" type="warning">可开�?/el-tag>
-            <el-tag v-else type="info">点亮�?/el-tag>
+            <el-tag v-if="row.status === 1" type="success">已开通</el-tag>
+            <el-tag v-else-if="row.can_open" type="warning">可开通</el-tag>
+            <el-tag v-else type="info">点亮中</el-tag>
           </template>
         </el-table-column>
         <el-table-column prop="first_light_time" label="首次点亮" width="160">
@@ -117,7 +118,7 @@
             {{ formatDateTime(row.first_light_time) }}
           </template>
         </el-table-column>
-        <el-table-column prop="last_light_time" label="最近点�? width="160">
+        <el-table-column prop="last_light_time" label="最近点亮" width="160">
           <template #default="{ row }">
             {{ formatDateTime(row.last_light_time) }}
           </template>
@@ -138,7 +139,7 @@
               @click="handleOpenCity(row)"
               :disabled="!row.can_open"
             >
-              开通城�?
+              开通城市
             </el-button>
           </template>
         </el-table-column>
@@ -157,7 +158,7 @@
       </div>
     </el-card>
 
-    <!-- 点亮用户列表对话�?-->
+    <!-- 点亮用户列表对话框 -->
     <el-dialog 
       v-model="usersDialogVisible" 
       :title="`${currentCity.city_name} - 点亮用户列表`"
@@ -165,14 +166,19 @@
     >
       <el-table v-loading="usersLoading" :data="usersList" border>
         <el-table-column type="index" label="#" width="60" />
-        <el-table-column prop="user_identifier" label="用户标识" width="200">
+        <el-table-column prop="user_identifier" label="用户标识" min-width="200">
           <template #default="{ row }">
-            <el-tooltip :content="row.user_identifier" placement="top">
+            <el-tooltip v-if="row.user_identifier && row.user_identifier.length > 20" :content="row.user_identifier" placement="top">
               <span class="text-ellipsis">{{ row.user_identifier.substring(0, 20) }}...</span>
             </el-tooltip>
+            <span v-else>{{ row.user_identifier || '-' }}</span>
           </template>
         </el-table-column>
-        <el-table-column prop="user_contact" label="联系方式" width="180" />
+        <el-table-column prop="user_contact" label="联系方式" width="180">
+          <template #default="{ row }">
+            {{ row.user_contact || '-' }}
+          </template>
+        </el-table-column>
         <el-table-column prop="create_time" label="点亮时间" width="160">
           <template #default="{ row }">
             {{ formatDateTime(row.create_time) }}
@@ -404,7 +410,7 @@ const formatDateTime = (time) => {
   border-radius: 8px;
 }
 
-/* 进度单元�?*/
+/* 进度单元格 */
 .progress-cell {
   display: flex;
   align-items: center;
@@ -433,7 +439,7 @@ const formatDateTime = (time) => {
   white-space: nowrap;
 }
 
-/* 响应�?*/
+/* 响应式 */
 @media (max-width: 768px) {
   .stat-value {
     font-size: 24px;

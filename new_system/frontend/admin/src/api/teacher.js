@@ -1,4 +1,4 @@
-import request from '@/utils/request'
+﻿import request from '@/utils/request'
 
 /**
  * 获取教师列表
@@ -22,15 +22,31 @@ export function getTeacherDetail(id) {
 }
 
 /**
- * 审核教师
+ * 审核教师（保留兼容性）
  */
-export function reviewTeacher(id, status, reason = '') {
+export function reviewTeacher(id, status, reason = '', certifications = {}) {
   return request({
     url: `/teachers/${id}/review`,
     method: 'post',
     data: {
       status,
-      reason
+      reason,
+      real_name_verified: certifications.real_name_verified,
+      education_verified: certifications.education_verified,
+      teacher_verified: certifications.teacher_verified
+    }
+  })
+}
+
+/**
+ * 更新教师状态
+ */
+export function updateTeacherStatus(id, status) {
+  return request({
+    url: `/teachers/${id}/update-status`,
+    method: 'post',
+    data: {
+      status
     }
   })
 }
@@ -58,3 +74,61 @@ export function deleteTeacher(id) {
   })
 }
 
+/**
+ * 批量删除教师
+ */
+export function batchDeleteTeachers(ids) {
+  return request({
+    url: '/teachers/batch-delete',
+    method: 'post',
+    data: {
+      ids
+    }
+  })
+}
+
+/**
+ * 批量更新教师状态
+ */
+export function batchUpdateTeacherStatus(ids, status) {
+  return request({
+    url: '/teachers/batch-update-status',
+    method: 'post',
+    data: {
+      ids,
+      status
+    }
+  })
+}
+
+/**
+ * 更新教师信息
+ */
+export function updateTeacher(id, data) {
+  return request({
+    url: `/teachers/${id}`,
+    method: 'put',
+    data
+  })
+}
+
+/**
+ * 获取教师统计信息
+ */
+export function getTeacherStatistics() {
+  return request({
+    url: '/teachers/statistics',
+    method: 'get'
+  })
+}
+
+/**
+ * 生成教师海报
+ */
+export function generateTeacherPoster(id) {
+  return request({
+    url: `/teachers/generate-poster`,
+    method: 'post',
+    data: { teacher_id: id }
+  })
+}

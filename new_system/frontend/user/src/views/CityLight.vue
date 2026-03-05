@@ -8,61 +8,58 @@
       <canvas ref="fireworkCanvas" class="firework-canvas"></canvas>
     </div>
 
-    <!-- 顶部导航栏 -->
-    <div class="game-header">
-      <div class="header-container">
-        <div class="logo-section">
-          <el-icon class="logo-icon"><LocationFilled /></el-icon>
-          <span class="logo-text">点亮中国</span>
+    <!-- 用户统计浮动卡片 -->
+    <div class="floating-stats-panel">
+      <div 
+        class="stats-card level-card" 
+        :class="`level-${userStats.level}`"
+        @click="showLevelRulesDialog"
+        title="点击查看等级规则"
+      >
+        <div class="stats-icon">{{ getLevelIcon(userStats.level) }}</div>
+        <div class="stats-content">
+          <div class="stats-label">等级</div>
+          <div class="stats-value">{{ userStats.level }}</div>
         </div>
-        
-        <div class="stats-section">
-          <div 
-            class="stat-item level-badge" 
-            :class="`level-${userStats.level}`"
-            @click="showLevelRulesDialog"
-            title="点击查看等级规则"
-          >
-            <span class="level-icon">{{ getLevelIcon(userStats.level) }}</span>
-            <span>{{ userStats.level }}</span>
-          </div>
-          <div class="stat-item">
-            <el-icon><TrophyBase /></el-icon>
-            <span>{{ userStats.total_lights }}次</span>
-          </div>
-          <div class="stat-item" v-if="userStats.rank_position > 0">
-            <el-icon><Medal /></el-icon>
-            <span>NO.{{ userStats.rank_position }}</span>
-          </div>
-          <div 
-            class="stat-item rules-icon" 
-            @click="showRulesDialog"
-            title="点击查看点亮规则"
-          >
-            <el-icon><DocumentCopy /></el-icon>
-            <span>规则</span>
-          </div>
+      </div>
+      
+      <div class="stats-card" @click="showRankingDialog">
+        <div class="stats-icon">🏆</div>
+        <div class="stats-content">
+          <div class="stats-label">点亮次数</div>
+          <div class="stats-value">{{ userStats.total_lights }}次</div>
+        </div>
+      </div>
+      
+      <div class="stats-card" v-if="userStats.rank_position > 0" @click="showRankingDialog">
+        <div class="stats-icon">🥇</div>
+        <div class="stats-content">
+          <div class="stats-label">我的排名</div>
+          <div class="stats-value">NO.{{ userStats.rank_position }}</div>
+        </div>
+      </div>
+      
+      <div 
+        class="stats-card rules-card" 
+        @click="showRulesDialog"
+        title="点击查看点亮规则"
+      >
+        <div class="stats-icon">📖</div>
+        <div class="stats-content">
+          <div class="stats-label">游戏规则</div>
+          <div class="stats-value">查看</div>
         </div>
       </div>
     </div>
 
-    <!-- 主标题区 -->
-    <div class="hero-section">
-      <div class="hero-glow"></div>
-      <h1 class="game-title">
-        <span class="title-icon">🏙️</span>
-        点亮你的城市
-        <span class="title-icon">✨</span>
-      </h1>
-      <p class="game-subtitle">集结 <span class="highlight-number">1000</span> 位用户的力量，即刻开通家教服务！</p>
-      
-      <!-- 搜索框 - 游戏风格 -->
-      <div class="search-section">
+    <!-- 搜索区域 - 紧凑版 -->
+    <div class="compact-search-section">
+      <div class="container">
         <div class="search-wrapper">
           <input 
             v-model="searchKeyword" 
             type="text" 
-            placeholder="🔍 探索你的城市..." 
+            placeholder="🔍 搜索你的城市..." 
             class="game-search-input"
             @keyup.enter="handleSearch"
             @focus="searchFocused = true"
@@ -1272,15 +1269,16 @@ const playFireworks = () => {
   color: white;
   position: relative;
   overflow-x: hidden;
+  padding-top: 20px; /* 额外的顶部间距（全局已有70px） */
 }
 
 /* 背景动画 */
 .game-bg {
   position: fixed;
-  top: 0;
+  top: 70px; /* 从导航栏下方开始 */
   left: 0;
   width: 100%;
-  height: 100%;
+  height: calc(100% - 70px);
   pointer-events: none;
   z-index: 0;
 }
@@ -1313,191 +1311,166 @@ const playFireworks = () => {
   height: 100%;
 }
 
-/* 头部 */
-.game-header {
+/* 浮动统计面板 - 右上角卡片组 */
+.floating-stats-panel {
   position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  z-index: 100;
-  background: rgba(0, 0, 0, 0.3);
-  backdrop-filter: blur(10px);
-  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-}
-
-.header-container {
-  max-width: 1400px;
-  margin: 0 auto;
-  padding: 15px 30px;
+  top: 80px; /* 紧贴在导航栏下方 */
+  right: 20px;
+  z-index: 999;
   display: flex;
-  justify-content: space-between;
-  align-items: center;
+  flex-direction: column;
+  gap: 12px;
+  animation: slideInRight 0.6s ease-out;
 }
 
-.logo-section {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  font-size: 20px;
-  font-weight: 800;
+@keyframes slideInRight {
+  from {
+    opacity: 0;
+    transform: translateX(50px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
 }
 
-.logo-icon {
-  font-size: 28px;
-  color: #FFD700;
-}
-
-.stats-section {
-  display: flex;
-  gap: 20px;
-}
-
-.stat-item {
+.stats-card {
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 8px 16px;
-  background: rgba(255, 255, 255, 0.1);
-  backdrop-filter: blur(10px);
-  border-radius: 20px;
-  font-size: 14px;
-  font-weight: 600;
-  color: white;
-}
-
-.level-badge {
-  background: linear-gradient(135deg, rgba(255, 215, 0, 0.3) 0%, rgba(255, 140, 0, 0.3) 100%) !important;
-  border: 1px solid rgba(255, 215, 0, 0.5);
-  padding: 8px 16px !important;
+  gap: 12px;
+  padding: 12px 16px;
+  background: rgba(255, 255, 255, 0.15);
+  backdrop-filter: blur(15px);
+  border: 2px solid rgba(255, 255, 255, 0.25);
+  border-radius: 16px;
   cursor: pointer;
-  transition: all 0.3s;
-  position: relative;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  min-width: 160px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
 }
 
-.level-badge:hover {
-  transform: scale(1.05);
-  box-shadow: 0 0 15px rgba(255, 215, 0, 0.4);
+.stats-card:hover {
+  transform: translateX(-8px) scale(1.05);
+  background: rgba(255, 255, 255, 0.25);
+  border-color: rgba(255, 255, 255, 0.4);
+  box-shadow: 0 8px 30px rgba(102, 126, 234, 0.3);
 }
 
-.level-badge .level-icon {
-  font-size: 18px;
+.stats-card:active {
+  transform: translateX(-6px) scale(1.02);
 }
 
-.level-badge.level-新手 {
-  background: linear-gradient(135deg, rgba(255, 215, 0, 0.2) 0%, rgba(255, 235, 59, 0.2) 100%) !important;
-  border-color: rgba(255, 215, 0, 0.6);
+.stats-icon {
+  font-size: 28px;
+  flex-shrink: 0;
+  filter: drop-shadow(0 2px 8px rgba(0, 0, 0, 0.3));
 }
 
-.level-badge.level-青铜 {
-  background: linear-gradient(135deg, rgba(205, 127, 50, 0.3) 0%, rgba(184, 115, 51, 0.3) 100%) !important;
-  border-color: rgba(205, 127, 50, 0.5);
+.stats-content {
+  flex: 1;
+  min-width: 0;
 }
 
-.level-badge.level-皇冠 {
-  background: linear-gradient(135deg, rgba(255, 215, 0, 0.3) 0%, rgba(255, 140, 0, 0.3) 100%) !important;
+.stats-label {
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.8);
+  font-weight: 600;
+  margin-bottom: 2px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.stats-value {
+  font-size: 16px;
+  font-weight: 800;
+  color: white;
+  text-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+}
+
+/* 等级卡片特殊样式 */
+.stats-card.level-card {
+  background: linear-gradient(135deg, rgba(255, 215, 0, 0.25) 0%, rgba(255, 140, 0, 0.25) 100%);
   border-color: rgba(255, 215, 0, 0.5);
 }
 
-.level-badge.level-荣耀 {
-  background: linear-gradient(135deg, rgba(138, 43, 226, 0.3) 0%, rgba(75, 0, 130, 0.3) 100%) !important;
-  border-color: rgba(138, 43, 226, 0.5);
-  animation: level-glow 2s ease-in-out infinite;
+.stats-card.level-card:hover {
+  background: linear-gradient(135deg, rgba(255, 215, 0, 0.35) 0%, rgba(255, 140, 0, 0.35) 100%);
+  border-color: rgba(255, 215, 0, 0.7);
+  box-shadow: 0 8px 30px rgba(255, 215, 0, 0.4);
 }
 
-@keyframes level-glow {
+.stats-card.level-新手 {
+  background: linear-gradient(135deg, rgba(255, 215, 0, 0.2) 0%, rgba(255, 235, 59, 0.2) 100%);
+  border-color: rgba(255, 215, 0, 0.6);
+}
+
+.stats-card.level-青铜 {
+  background: linear-gradient(135deg, rgba(205, 127, 50, 0.25) 0%, rgba(184, 115, 51, 0.25) 100%);
+  border-color: rgba(205, 127, 50, 0.5);
+}
+
+.stats-card.level-皇冠 {
+  background: linear-gradient(135deg, rgba(255, 215, 0, 0.25) 0%, rgba(255, 140, 0, 0.25) 100%);
+  border-color: rgba(255, 215, 0, 0.5);
+}
+
+.stats-card.level-荣耀 {
+  background: linear-gradient(135deg, rgba(138, 43, 226, 0.25) 0%, rgba(75, 0, 130, 0.25) 100%);
+  border-color: rgba(138, 43, 226, 0.5);
+  animation: level-card-glow 2s ease-in-out infinite;
+}
+
+@keyframes level-card-glow {
   0%, 100% {
-    box-shadow: 0 0 10px rgba(138, 43, 226, 0.5);
+    box-shadow: 0 4px 20px rgba(138, 43, 226, 0.3);
   }
   50% {
-    box-shadow: 0 0 20px rgba(138, 43, 226, 0.8);
+    box-shadow: 0 8px 30px rgba(138, 43, 226, 0.5);
   }
 }
 
-.rules-icon {
-  cursor: pointer;
-  transition: all 0.3s;
+/* 规则卡片特殊样式 */
+.stats-card.rules-card {
+  background: linear-gradient(135deg, rgba(102, 126, 234, 0.25) 0%, rgba(118, 75, 162, 0.25) 100%);
+  border-color: rgba(102, 126, 234, 0.5);
 }
 
-.rules-icon:hover {
-  transform: scale(1.1);
-  background: rgba(255, 107, 107, 0.2) !important;
+.stats-card.rules-card:hover {
+  background: linear-gradient(135deg, rgba(102, 126, 234, 0.35) 0%, rgba(118, 75, 162, 0.35) 100%);
+  border-color: rgba(102, 126, 234, 0.7);
 }
 
-/* 主标题区 */
-.hero-section {
+/* 紧凑搜索区域 */
+.compact-search-section {
   position: relative;
-  padding: 120px 30px 60px;
-  text-align: center;
+  padding: 30px 0;
   z-index: 1;
 }
 
-.hero-glow {
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  width: 600px;
-  height: 600px;
-  background: radial-gradient(circle, rgba(102, 126, 234, 0.3) 0%, transparent 70%);
-  pointer-events: none;
-}
-
-.game-title {
-  font-size: 56px;
-  font-weight: 900;
-  margin: 0 0 20px 0;
-  text-shadow: 0 0 30px rgba(255, 255, 255, 0.5);
-  animation: glow 2s ease-in-out infinite;
-}
-
-@keyframes glow {
-  0%, 100% { text-shadow: 0 0 20px rgba(255, 255, 255, 0.5); }
-  50% { text-shadow: 0 0 40px rgba(255, 255, 255, 0.8), 0 0 60px rgba(102, 126, 234, 0.6); }
-}
-
-.title-icon {
-  display: inline-block;
-  animation: bounce 1s ease-in-out infinite;
-}
-
-@keyframes bounce {
-  0%, 100% { transform: translateY(0); }
-  50% { transform: translateY(-10px); }
-}
-
-.game-subtitle {
-  font-size: 20px;
-  opacity: 0.9;
-  margin: 0 0 40px 0;
-}
-
-.highlight-number {
-  color: #FFD700;
-  font-size: 28px;
-  font-weight: 900;
-  text-shadow: 0 0 20px rgba(255, 215, 0, 0.5);
-}
-
-/* 搜索框 */
-.search-section {
-  max-width: 600px;
+.compact-search-section .container {
+  max-width: 1200px;
   margin: 0 auto;
+  padding: 0 20px;
 }
 
 .search-wrapper {
   display: flex;
   gap: 12px;
   padding: 8px;
+  max-width: 700px;
+  margin: 0 auto;
   background: rgba(255, 255, 255, 0.1);
   backdrop-filter: blur(10px);
   border-radius: 50px;
   border: 2px solid rgba(255, 255, 255, 0.2);
   transition: all 0.3s;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
 }
 
 .search-wrapper:focus-within {
   border-color: #667eea;
   box-shadow: 0 0 30px rgba(102, 126, 234, 0.4);
+  transform: translateY(-2px);
 }
 
 .game-search-input {
@@ -3380,8 +3353,65 @@ const playFireworks = () => {
   font-size: 20px;
 }
 
-/* 响应式 */
+/* 响应式 - 浮动统计面板 */
+@media (max-width: 1024px) {
+  .floating-stats-panel {
+    right: 15px;
+    top: 75px;
+    gap: 10px;
+  }
+  
+  .stats-card {
+    min-width: 140px;
+    padding: 10px 14px;
+  }
+  
+  .stats-icon {
+    font-size: 24px;
+  }
+  
+  .stats-value {
+    font-size: 14px;
+  }
+}
+
 @media (max-width: 768px) {
+  .city-light-game {
+    padding-top: 10px; /* 移动端额外间距（全局已有60px） */
+  }
+  
+  .game-bg {
+    top: 60px;
+    height: calc(100% - 60px);
+  }
+  
+  .floating-stats-panel {
+    position: relative;
+    top: auto;
+    right: auto;
+    flex-direction: row;
+    justify-content: center;
+    flex-wrap: wrap;
+    padding: 15px;
+    gap: 8px;
+    margin-top: 0;
+  }
+  
+  .stats-card {
+    min-width: auto;
+    flex: 1;
+    min-width: 140px;
+    max-width: 180px;
+  }
+  
+  .stats-card:hover {
+    transform: translateY(-4px) scale(1.05);
+  }
+  
+  .compact-search-section {
+    padding: 20px 0;
+  }
+  
   .gameplay-cards {
     grid-template-columns: repeat(2, 1fr);
   }
@@ -3392,6 +3422,49 @@ const playFireworks = () => {
   
   .earn-methods {
     grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 480px) {
+  .floating-stats-panel {
+    padding: 10px;
+    gap: 6px;
+  }
+  
+  .stats-card {
+    padding: 8px 12px;
+    min-width: 120px;
+  }
+  
+  .stats-icon {
+    font-size: 20px;
+  }
+  
+  .stats-label {
+    font-size: 10px;
+  }
+  
+  .stats-value {
+    font-size: 13px;
+  }
+  
+  .compact-search-section {
+    padding: 15px 0;
+  }
+  
+  .search-wrapper {
+    flex-direction: column;
+    gap: 10px;
+    border-radius: 20px;
+  }
+  
+  .game-search-input {
+    padding: 10px 16px;
+  }
+  
+  .game-search-btn {
+    width: 100%;
+    border-radius: 20px;
   }
 }
 

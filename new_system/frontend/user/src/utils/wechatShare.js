@@ -4,6 +4,7 @@
 
 // 获取微信分享配置
 let shareConfig = null
+let wxConfigReady = false
 
 /**
  * 初始化微信分享配置
@@ -11,23 +12,96 @@ let shareConfig = null
 export async function initWechatShare() {
   try {
     const { getWechatShareConfig } = await import('@/api/wechat')
-    const res = await getWechatShareConfig()
-    if (res.success) {
+    
+    // 获取当前页面完整URL（不包含 # 后面的部分）
+    const url = window.location.href.split('#')[0]
+    
+    const res = await getWechatShareConfig(url)
+    if (res.success && res.data) {
       shareConfig = res.data
+      
+      // 如果在微信环境且配置已启用，初始化微信 JS-SDK
+      if (shareConfig.enabled && shareConfig.signature && isWechatBrowser()) {
+        await initWxConfig(shareConfig)
+      }
+      
       return shareConfig
     }
   } catch (error) {
-    console.error('初始化微信分享配置失败:', error)
+    // 静默处理错误，使用默认配置
   }
   
-  // 使用默认配置
+  // 使用默认配置（不启用JS-SDK，仅使用Meta标签）
   shareConfig = {
-    enabled: true,
+    enabled: false,
     title: '优质家教信息平台',
     desc: '专业的家教信息平台，为您提供优质的家教服务',
     image: ''
   }
   return shareConfig
+}
+
+/**
+ * 初始化微信 JS-SDK 配置
+ */
+async function initWxConfig(config) {
+  return new Promise((resolve, reject) => {
+    // 加载微信 JS-SDK
+    if (!window.wx) {
+      loadWxScript().then(() => {
+        configWx(config, resolve, reject)
+      }).catch(reject)
+    } else {
+      configWx(config, resolve, reject)
+    }
+  })
+}
+
+/**
+ * 配置微信 JS-SDK
+ */
+function configWx(config, resolve, reject) {
+  window.wx.config({
+    debug: false, // 开发时可以设置为 true 查看详细信息
+    appId: config.appId,
+    timestamp: config.timestamp,
+    nonceStr: config.nonceStr,
+    signature: config.signature,
+    jsApiList: config.jsApiList || [
+      'updateAppMessageShareData',
+      'updateTimelineShareData',
+      'onMenuShareTimeline',
+      'onMenuShareAppMessage'
+    ]
+  })
+
+  window.wx.ready(() => {
+    wxConfigReady = true
+    resolve()
+  })
+
+  window.wx.error((err) => {
+    wxConfigReady = false
+    reject(err)
+  })
+}
+
+/**
+ * 加载微信 JS-SDK 脚本
+ */
+function loadWxScript() {
+  return new Promise((resolve, reject) => {
+    if (window.wx) {
+      resolve()
+      return
+    }
+
+    const script = document.createElement('script')
+    script.src = 'https://res.wx.qq.com/open/js/jweixin-1.6.0.js'
+    script.onload = resolve
+    script.onerror = reject
+    document.head.appendChild(script)
+  })
 }
 
 /**
@@ -39,35 +113,30 @@ export async function initWechatShare() {
  * @param {string} options.imgUrl 分享图片
  */
 export function setWechatShare(options = {}) {
-  if (!shareConfig || !shareConfig.enabled) {
-    return
-  }
-
   // 合并配置
   const shareData = {
-    title: options.title || shareConfig.title,
-    desc: options.desc || shareConfig.desc,
-    link: options.link || window.location.href,
-    imgUrl: options.imgUrl || shareConfig.image || getDefaultShareImage()
+    title: options.title || (shareConfig && shareConfig.title) || '优质家教信息平台',
+    desc: options.desc || (shareConfig && shareConfig.desc) || '专业的家教信息平台',
+    link: options.link || getShareLink(),
+    imgUrl: options.imgUrl || (shareConfig && shareConfig.image) || getDefaultShareImage(),
+    success: function () {
+      // 分享成功回调
+    }
   }
 
-  // 检查是否在微信环境中
-  if (isWechatBrowser()) {
-    // 微信环境，使用微信JS-SDK
-    if (window.wx && window.wx.ready) {
-      window.wx.ready(() => {
-        // 分享到朋友圈
-        window.wx.updateAppMessageShareData(shareData)
-        // 分享给朋友
-        window.wx.updateTimelineShareData(shareData)
-      })
-    } else {
-      // 如果微信JS-SDK未加载，使用meta标签
-      setMetaTags(shareData)
-    }
-  } else {
-    // 非微信环境，设置meta标签供其他平台使用
-    setMetaTags(shareData)
+  // 优先设置Meta标签（适用于所有情况）
+  setMetaTags(shareData)
+
+  // 检查是否在微信环境中并且JS-SDK已配置
+  if (isWechatBrowser() && shareConfig && shareConfig.enabled && window.wx && wxConfigReady) {
+    // 微信环境且JS-SDK已就绪，使用微信JS-SDK
+    window.wx.ready(() => {
+      // 分享给朋友
+      window.wx.updateAppMessageShareData(shareData)
+      
+      // 分享到朋友圈
+      window.wx.updateTimelineShareData(shareData)
+    })
   }
 }
 
@@ -85,6 +154,7 @@ function isWechatBrowser() {
 function setMetaTags(shareData) {
   // 设置或更新meta标签
   const setMeta = (name, content) => {
+    if (!content) return
     let meta = document.querySelector(`meta[name="${name}"]`)
     if (!meta) {
       meta = document.createElement('meta')
@@ -96,6 +166,7 @@ function setMetaTags(shareData) {
 
   // 设置或更新property标签（用于微信等）
   const setProperty = (property, content) => {
+    if (!content) return
     let meta = document.querySelector(`meta[property="${property}"]`)
     if (!meta) {
       meta = document.createElement('meta')
@@ -105,17 +176,64 @@ function setMetaTags(shareData) {
     meta.content = content
   }
 
+  // 设置itemprop标签（Google+等使用）
+  const setItemprop = (itemprop, content) => {
+    if (!content) return
+    let meta = document.querySelector(`meta[itemprop="${itemprop}"]`)
+    if (!meta) {
+      meta = document.createElement('meta')
+      meta.setAttribute('itemprop', itemprop)
+      document.head.appendChild(meta)
+    }
+    meta.content = content
+  }
+
+  // 设置页面标题
+  if (shareData.title) {
+    document.title = shareData.title
+  }
+
+  // 标准meta标签
   setMeta('description', shareData.desc)
+  setMeta('keywords', '家教,家教信息,家教平台,优质家教')
+  
+  // Open Graph标签（Facebook、微信等）
   setProperty('og:title', shareData.title)
   setProperty('og:description', shareData.desc)
   setProperty('og:url', shareData.link)
   setProperty('og:image', shareData.imgUrl)
   setProperty('og:type', 'website')
+  setProperty('og:site_name', '家教信息平台')
   
-  // 微信专用
+  // 微信专用标签
   setProperty('weixin:title', shareData.title)
   setProperty('weixin:description', shareData.desc)
   setProperty('weixin:image', shareData.imgUrl)
+  
+  // Schema.org标签
+  setItemprop('name', shareData.title)
+  setItemprop('description', shareData.desc)
+  setItemprop('image', shareData.imgUrl)
+  
+  // Twitter卡片标签
+  setMeta('twitter:card', 'summary_large_image')
+  setMeta('twitter:title', shareData.title)
+  setMeta('twitter:description', shareData.desc)
+  setMeta('twitter:image', shareData.imgUrl)
+}
+
+/**
+ * 获取分享链接
+ */
+function getShareLink() {
+  // 如果有配置的域名，使用配置的域名
+  if (shareConfig && shareConfig.domain) {
+    const currentPath = window.location.pathname + window.location.search
+    return shareConfig.domain + currentPath
+  }
+  
+  // 否则使用当前页面的完整URL
+  return window.location.href
 }
 
 /**

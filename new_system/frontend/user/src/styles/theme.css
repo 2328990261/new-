@@ -42,18 +42,15 @@
 .el-button--primary {
   background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
   border: none;
-  transition: all 0.3s ease;
 }
 
 .el-button--primary:hover {
   background: linear-gradient(135deg, #7889eb 0%, #8656b3 100%);
-  transform: translateY(-2px);
   box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
 }
 
 .el-button--primary:active {
   background: linear-gradient(135deg, #5568d9 0%, #654091 100%);
-  transform: translateY(0);
 }
 
 /* 链接颜色 */

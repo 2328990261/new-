@@ -4,7 +4,56 @@
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/vite.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-    <title>家教信息平台</title>
+    <title>全国家教信息汇集</title>
+    <style>
+      /* 防止初始加载时的闪现 */
+      #app {
+        opacity: 1;
+      }
+      /* 防止导航栏闪现的初始化样式 */
+      [v-cloak] {
+        display: none;
+      }
+      /* 彻底防止导航栏闪现 - 在Vue加载前就生效 */
+      body.hide-navbar .top-navbar,
+      html.hide-navbar .top-navbar {
+        display: none !important;
+        opacity: 0 !important;
+        visibility: hidden !important;
+      }
+      body.hide-navbar #app > div > .main-content,
+      html.hide-navbar #app > div > .main-content {
+        margin-top: 0 !important;
+      }
+    </style>
+    <script>
+      // 在Vue加载前立即执行，防止导航栏闪现
+      (function() {
+        var hideNavbarPaths = ['/city-tutor', '/city-light', '/payment'];
+        var currentPath = window.location.pathname;
+        
+        // 检查当前路径是否需要隐藏导航栏
+        var shouldHide = hideNavbarPaths.some(function(path) {
+          return currentPath === path || currentPath.startsWith(path + '/');
+        });
+        
+        // 立即添加class到body，添加空值检查
+        if (shouldHide) {
+          document.documentElement.classList.add('hide-navbar');
+          // 检查body是否存在
+          if (document.body) {
+            document.body.classList.add('hide-navbar');
+          } else {
+            // 如果body还没有加载，等待DOMContentLoaded事件
+            document.addEventListener('DOMContentLoaded', function() {
+              if (document.body) {
+                document.body.classList.add('hide-navbar');
+              }
+            });
+          }
+        }
+      })();
+    </script>
   </head>
   <body>
     <div id="app"></div>

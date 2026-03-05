@@ -11,9 +11,25 @@
       </template>
 
       <el-form :inline="true" class="search-form">
+        <el-form-item label="区域名称">
+          <el-input 
+            v-model="searchKeyword" 
+            placeholder="请输入区域名称" 
+            clearable
+            @clear="handleSearch"
+            @keyup.enter="handleSearch"
+            style="width: 200px"
+          />
+        </el-form-item>
         <el-form-item label="城市">
-          <el-select v-model="searchCityId" @change="loadData" clearable filterable placeholder="全部">
-            <el-option label="全部" :value="0"></el-option>
+          <el-select 
+            v-model="searchCityId" 
+            @change="handleSearch" 
+            clearable 
+            filterable 
+            placeholder="全部城市"
+            style="width: 200px"
+          >
             <el-option
               v-for="city in cities"
               :key="city.id"
@@ -21,6 +37,12 @@
               :value="city.id"
             ></el-option>
           </el-select>
+        </el-form-item>
+        <el-form-item>
+          <el-button type="primary" @click="handleSearch">
+            <el-icon><Search /></el-icon> 搜索
+          </el-button>
+          <el-button @click="handleReset">重置</el-button>
         </el-form-item>
       </el-form>
 
@@ -75,7 +97,7 @@
 
 <script setup>
 import { ref, reactive, onMounted } from 'vue'
-import { Plus } from '@element-plus/icons-vue'
+import { Plus, Search } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 import { getDistrictList, addDistrict, updateDistrict, deleteDistrict } from '@/api/district'
 import { getCityList } from '@/api/city'
@@ -84,7 +106,8 @@ const loading = ref(false)
 const tableData = ref([])
 const currentPage = ref(1)
 const total = ref(0)
-const searchCityId = ref(0)
+const searchCityId = ref(null)
+const searchKeyword = ref('')
 const cities = ref([])
 
 const dialogVisible = ref(false)
@@ -115,16 +138,39 @@ const loadCities = async () => {
 const loadData = async () => {
   loading.value = true
   try {
-    const res = await getDistrictList({
-      city_id: searchCityId.value,
+    const params = {
       page: currentPage.value,
       limit: 20
-    })
+    }
+    
+    // 添加搜索条件
+    if (searchKeyword.value) {
+      params.keyword = searchKeyword.value
+    }
+    if (searchCityId.value) {
+      params.city_id = searchCityId.value
+    }
+    
+    const res = await getDistrictList(params)
     tableData.value = res.data
     total.value = res.total
   } finally {
     loading.value = false
   }
+}
+
+// 搜索处理
+const handleSearch = () => {
+  currentPage.value = 1
+  loadData()
+}
+
+// 重置搜索
+const handleReset = () => {
+  searchKeyword.value = ''
+  searchCityId.value = null
+  currentPage.value = 1
+  loadData()
 }
 
 const showAddDialog = () => {

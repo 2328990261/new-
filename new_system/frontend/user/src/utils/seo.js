@@ -31,7 +31,7 @@ class SeoManager {
         this.updateStructuredData()
       }
     } catch (error) {
-      console.error('设置SEO信息失败:', error)
+      // 静默处理错误
     }
   }
 

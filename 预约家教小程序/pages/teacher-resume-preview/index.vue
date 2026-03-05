@@ -44,14 +44,43 @@
 		</view>
 
 		<scroll-view class="resume-content" scroll-y>
+			<!-- 审核状态提示 -->
+			<view v-if="reviewStatus" class="status-tip" :class="'status-' + reviewStatus">
+				<view class="status-icon">
+					<text class="iconfont" v-if="reviewStatus === 'pending'">&#xe61f;</text>
+					<text class="iconfont" v-else-if="reviewStatus === 'approved'">&#xe617;</text>
+					<text class="iconfont" v-else-if="reviewStatus === 'rejected'">&#xe619;</text>
+				</view>
+				<view class="status-content">
+					<text class="status-title" v-if="reviewStatus === 'pending'">审核中</text>
+					<text class="status-title" v-else-if="reviewStatus === 'approved'">审核通过</text>
+					<text class="status-title" v-else-if="reviewStatus === 'rejected'">审核未通过</text>
+					<text class="status-desc" v-if="reviewStatus === 'pending'">您的资料正在审核中，请耐心等待</text>
+					<text class="status-desc" v-else-if="reviewStatus === 'approved'">恭喜您，您的资料已通过审核</text>
+					<text class="status-desc" v-else-if="reviewStatus === 'rejected'">您的资料未通过审核，请修改后重新提交</text>
+				</view>
+			</view>
+			
+			<!-- 编辑提示 -->
+			<view v-if="teacherId && !readonly" class="edit-tip">
+				<text class="iconfont">&#xe618;</text>
+				<text>点击下方模块可快速跳转编辑</text>
+			</view>
+			
 			<!-- 教学经历 - 时间轴 -->
-			<view class="section-card" v-if="resumeData.experiences && resumeData.experiences.length > 0">
+			<view 
+				class="section-card" 
+				:class="{ 'clickable': teacherId && !readonly }"
+				v-if="resumeData.experiences && resumeData.experiences.length > 0"
+				@click="jumpToStep(3)"
+			>
 				<view class="section-header">
 					<view class="section-icon-wrapper experience">
 						<text class="iconfont">&#xe60c;</text>
 					</view>
 					<text class="section-title">教学经历</text>
 					<view class="section-badge">{{ resumeData.experiences.length }}</view>
+					<text v-if="teacherId && !readonly" class="edit-icon">&#xe616;</text>
 				</view>
 				<view class="timeline-container">
 					<view 
@@ -83,12 +112,18 @@
 			</view>
 			
 			<!-- 无教学经历提示 -->
-			<view class="section-card empty-section" v-else>
+			<view 
+				class="section-card empty-section" 
+				:class="{ 'clickable': teacherId && !readonly }"
+				v-else
+				@click="jumpToStep(3)"
+			>
 				<view class="section-header">
 					<view class="section-icon-wrapper experience">
 						<text class="iconfont">&#xe60c;</text>
 					</view>
 					<text class="section-title">教学经历</text>
+					<text v-if="teacherId && !readonly" class="edit-icon">&#xe616;</text>
 				</view>
 				<view class="empty-tip">
 					<text class="iconfont empty-icon">&#xe611;</text>
@@ -97,12 +132,17 @@
 			</view>
 
 			<!-- 个人优势 -->
-			<view class="section-card">
+			<view 
+				class="section-card"
+				:class="{ 'clickable': teacherId && !readonly }"
+				@click="jumpToStep(4)"
+			>
 				<view class="section-header">
 					<view class="section-icon-wrapper advantage">
 						<text class="iconfont">&#xe612;</text>
 					</view>
 					<text class="section-title">个人优势</text>
+					<text v-if="teacherId && !readonly" class="edit-icon">&#xe616;</text>
 				</view>
 				<view class="section-content">
 					<text class="advantage-text">{{ resumeData.personal_advantage || '未填写' }}</text>
@@ -121,13 +161,19 @@
 			</view>
 
 			<!-- 教学风采 -->
-			<view class="section-card" v-if="resumeData.teaching_photos && resumeData.teaching_photos.length > 0">
+			<view 
+				class="section-card" 
+				:class="{ 'clickable': teacherId && !readonly }"
+				v-if="resumeData.teaching_photos && resumeData.teaching_photos.length > 0"
+				@click="jumpToStep(6)"
+			>
 				<view class="section-header">
 					<view class="section-icon-wrapper photo">
 						<text class="iconfont">&#xe614;</text>
 					</view>
 					<text class="section-title">教学风采</text>
 					<view class="section-badge">{{ resumeData.teaching_photos.length }}</view>
+					<text v-if="teacherId && !readonly" class="edit-icon">&#xe616;</text>
 				</view>
 				<view class="photos-grid">
 					<view 
@@ -149,14 +195,26 @@
 		</scroll-view>
 
 		<!-- 底部按钮 -->
-		<view class="bottom-bar">
+		<view class="bottom-bar" v-if="!readonly || reviewStatus === 'rejected'">
 			<button class="btn btn-secondary" @click="goBack">
 				<text class="iconfont">&#xe616;</text>
 				<text>返回修改</text>
 			</button>
-			<button class="btn btn-primary" @click="showSubmitConfirm">
+			<button v-if="!teacherId" class="btn btn-primary" @click="showSubmitConfirm">
 				<text class="iconfont">&#xe617;</text>
 				<text>提交注册</text>
+			</button>
+			<button v-else class="btn btn-primary" @click="goToEdit">
+				<text class="iconfont">&#xe616;</text>
+				<text>编辑资料</text>
+			</button>
+		</view>
+		
+		<!-- 只读模式的底部按钮 -->
+		<view class="bottom-bar" v-else-if="readonly">
+			<button class="btn btn-primary btn-full" @click="goBack">
+				<text class="iconfont">&#xe616;</text>
+				<text>返回</text>
 			</button>
 		</view>
 		
@@ -195,6 +253,8 @@
 </template>
 
 <script>
+import { teacherRegisterApi } from '@/utils/api.js'
+
 export default {
 	data() {
 		return {
@@ -217,6 +277,9 @@ export default {
 			},
 			showConfirmDialog: false,
 			agreed: false,
+			readonly: false, // 是否只读模式
+			reviewStatus: '', // 审核状态：pending, approved, rejected
+			teacherId: null, // 教师ID
 			teacherTypes: [
 				{ value: 'undergraduate', label: '在读本科生' },
 				{ value: 'graduate_student', label: '在读研究生' },
@@ -254,20 +317,115 @@ export default {
 			]
 		}
 	},
-	onLoad(options) {
-		// 从上一页接收数据
+	async onLoad(options) {
+		// 保存参数
+		this.readonly = options.readonly === 'true'
+		this.reviewStatus = options.status || ''
+		this.teacherId = options.teacher_id || null
+		
+		// 如果有 teacher_id，从后端加载教师数据
+		if (options.teacher_id) {
+			await this.loadTeacherData(options.teacher_id)
+		}
+		// 从上一页接收数据（从注册页面跳转过来时使用）
 		if (options.data) {
 			try {
-				this.resumeData = JSON.parse(decodeURIComponent(options.data))
+				const data = JSON.parse(decodeURIComponent(options.data))
+				// 合并数据，优先使用传递过来的数据
+				this.resumeData = { ...this.resumeData, ...data }
 			} catch (e) {
 				console.error('解析数据失败', e)
 			}
 		}
 	},
 	methods: {
+		// 加载教师数据
+		async loadTeacherData(teacherId) {
+			uni.showLoading({
+				title: '加载中...'
+			})
+			
+			try {
+				const res = await teacherRegisterApi.getTeacherDetail(teacherId)
+				uni.hideLoading()
+				
+				if (res.success && res.data) {
+					const teacher = res.data
+					
+					// 填充简历数据
+					this.resumeData = {
+						name: teacher.name || '',
+						gender: teacher.gender || '',
+						phone: teacher.phone || '',
+						wechat_id: teacher.wechat_id || '',
+						email: teacher.email || '',
+						avatar: teacher.avatar || '',
+						school: teacher.school || '',
+						major: teacher.major || '',
+						teacher_type: teacher.teacher_type || '',
+						grade_level: teacher.grade_level || '',
+						education_level: teacher.education_level || '',
+						experiences: teacher.experiences || [],
+						personal_advantage: teacher.personal_advantage || '',
+						advantage_tags: teacher.advantage_tags || [],
+						teaching_photos: teacher.teaching_photos || []
+					}
+				} else {
+					uni.showToast({
+						title: res.error || '加载失败',
+						icon: 'none'
+					})
+				}
+			} catch (err) {
+				uni.hideLoading()
+				console.error('加载教师数据失败', err)
+				uni.showToast({
+					title: '加载失败',
+					icon: 'none'
+				})
+			}
+		},
+		
 		// 返回
 		goBack() {
 			uni.navigateBack()
+		},
+		
+		// 跳转到编辑页面
+		goToEdit() {
+			if (!this.teacherId) {
+				uni.showToast({
+					title: '无法获取教师ID',
+					icon: 'none'
+				})
+				return
+			}
+			
+			uni.redirectTo({
+				url: `/pages/teacher-register/index?mode=edit&teacher_id=${this.teacherId}&fromPreview=true`
+			})
+		},
+		
+		// 跳转到指定步骤
+		jumpToStep(step) {
+			// 只读模式不允许跳转
+			if (this.readonly) {
+				return
+			}
+			
+			// 没有教师ID不允许跳转
+			if (!this.teacherId) {
+				uni.showToast({
+					title: '无法获取教师ID',
+					icon: 'none'
+				})
+				return
+			}
+			
+			// 跳转到教师注册页面的指定步骤
+			uni.redirectTo({
+				url: `/pages/teacher-register/index?mode=edit&teacher_id=${this.teacherId}&step=${step}&fromPreview=true`
+			})
 		},
 		
 		// 获取教师类型标签
@@ -590,6 +748,97 @@ export default {
 	padding: 0 32rpx;
 }
 
+/* 编辑提示 */
+.edit-tip {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	gap: 12rpx;
+	padding: 20rpx;
+	margin-bottom: 24rpx;
+	background: linear-gradient(135deg, #e8f8f3 0%, #d4f1e8 100%);
+	border-radius: 16rpx;
+	font-size: 26rpx;
+	color: #3BA888;
+	border: 1rpx solid rgba(82, 201, 166, 0.2);
+}
+
+.edit-tip .iconfont {
+	font-size: 28rpx;
+}
+
+/* 审核状态提示 */
+.status-tip {
+	display: flex;
+	align-items: center;
+	gap: 24rpx;
+	padding: 24rpx;
+	margin-bottom: 24rpx;
+	border-radius: 20rpx;
+	background: #fff;
+	box-shadow: 0 4rpx 12rpx rgba(0, 0, 0, 0.05);
+}
+
+.status-tip.status-pending {
+	background: linear-gradient(135deg, #fff9e6 0%, #fff 100%);
+	border: 1rpx solid #ffd666;
+}
+
+.status-tip.status-approved {
+	background: linear-gradient(135deg, #e8f8f3 0%, #fff 100%);
+	border: 1rpx solid #52C9A6;
+}
+
+.status-tip.status-rejected {
+	background: linear-gradient(135deg, #ffe6e6 0%, #fff 100%);
+	border: 1rpx solid #ff6b6b;
+}
+
+.status-icon {
+	width: 64rpx;
+	height: 64rpx;
+	border-radius: 50%;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	font-size: 32rpx;
+	flex-shrink: 0;
+}
+
+.status-pending .status-icon {
+	background: #ffd666;
+	color: #fff;
+}
+
+.status-approved .status-icon {
+	background: #52C9A6;
+	color: #fff;
+}
+
+.status-rejected .status-icon {
+	background: #ff6b6b;
+	color: #fff;
+}
+
+.status-content {
+	flex: 1;
+	display: flex;
+	flex-direction: column;
+	gap: 8rpx;
+}
+
+.status-title {
+	font-size: 30rpx;
+	font-weight: 600;
+	color: #303133;
+}
+
+.status-desc {
+	font-size: 24rpx;
+	color: #909399;
+	line-height: 1.5;
+}
+
 .bottom-placeholder {
 	height: calc(120rpx + env(safe-area-inset-bottom));
 }
@@ -601,6 +850,18 @@ export default {
 	padding: 32rpx;
 	margin-bottom: 24rpx;
 	box-shadow: 0 4rpx 12rpx rgba(0, 0, 0, 0.05);
+	transition: all 0.3s;
+	position: relative;
+}
+
+/* 可点击的卡片 */
+.section-card.clickable {
+	cursor: pointer;
+}
+
+.section-card.clickable:active {
+	transform: scale(0.98);
+	box-shadow: 0 2rpx 8rpx rgba(0, 0, 0, 0.08);
 }
 
 .section-card.empty-section {
@@ -612,6 +873,15 @@ export default {
 	align-items: center;
 	gap: 16rpx;
 	margin-bottom: 28rpx;
+	position: relative;
+}
+
+/* 编辑图标 */
+.edit-icon {
+	margin-left: auto;
+	font-size: 32rpx;
+	color: #52C9A6;
+	font-family: 'iconfont';
 }
 
 .section-icon {
@@ -960,6 +1230,11 @@ export default {
 	background: linear-gradient(135deg, #52C9A6 0%, #3BA888 100%);
 	color: #fff;
 	box-shadow: 0 8rpx 24rpx rgba(82, 201, 166, 0.3);
+}
+
+.btn-full {
+	flex: 1;
+	width: 100%;
 }
 
 /* 按钮图标 */

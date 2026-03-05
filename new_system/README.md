@@ -1,382 +1,358 @@
-# 🎓 家教信息管理系统 v2.0
+# 91家教管理系统
 
-> 基于 ThinkPHP 6 + Vue 3 + Element Plus 的现代化家教信息管理平台
+一个功能完整的家教信息管理平台，包含管理后台、用户前端和微信小程序。
 
-[![ThinkPHP](https://img.shields.io/badge/ThinkPHP-6.x-green.svg)](http://www.thinkphp.cn/)
-[![Vue](https://img.shields.io/badge/Vue-3.x-brightgreen.svg)](https://v3.vuejs.org/)
-[![Element Plus](https://img.shields.io/badge/Element%20Plus-2.x-blue.svg)](https://element-plus.org/)
+## 项目简介
 
----
+91家教管理系统是一个基于 Vue 3 + ThinkPHP 6 开发的现代化家教信息管理平台，提供家教信息发布、订单管理、支付管理、线索管理等完整功能。
 
-## 🚀 快速启动（一键启动）
+## 仓库分支说明
 
-**双击运行：** `启动系统.bat`
+本仓库包含两个分支：
 
-启动菜单选项：
-- **[1] 一键启动所有服务** ⭐ 推荐 - 启动后端+管理端+用户端
-- **[2] 仅启动后端服务** - 单独启动后端 API (端口 8080)
-- **[3] 仅启动管理端前端** - 单独启动管理端 (端口 5174)
-- **[4] 仅启动用户端前端** - 单独启动用户端 (端口 5173)
-- **[5] 停止所有服务** - 一键停止所有运行的服务
-- **[0] 退出**
+- **main 分支**（当前）：主系统代码（后端 + 管理前端 + 用户前端）
+- **miniprogram 分支**：微信小程序代码（uni-app 项目）
 
----
+### 获取小程序代码
 
-## 🌐 访问地址
+```bash
+# 克隆小程序分支
+git clone -b miniprogram https://gitee.com/yuchendeloy/tjiajiao91.git miniprogram
 
-| 服务 | 地址 | 说明 |
-|------|------|------|
-| **用户端** | http://localhost:5173 | 家教信息浏览、搜索、教师注册、支付 |
-| **管理端** | http://localhost:5174 | 后台管理、数据维护、订单派单 |
-| **后端API** | http://localhost:8080 | RESTful API 接口 |
+# 或者在已克隆的仓库中切换分支
+git checkout miniprogram
+```
 
----
-
-## 🔐 登录信息
-
-### 管理端登录
-- **用户名：** `admin`
-- **密码：** `123456`
-
----
-
-## 📋 核心功能
-
-### 用户端功能
-- ✅ 家教信息浏览（列表/详情）
-- ✅ 多维度搜索筛选（城市、区域、科目、年级）
-- ✅ 关键词搜索
-- ✅ 热门标签快捷搜索
-- ✅ 教师注册和登录（邮箱验证）
-- ✅ 教师展示和预约
-- ✅ 订单支付功能（支持微信支付）
-- ✅ 响应式设计（手机、平板、桌面）
-
-### 管理端功能
-- ✅ 管理员登录认证
-- ✅ 家教信息管理（CRUD + 智能识别）
-- ✅ 管理员管理（派单组、客服组角色）
-- ✅ 订单派单功能（客服分配给派单员）
-- ✅ 教师管理（审核、置顶）
-- ✅ 支付管理（订单查询、退款）
-- ✅ 城市/区域/科目管理
-- ✅ 邮件配置（SMTP + 订阅推送）
-- ✅ 数据统计仪表盘
-
----
-
-## 💻 技术栈
-
-### 后端
-- **框架：** ThinkPHP 6.1
-- **数据库：** MySQL 8.0
-- **认证：** JWT + Session
-- **API：** RESTful
-- **邮件：** PHPMailer
+## 技术栈
 
 ### 前端
-- **框架：** Vue 3.4
-- **构建：** Vite 5.x
-- **UI：** Element Plus 2.x
-- **路由：** Vue Router 4.x
-- **状态：** Pinia 2.x
-- **HTTP：** Axios 1.x
+- **管理后台**: Vue 3 + Element Plus + Vite
+- **用户前端**: Vue 3 + Element Plus + Vite
+- **微信小程序**: uni-app（在 miniprogram 分支）
 
----
+### 后端
+- **框架**: ThinkPHP 6.1
+- **数据库**: MySQL 5.7+
+- **PHP版本**: 7.4+
 
-## 📦 环境要求
+## 主要功能
 
-### 必需环境
-- **PHP：** 7.4+ （推荐 7.4 或 8.0）
-- **MySQL：** 5.7+
-- **Node.js：** 安装在 `C:\node.exe`
-- **npm：** 安装在 `C:\npm.cmd`
+### 管理后台
+- 📊 数据面板 - 实时统计和数据可视化
+- 👥 用户管理 - 管理员、教师、学生信息管理
+- 📝 订单管理 - 家教订单、预约订单管理
+- 💰 支付管理 - 支付记录、退款管理、支付配置
+- 🎯 线索管理 - 客户线索跟进和转化
+- 📧 邮件管理 - 邮件发送和日志查询
+- ⚙️ 系统配置 - 支付配置、协议管理、SEO配置
 
-### 当前环境
-- ✅ Node.js v22.20.0
-- ✅ npm 10.9.3
-- ✅ PHP 7.4.3
-- ✅ MySQL 8.0
+### 用户前端
+- 🔍 家教搜索 - 按城市、科目、年级搜索
+- 📱 在线预约 - 快速提交家教需求
+- 💳 在线支付 - 微信支付（H5/二维码）
+- 📄 协议查看 - 服务协议、隐私政策
+- 🔄 退款申请 - 在线申请退款
 
----
+### 微信小程序
+- 🎓 教师库 - 浏览和搜索教师信息
+- 📝 在线预约 - 快速预约家教服务
+- 🤖 AI预约 - 智能推荐匹配
+- 👤 个人中心 - 订单查询、个人信息管理
 
-## 📁 项目结构
+## 项目结构
 
 ```
 new_system/
-├── backend/                    # ThinkPHP 6 后端
-│   ├── app/
-│   │   ├── controller/        # 控制器
-│   │   │   ├── api/          # 用户端API
-│   │   │   └── admin/        # 管理端API
-│   │   ├── model/            # 数据模型
-│   │   ├── service/          # 业务逻辑
-│   │   └── middleware/       # 中间件
-│   ├── config/               # 配置文件
-│   ├── route/                # 路由定义
-│   └── public/               # 入口文件
-├── frontend/                  # 前端项目
-│   ├── user/                 # Vue3 用户端
+├── backend/                 # 后端代码
+│   ├── app/                # 应用目录
+│   │   ├── controller/     # 控制器
+│   │   │   ├── admin/      # 管理后台控制器
+│   │   │   └── api/        # API控制器
+│   │   ├── model/          # 模型
+│   │   ├── service/        # 服务层
+│   │   └── middleware/     # 中间件
+│   ├── config/             # 配置文件
+│   ├── route/              # 路由配置
+│   ├── public/             # 公共资源
+│   └── database/           # 数据库文件
+│
+├── frontend/               # 前端代码
+│   ├── admin/              # 管理后台
 │   │   ├── src/
-│   │   │   ├── api/         # API接口
-│   │   │   ├── components/  # 组件
-│   │   │   ├── views/       # 页面
-│   │   │   ├── router/      # 路由
-│   │   │   └── store/       # 状态管理
-│   │   └── package.json
-│   └── admin/                # Vue3 管理端
+│   │   │   ├── views/      # 页面组件
+│   │   │   ├── components/ # 公共组件
+│   │   │   ├── api/        # API接口
+│   │   │   └── utils/      # 工具函数
+│   │   └── vite.config.js
+│   │
+│   └── user/               # 用户前端
 │       ├── src/
-│       │   ├── api/         # API接口
-│       │   ├── layout/      # 布局组件
-│       │   ├── views/       # 页面
-│       │   ├── router/      # 路由
-│       │   └── store/       # 状态管理
-│       └── package.json
-├── database/                  # 数据库脚本
-│   ├── create_tables.sql     # 建表脚本
-│   ├── payments.sql          # 支付表
-│   ├── teachers.sql          # 教师表
-│   └── teacher_auth.sql      # 教师认证表
-├── 启动系统.bat              # 一键启动脚本
-└── README.md                 # 本文件
+│       │   ├── views/      # 页面组件
+│       │   ├── components/ # 公共组件
+│       │   ├── api/        # API接口
+│       │   └── utils/      # 工具函数
+│       └── vite.config.js
+│
+└── 预约家教小程序/          # 微信小程序
+    ├── pages/              # 页面
+    ├── components/         # 组件
+    ├── utils/              # 工具函数
+    └── manifest.json       # 配置文件
 ```
 
----
+## 快速开始
 
-## 🎯 数据库表结构
+### 环境要求
 
-| 表名 | 说明 | 记录数 |
-|------|------|--------|
-| `fa_admin` | 管理员表 | - |
-| `fa_tutor_orders` | 家教订单表 | - |
-| `fa_cities` | 城市表 | 200+ |
-| `fa_districts` | 区域表 | 3000+ |
-| `fa_subjects` | 科目表 | 15 |
-| `fa_email_config` | 邮件配置表 | 1 |
-| `fa_email_subscriptions` | 邮件订阅表 | - |
-| `fa_email_logs` | 邮件日志表 | - |
-| `teachers` | 教师信息表 | - |
-| `teacher_accounts` | 教师账号表 | - |
-| `teacher_bookings` | 教师预约表 | - |
-| `payments` | 支付记录表 | - |
-| `payment_configs` | 支付配置表 | - |
+- PHP >= 7.4
+- MySQL >= 5.7
+- Node.js >= 16.0
+- Composer
+- npm 或 yarn
 
----
+### 安装步骤
 
-## 🎨 界面特色
+#### 1. 克隆项目
 
-### 用户端
-- 🎨 现代化紫色渐变设计
-- ✨ 流畅的动画效果
-- 🔍 智能搜索和筛选
-- 📱 完美适配移动端
-- 👨‍🏫 教师展示和预约
-- 💳 在线支付功能
-
-### 管理端
-- 🌙 深色侧边栏设计
-- 📈 数据统计仪表盘
-- 📋 强大的表格管理
-- 🤖 AI智能识别
-- 👥 管理员角色管理
-- 📧 邮件配置和推送
-
----
-
-## 🚨 常见问题
-
-### Q1: 启动失败？
-**解决方案：**
-1. 确认 Node.js 在 `C:\node.exe`
-2. 确认 npm 在 `C:\npm.cmd`
-3. 检查 PHP 和 MySQL 服务是否运行
-4. 使用菜单选项 [5] 停止所有服务后重启
-
-### Q2: 端口被占用？
-**解决方案：**
-- 后端：修改启动命令中的端口 `--port 8080`
-- 前端：修改 `vite.config.js` 中的 `server.port`
-
-### Q3: API 请求失败？
-**解决方案：**
-1. 确认后端服务已启动（http://localhost:8080）
-2. 检查浏览器控制台错误信息
-3. 确认数据库连接正常
-
-### Q4: 菜单点击无反应？
-**解决方案：**
-1. 刷新浏览器（Ctrl + Shift + R）
-2. 检查路由配置是否正确
-3. 查看浏览器控制台是否有错误
-
----
-
-## 🎊 特色功能
-
-### 1. AI 智能识别
-粘贴家教信息文本，系统自动识别：
-- 城市和区域
-- 年级和科目
-- 薪资范围
-- 详细要求
-
-### 2. 订单派单系统
-- 客服组录入家教订单
-- 系统轮流分配给派单组
-- 订单显示派单员联系方式
-- 用户可直接联系派单员
-
-### 3. 教师管理系统
-- 教师在线注册（邮箱验证）
-- 管理员审核和置顶
-- 用户浏览和筛选教师
-- 在线预约和联系
-
-### 4. 支付管理
-- 用户查询订单并支付
-- 支持微信支付
-- 支付成功显示家长联系方式
-- 管理员可查看和退款
-
-### 5. 邮件推送
-- 用户订阅家教信息
-- 自动推送符合条件的新信息
-- 自定义邮件模板
-- 完整的发送日志
-
----
-
-## 🔒 安全特性
-
-- ✅ JWT Token 认证
-- ✅ Session 管理
-- ✅ 路由权限守卫
-- ✅ SQL 注入防护（ORM）
-- ✅ XSS 防护
-- ✅ CORS 跨域配置
-- ✅ 密码加密存储
-- ✅ 邮箱唯一性验证
-
----
-
-## 🚀 性能优化
-
-### 前端优化
-- ✅ 路由懒加载
-- ✅ 组件按需引入
-- ✅ CSS/JS 压缩
-- ✅ 响应式布局
-- ✅ 虚拟滚动
-
-### 后端优化
-- ✅ 数据库索引
-- ✅ 查询优化
-- ✅ 分页查询
-- ✅ API 缓存
-
----
-
-## 📊 功能统计
-
-### 代码统计
-- **总代码量：** 约 15,000+ 行
-- **后端代码：** 约 5,000 行
-- **前端代码：** 约 8,000 行
-- **配置文件：** 约 1,000 行
-- **文档：** 约 3,000 行
-
-### 功能统计
-- **API 接口：** 50+ 个
-- **前端页面：** 25+ 个
-- **数据表：** 13 个
-- **组件：** 40+ 个
-
----
-
-## 📞 技术支持
-
-### 遇到问题？
-
-1. **查看启动脚本** - 使用 `启动系统.bat`
-2. **检查环境** - 确认 Node.js 在 C 盘
-3. **查看日志** - 检查浏览器控制台
-4. **重启服务** - 使用菜单选项 [5] 停止后重启
-
----
-
-## 🎉 开始使用
-
-### 第一次使用
-
-1. **双击运行** `启动系统.bat`
-2. **选择选项 [1]** 一键启动所有服务
-3. **等待启动** 约 10-20 秒
-4. **打开浏览器** 访问 http://localhost:5173
-5. **管理后台** 访问 http://localhost:5174 (admin/123456)
-
-### 日常使用
-
-1. 双击 `启动系统.bat`
-2. 选择需要启动的服务
-3. 开始使用
-
-### 停止服务
-
-1. 在启动菜单中选择 [5]
-2. 或在各个窗口按 `Ctrl+C`
-
----
-
-## 📝 版本信息
-
-- **版本：** v2.0
-- **更新日期：** 2025-10-04
-- **开发状态：** ✅ 生产就绪
-- **维护状态：** ✅ 持续维护
-
----
-
-## 🎯 系统架构
-
-```
-┌─────────────┐
-│  浏览器访问  │
-└──────┬──────┘
-       │
-  ┌────┴─────┐
-  │          │
-┌─▼──┐   ┌──▼──┐
-│用户端│   │管理端│
-│5173 │   │5174 │
-└─┬──┘   └──┬──┘
-  │  Vite   │
-  │ Proxy   │
-  └────┬────┘
-       │
-  ┌────▼────┐
-  │ 后端API │
-  │  8080   │ ← PHP Think Run
-  └────┬────┘
-       │
-  ┌────▼────┐
-  │ThinkPHP │
-  │  框架   │
-  └────┬────┘
-       │
-  ┌────▼────┐
-  │  MySQL  │
-  │  数据库  │
-  └─────────┘
+```bash
+git clone git@gitee.com:yuchendeloy/tjiajiao91.git
+cd tjiajiao91/new_system
 ```
 
----
+#### 2. 后端配置
 
-## 📄 许可证
+```bash
+cd backend
+
+# 安装依赖
+composer install
+
+# 复制环境配置文件
+cp .example.env .env
+
+# 编辑 .env 文件，配置数据库信息
+# DB_HOST = 127.0.0.1
+# DB_NAME = myjiajiao
+# DB_USER = root
+# DB_PASSWORD = your_password
+```
+
+#### 3. 数据库初始化
+
+```bash
+# 导入数据库文件
+mysql -u root -p myjiajiao < database/create_complete_booking_system.sql
+
+# 或者逐个导入所需的表结构
+mysql -u root -p myjiajiao < database/create_users_table.sql
+mysql -u root -p myjiajiao < database/create_payments_table.sql
+# ... 其他表结构文件
+```
+
+#### 4. 前端配置
+
+**管理后台：**
+
+```bash
+cd frontend/admin
+
+# 安装依赖
+npm install
+
+# 启动开发服务器
+npm run dev
+
+# 访问 http://localhost:3002
+```
+
+**用户前端：**
+
+```bash
+cd frontend/user
+
+# 安装依赖
+npm install
+
+# 启动开发服务器
+npm run dev
+
+# 访问 http://localhost:3001
+```
+
+#### 微信小程序
+
+**注意**：小程序代码在 **miniprogram 分支**，需要单独获取。
+
+```bash
+# 克隆小程序代码
+git clone -b miniprogram https://gitee.com/yuchendeloy/tjiajiao91.git miniprogram
+cd miniprogram
+```
+
+**开发工具**：
+- HBuilderX 3.0+ 或
+- 微信开发者工具
+
+**详细说明**：
+切换到 miniprogram 分支后查看该分支的 README.md 文件。
+
+### 一键启动（Windows）
+
+```bash
+# 在项目根目录执行
+启动服务.bat
+```
+
+这将自动启动管理后台和用户前端的开发服务器。
+
+## 生产部署
+
+### 前端部署
+
+#### 编译前端
+
+```bash
+# 在项目根目录执行
+编译生产文件.bat
+```
+
+或手动编译：
+
+```bash
+# 管理后台
+cd frontend/admin
+npm run build
+
+# 用户前端
+cd frontend/user
+npm run build
+```
+
+编译后的文件：
+- 管理后台：`frontend/admin/dist/`
+- 用户前端：`frontend/user/dist/`
+
+#### 部署到服务器
+
+1. 将 `frontend/admin/dist/` 上传到服务器的 `public/admin/` 目录
+2. 将 `frontend/user/dist/` 上传到服务器的 `public/` 目录
+
+### 后端部署
+
+1. 上传 `backend/` 目录到服务器
+2. 配置 `.env` 文件
+3. 安装依赖：`composer install`
+4. 导入数据库文件
+5. 配置 Nginx（参考 `nginx_production.conf`）
+
+### 微信小程序部署
+
+**小程序代码在 miniprogram 分支**
+
+1. 切换到 miniprogram 分支：
+```bash
+git checkout miniprogram
+```
+
+2. 使用 HBuilderX 打开项目
+
+3. 配置 AppID 和 API 地址
+
+4. 发行 → 小程序-微信
+
+5. 在微信开发者工具中上传代码
+
+6. 登录微信公众平台提交审核
+
+详细步骤请查看 miniprogram 分支的 README.md
+
+### Nginx 配置
+
+参考 `nginx_production.conf` 和 `thinkphp_rewrite.conf` 文件进行配置。
+
+## 支付配置
+
+系统支持微信支付，包括：
+- H5 支付（手机浏览器）
+- Native 支付（二维码扫码）
+- JSAPI 支付（微信内浏览器）
+
+### 配置步骤
+
+1. 登录管理后台
+2. 进入"支付配置"页面
+3. 填写微信支付配置信息：
+   - AppID
+   - 商户号
+   - API密钥
+   - 证书文件路径
+   - 回调地址
+
+4. 点击"测试配置"验证配置是否正确
+
+### 本地测试
+
+本地开发环境无法接收微信支付回调，系统提供了手动确认功能：
+
+1. 扫描二维码完成支付
+2. 点击"我已完成支付"按钮
+3. 系统会手动更新支付状态
+
+## 常见问题
+
+### 1. 支付接口 500 错误
+
+**原因**：数据库字段缺失或路由配置问题
+
+**解决方案**：
+- 检查数据库表结构是否完整
+- 运行 `database/add_dispatcher_id_to_payments.sql`
+- 清除缓存：`php think clear`
+
+### 2. 前端无法连接后端
+
+**原因**：代理配置错误
+
+**解决方案**：
+- 检查 `vite.config.js` 中的 proxy 配置
+- 确保后端服务运行在正确的端口（默认 8080）
+
+### 3. 微信支付回调失败
+
+**原因**：本地环境无法接收外网回调
+
+**解决方案**：
+- 使用内网穿透工具（如 ngrok）
+- 或使用手动确认功能进行测试
+
+## 更新日志
+
+查看 `deployment/更新说明.md` 了解详细的更新记录。
+
+## 技术支持
+
+如有问题，请提交 Issue 或联系开发团队。
+
+## 许可证
 
 本项目仅供学习和研究使用。
 
+## 贡献指南
+
+欢迎提交 Pull Request 或 Issue！
+
+1. Fork 本仓库
+2. 创建特性分支 (`git checkout -b feature/AmazingFeature`)
+3. 提交更改 (`git commit -m 'Add some AmazingFeature'`)
+4. 推送到分支 (`git push origin feature/AmazingFeature`)
+5. 开启 Pull Request
+
+## 开发团队
+
+- 后端开发：ThinkPHP 6 + MySQL
+- 前端开发：Vue 3 + Element Plus
+- 小程序开发：uni-app
+
 ---
 
-**祝您使用愉快！** 🎉
-
-如有问题，请检查启动脚本或查看各服务的控制台输出。
+**注意**：本项目包含敏感配置信息（如数据库密码、支付密钥等），请勿将 `.env` 文件提交到版本控制系统。

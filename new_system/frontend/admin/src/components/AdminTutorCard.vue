@@ -1,90 +1,83 @@
 <template>
-  <el-card class="admin-tutor-card" :class="{ selected: isSelected }">
-    <!-- ��Ƭͷ�� -->
-    <div class="card-header">
-      <div class="header-left">
+  <div 
+    class="admin-tutor-card" 
+    :class="{ 
+      selected: isSelected,
+      'is-top': tutor.is_top 
+    }"
+    @click.stop="handleCardClick"
+  >
+    <!-- 卡片头部 -->
+    <div class="card-header-row">
+      <div class="card-header-left">
         <el-checkbox 
           :model-value="isSelected" 
           @change="handleSelect"
+          @click.stop
         />
-        <div class="tags">
-          <el-tag v-if="tutor.is_top" type="danger" size="small" effect="dark">
-            <el-icon><Top /></el-icon>
-          </el-tag>
-          <el-tag v-if="tutor.is_urgent" type="warning" size="small" effect="dark">
-            <el-icon><Clock /></el-icon>
-          </el-tag>
+        <div class="card-badges">
+          <span v-if="tutor.is_top" class="badge badge-top">TOP</span>
+          <span v-if="tutor.is_urgent" class="badge badge-urgent">紧急</span>
         </div>
       </div>
-      <span class="id-badge">ID: {{ tutor.id }}</span>
+      <div class="card-header-right">
+        <span v-if="tutor.booking_channel" class="badge badge-booking">预约</span>
+        <span v-if="tutor.dispatcher" class="badge badge-dispatcher">
+          {{ tutor.dispatcher.nickname || tutor.dispatcher.username }}
+        </span>
+        <span class="badge badge-id">ID: {{ tutor.id }}</span>
+      </div>
     </div>
-
-    <!-- ��Ƭ���� -->
-    <div class="card-title">
-      <span class="city">{{ tutor.city?.name || '' }}</span>
-      <span class="district">{{ tutor.district?.name || '' }}</span>
+    
+    <!-- 城市区域 -->
+    <div class="card-title-row">
+      <span class="city-name">{{ tutor.city?.name || '' }}</span>
+      <span class="district-name">{{ tutor.district?.name || '' }}</span>
     </div>
-
-    <!-- ��ƬԪ��Ϣ -->
+    
+    <!-- 元数据标签 -->
     <div class="card-meta">
-      <el-tag size="small" type="primary">{{ tutor.grade }}</el-tag>
-      <el-tag size="small" type="success">{{ tutor.subject?.name || '' }}</el-tag>
-      <el-tag size="small" type="warning" class="salary">{{ tutor.salary }}</el-tag>
-    </div>
-
-    <!-- ��Ƭ���� -->
-    <div class="card-content" :title="tutor.content">
-      {{ tutor.content }}
-    </div>
-
-    <!-- ��Ƭ�ײ���Ϣ -->
-    <div class="card-footer-info">
-      <span class="time">{{ formatTime(tutor.create_time) }}</span>
-      <span class="admin-info" v-if="tutor.admin">
-        <el-icon><User /></el-icon> {{ tutor.admin.nickname || tutor.admin.username }}
+      <span class="tag tag-primary">{{ tutor.grade }}</span>
+      <span class="tag tag-success">{{ tutor.subject?.name || '' }}</span>
+      <span class="tag tag-warning">{{ tutor.salary }}</span>
+      <span class="tag tag-info">
+        {{ formatTeacherType(tutor.teacher_type) }}
       </span>
     </div>
-
-    <!-- ��Ƭ���� -->
-    <div class="card-actions">
-      <el-button 
-        type="primary" 
-        size="small" 
-        @click.stop="$emit('edit', tutor)"
-      >
-        <el-icon><Edit /></el-icon>
-      </el-button>
-      <el-button 
-        :type="tutor.is_urgent ? 'warning' : 'info'" 
-        size="small" 
-        @click.stop="$emit('toggle-urgent', tutor)"
-      >
-        <el-icon><Bell /></el-icon>
-      </el-button>
-      <el-button 
-        type="success" 
-        size="small" 
-        @click.stop="$emit('copy', tutor)"
-      >
-        <el-icon><DocumentCopy /></el-icon>
-      </el-button>
-      <el-popconfirm
-        title="ȷ��ɾ����"
-        @confirm="$emit('delete', tutor.id)"
-      >
-        <template #reference>
-          <el-button type="danger" size="small">
-            <el-icon><Delete /></el-icon>
-          </el-button>
-        </template>
-      </el-popconfirm>
+    
+    <!-- 内容描述 -->
+    <div class="card-content">
+      {{ tutor.content }}
     </div>
-  </el-card>
+    
+    <!-- 底部信息 -->
+    <div class="card-footer-info">
+      <span>{{ formatTime(tutor.create_time) }}</span>
+      <span class="admin-info" v-if="tutor.admin">
+        <span style="color: #409eff;">📋 客服：{{ tutor.admin.nickname || tutor.admin.username }}</span>
+        <span style="color: #67c23a; margin-left: 8px;">
+          （今日{{ (adminStats && adminStats[tutor.admin.id]) ? adminStats[tutor.admin.id].today_count : 0 }}单 / 累计{{ (adminStats && adminStats[tutor.admin.id]) ? adminStats[tutor.admin.id].total_count : 0 }}单）
+        </span>
+      </span>
+    </div>
+    
+    <!-- 操作按钮 -->
+    <div class="card-actions">
+      <button class="action-btn btn-edit" @click.stop="$emit('edit', tutor)">编辑</button>
+      <button 
+        class="action-btn btn-top" 
+        @click.stop="$emit('toggle-top', tutor)"
+      >
+        {{ tutor.is_top ? '取消置顶' : '置顶' }}
+      </button>
+      <button class="action-btn btn-copy" @click.stop="$emit('copy', tutor)">复制</button>
+      <button class="action-btn btn-delete" @click.stop="handleDelete">删除</button>
+    </div>
+  </div>
 </template>
 
 <script setup>
-import { defineProps, defineEmits } from 'vue'
-import { Top, Clock, User, Edit, Bell, DocumentCopy, Delete } from '@element-plus/icons-vue'
+import { ElMessageBox } from 'element-plus'
 
 const props = defineProps({
   tutor: {
@@ -94,203 +87,311 @@ const props = defineProps({
   isSelected: {
     type: Boolean,
     default: false
+  },
+  adminStats: {
+    type: Object,
+    default: () => ({})
   }
 })
 
-const emit = defineEmits(['select', 'edit', 'toggle-urgent', 'copy', 'delete'])
+const emit = defineEmits(['select', 'edit', 'toggle-top', 'copy', 'delete'])
 
 const handleSelect = (value) => {
   emit('select', props.tutor, value)
 }
 
-const formatTime = (time) => {
-  const date = new Date(time)
-  const now = new Date()
-  const diff = now - date
+const handleCardClick = () => {
+  // 点击卡片切换选择状态
+  emit('select', props.tutor, !props.isSelected)
+}
 
-  if (diff < 3600000) { // 1Сʱ��
-    return `${Math.floor(diff / 60000)}����ǰ`
-  } else if (diff < 86400000) { // 24Сʱ��
-    return `${Math.floor(diff / 3600000)}Сʱǰ`
-  } else if (diff < 259200000) { // 3����
-    const days = Math.floor(diff / 86400000)
-    return `${days}��ǰ`
-  } else {
-    return date.toLocaleDateString('zh-CN')
+const handleDelete = async () => {
+  try {
+    await ElMessageBox.confirm('确定删除吗？', '提示', {
+      confirmButtonText: '确定',
+      cancelButtonText: '取消',
+      type: 'warning',
+    })
+    emit('delete', props.tutor.id)
+  } catch {
+    // 用户取消
   }
+}
+
+// 老师类型转换为中文
+const formatTeacherType = (type) => {
+  const typeMap = {
+    'student': '大学生',
+    'professional': '专职老师'
+  }
+  return typeMap[type] || type || '大学生'
+}
+
+const formatTime = (time) => {
+  if (!time) return ''
+  const date = new Date(time)
+  const year = date.getFullYear()
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  const day = String(date.getDate()).padStart(2, '0')
+  const hour = String(date.getHours()).padStart(2, '0')
+  const minute = String(date.getMinutes()).padStart(2, '0')
+  
+  return `${year}-${month}-${day} ${hour}:${minute}`
 }
 </script>
 
 <style scoped>
 .admin-tutor-card {
-  height: 100%;
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-  cursor: pointer;
-  display: flex;
-  flex-direction: column;
-  border-radius: 12px;
+  background: var(--bg-white, #ffffff);
+  border-radius: var(--radius-lg, 12px);
+  padding: var(--spacing-lg, 16px);
+  box-shadow: var(--shadow-sm, 0 2px 4px rgba(0, 0, 0, 0.08));
+  transition: all 0.3s ease;
+  position: relative;
   overflow: hidden;
-  border: 2px solid transparent;
-  background: linear-gradient(135deg, #ffffff 0%, #f8f9fa 100%);
+  cursor: pointer;
 }
 
-.admin-tutor-card:hover {
-  transform: translateY(-6px) scale(1.02);
-  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.15);
-  border-color: #e4e7ed;
+/* 置顶卡片：红晕效果 */
+.admin-tutor-card.is-top {
+  box-shadow: 0 4px 20px rgba(245, 108, 108, 0.35),
+              0 2px 8px rgba(245, 108, 108, 0.25),
+              0 0 0 1px rgba(245, 108, 108, 0.1);
+  background: linear-gradient(to bottom, rgba(254, 238, 238, 0.4), #ffffff);
 }
 
 .admin-tutor-card.selected {
-  border-color: #409eff;
-  box-shadow: 0 8px 24px rgba(64, 158, 255, 0.25);
-  background: linear-gradient(135deg, #f0f7ff 0%, #e6f4ff 100%);
+  border: 2px solid var(--primary-color, #409eff);
+  background: rgba(64, 158, 255, 0.05);
 }
 
-.admin-tutor-card :deep(.el-card__body) {
-  padding: 18px;
+/* 置顶且选中 */
+.admin-tutor-card.is-top.selected {
+  box-shadow: 0 4px 20px rgba(245, 108, 108, 0.35),
+              0 2px 8px rgba(245, 108, 108, 0.25),
+              0 0 0 2px var(--primary-color, #409eff);
+  background: linear-gradient(to bottom, rgba(254, 238, 238, 0.4), rgba(64, 158, 255, 0.05));
 }
 
-.card-header {
+.admin-tutor-card:hover {
+  box-shadow: var(--shadow-md, 0 4px 12px rgba(0, 0, 0, 0.15));
+  transform: translateY(-1px);
+}
+
+.admin-tutor-card:active {
+  transform: scale(0.98);
+}
+
+.card-header-row {
   display: flex;
   justify-content: space-between;
-  align-items: center;
-  margin-bottom: 14px;
+  align-items: flex-start;
+  margin-bottom: var(--spacing-md, 12px);
+  gap: var(--spacing-sm, 8px);
 }
 
-.header-left {
+.card-header-left {
   display: flex;
-  align-items: center;
-  gap: 10px;
+  align-items: flex-start;
+  gap: var(--spacing-sm, 8px);
+  flex: 1;
 }
 
-.tags {
+.card-badges {
   display: flex;
-  gap: 6px;
+  gap: var(--spacing-xs, 4px);
+  flex-wrap: wrap;
 }
 
-.tags .el-tag {
-  border-radius: 6px;
-  padding: 4px 10px;
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+  border-radius: var(--radius-sm, 4px);
+  font-size: var(--font-xs, 11px);
   font-weight: 600;
 }
 
-.id-badge {
-  background: linear-gradient(135deg, #e9ecef 0%, #dee2e6 100%);
-  color: #495057;
-  padding: 4px 10px;
-  border-radius: 6px;
-  font-size: 11px;
-  font-weight: 600;
-  letter-spacing: 0.5px;
+.badge-top {
+  background: #fee;
+  color: var(--danger-color, #f56c6c);
 }
 
-.card-title {
-  font-size: 17px;
-  font-weight: 700;
-  margin-bottom: 12px;
+.badge-urgent {
+  background: #fef3e8;
+  color: var(--warning-color, #e6a23c);
+}
+
+.badge-dispatcher {
+  background: linear-gradient(135deg, #e3f2fd 0%, #bbdefb 100%);
+  color: #1976d2;
+  font-weight: 600;
+}
+
+.badge-id {
+  background: var(--border-lighter, #ebeef5);
+  color: var(--text-secondary, #909399);
+}
+
+.badge-booking {
+  background: linear-gradient(135deg, #e8f5e9 0%, #c8e6c9 100%);
+  color: #2e7d32;
+  font-weight: 600;
+}
+
+.card-header-right {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--spacing-sm, 8px);
 }
 
-.city {
-  color: #409eff;
-  font-size: 16px;
+.card-title-row {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm, 8px);
+  margin-bottom: var(--spacing-md, 12px);
+  font-size: var(--font-lg, 16px);
+  font-weight: 600;
 }
 
-.district {
-  color: #67c23a;
-  font-size: 16px;
+.city-name {
+  color: var(--primary-color, #409eff);
+}
+
+.district-name {
+  color: var(--success-color, #67c23a);
 }
 
 .card-meta {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
-  margin-bottom: 12px;
+  gap: var(--spacing-sm, 8px);
+  margin-bottom: var(--spacing-md, 12px);
 }
 
-.card-meta .el-tag {
-  border-radius: 6px;
-  padding: 4px 12px;
+.tag {
+  padding: 4px 10px;
+  border-radius: var(--radius-sm, 4px);
+  font-size: var(--font-sm, 12px);
+  font-weight: 500;
+}
+
+.tag-primary {
+  background: #ecf5ff;
+  color: var(--primary-color, #409eff);
+}
+
+.tag-success {
+  background: #f0f9ff;
+  color: var(--success-color, #67c23a);
+}
+
+.tag-warning {
+  background: linear-gradient(135deg, #fef3e8 0%, #ffe7c8 100%);
+  color: var(--warning-color, #e6a23c);
   font-weight: 600;
 }
 
-.salary {
-  font-weight: 700;
-  background: linear-gradient(135deg, #fef3e8 0%, #ffe7c8 100%);
-  color: #e6a23c;
-  border-color: #f5dab1;
+.tag-info {
+  background: #f4f4f5;
+  color: var(--info-color, #909399);
 }
 
 .card-content {
-  color: #606266;
-  font-size: 13px;
-  line-height: 1.8;
-  margin-bottom: 12px;
-  flex: 1;
-  min-height: 70px;
-  max-height: 130px;
-  overflow-y: auto;
+  color: var(--text-regular, #606266);
+  font-size: var(--font-sm, 12px);
+  line-height: 1.6;
+  margin-bottom: var(--spacing-md, 12px);
+  padding: var(--spacing-md, 12px);
+  background: rgba(0, 0, 0, 0.02);
+  border-radius: var(--radius-base, 8px);
+  border-left: 3px solid var(--primary-color, #409eff);
   white-space: pre-wrap;
-  word-break: break-word;
-  padding: 10px;
-  background: rgba(255, 255, 255, 0.6);
-  border-radius: 8px;
-  border: 1px solid #f0f0f0;
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+  height: 134px;
+  overflow-y: auto;
 }
 
 .card-content::-webkit-scrollbar {
-  width: 6px;
+  width: 4px;
+}
+
+.card-content::-webkit-scrollbar-track {
+  background: transparent;
 }
 
 .card-content::-webkit-scrollbar-thumb {
-  background: #dcdfe6;
-  border-radius: 3px;
+  background: #d9d9d9;
+  border-radius: 2px;
 }
 
 .card-content::-webkit-scrollbar-thumb:hover {
-  background: #c0c4cc;
+  background: #bfbfbf;
 }
 
 .card-footer-info {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 10px 0;
-  margin-bottom: 12px;
-  border-top: 2px solid #f0f0f0;
-  font-size: 12px;
-  color: #909399;
-}
-
-.time {
-  font-weight: 500;
+  padding-top: var(--spacing-md, 12px);
+  margin-bottom: var(--spacing-md, 12px);
+  border-top: 1px solid var(--border-lighter, #ebeef5);
+  font-size: var(--font-xs, 11px);
+  color: var(--text-secondary, #909399);
 }
 
 .admin-info {
   display: flex;
   align-items: center;
-  gap: 5px;
-  font-weight: 500;
+  gap: 4px;
 }
 
 .card-actions {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
-  gap: 8px;
-  padding-top: 12px;
-  border-top: 2px solid #f0f0f0;
+  gap: 6px;
+  margin-top: var(--spacing-sm, 8px);
+  padding-top: var(--spacing-sm, 8px);
+  border-top: 1px solid var(--border-lighter, #ebeef5);
 }
 
-.card-actions .el-button {
-  border-radius: 8px;
-  font-weight: 600;
-  transition: all 0.3s ease;
+.action-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 32px;
+  border: none;
+  border-radius: var(--radius-sm, 4px);
+  font-size: var(--font-xs, 11px);
+  cursor: pointer;
+  transition: all 0.2s;
+  padding: 0 6px;
+  font-weight: 500;
 }
 
-.card-actions .el-button:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+.action-btn:active {
+  transform: scale(0.95);
+}
+
+.btn-edit {
+  background: var(--primary-color, #409eff);
+  color: white;
+}
+
+.btn-top {
+  background: var(--danger-color, #f56c6c);
+  color: white;
+}
+
+.btn-copy {
+  background: var(--success-color, #67c23a);
+  color: white;
+}
+
+.btn-delete {
+  background: var(--text-secondary, #909399);
+  color: white;
 }
 </style>

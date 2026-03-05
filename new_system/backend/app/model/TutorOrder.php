@@ -19,7 +19,8 @@ class TutorOrder extends Model
         'district_id'     => 'int',
         'grade'           => 'string',
         'subject_id'      => 'int',
-        'salary'          => 'string',
+        'salary'          => 'string', // 时薪范围字符串（如：130-150元/小时）
+        'teacher_type'    => 'string', // 老师类型
         'is_urgent'       => 'int',
         'is_top'          => 'int',
         'top_expire_time' => 'datetime',
@@ -28,6 +29,10 @@ class TutorOrder extends Model
         'contact_info'    => 'string', // 派单联系方式
         'assigned_time'   => 'datetime', // 派单时间
         'status'          => 'int',
+        'is_channel'      => 'int',    // 是否是渠道单
+        'channel_code'    => 'string', // 渠道代号
+        'booking_channel' => 'string', // 预约渠道：H5/小程序（不为空则表示是预约单）
+        'user_id'         => 'int',    // 小程序用户ID
         'create_time'     => 'datetime',
         'update_time'     => 'datetime',
     ];
@@ -40,32 +45,56 @@ class TutorOrder extends Model
     
     /**
      * 生成订单ID
-     * 格式: YYMMDD + 三位随机不重复数字
-     * 例如: 2025年10月3日 -> 251003001
+     * 格式: YYMMDD + 三位序号（基于订单创建时间）
+     * 例如: 2025年1月10日创建的订单 -> 250110001, 250110002, 250110003...
+     * 
+     * @param string $createTime 订单创建时间，格式：Y-m-d H:i:s 或 Y-m-d
+     * @return string
      */
-    public static function generateOrderId()
+    public static function generateOrderId($createTime = null)
     {
-        // 获取日期前缀（年后两位+月+日）
-        $datePrefix = date('ymd'); // 例如: 251003
+        // 如果没有指定创建时间，使用当前时间
+        if (!$createTime) {
+            $createTime = date('Y-m-d H:i:s');
+        }
         
-        // 尝试生成不重复的ID，最多尝试1000次
-        for ($i = 0; $i < 1000; $i++) {
-            // 生成三位随机数（000-999）
-            $randomSuffix = str_pad(rand(0, 999), 3, '0', STR_PAD_LEFT);
+        // 解析创建时间，获取日期前缀（年后两位+月+日）
+        $timestamp = strtotime($createTime);
+        if ($timestamp === false) {
+            // 如果时间格式错误，使用当前时间
+            $timestamp = time();
+        }
+        
+        $datePrefix = date('ymd', $timestamp); // 例如: 250110
+        
+        // 查询该日期已有的记录数量
+        $dayCount = self::where('id', 'like', $datePrefix . '%')->count();
+        
+        // 生成序号（从001开始）
+        $sequence = str_pad($dayCount + 1, 3, '0', STR_PAD_LEFT);
+        
+        // 组合成完整ID
+        $orderId = $datePrefix . $sequence;
+        
+        // 检查是否已存在（双重保险）
+        $exists = self::where('id', $orderId)->find();
+        
+        if ($exists) {
+            // 如果存在，使用时间戳+随机数作为备选
+            $timestamp = substr(time(), -3); // 取时间戳后3位
+            $random = rand(0, 9); // 0-9随机数
+            $orderId = $datePrefix . $timestamp . $random;
             
-            // 组合成完整ID
-            $orderId = $datePrefix . $randomSuffix;
-            
-            // 检查是否已存在
-            $exists = self::where('id', $orderId)->find();
-            
-            if (!$exists) {
-                return $orderId;
+            // 再次检查
+            $exists2 = self::where('id', $orderId)->find();
+            if ($exists2) {
+                // 最后备选：使用微秒时间戳
+                $microtime = substr(microtime(true) * 1000000, -6); // 取微秒后6位
+                $orderId = $datePrefix . substr($microtime, -3); // 取后3位
             }
         }
         
-        // 如果1000次都重复了，抛出异常
-        throw new \Exception('无法生成唯一订单ID，请稍后重试');
+        return $orderId;
     }
     
     /**
@@ -131,6 +160,34 @@ class TutorOrder extends Model
     {
         $status = [0 => '已删除', 1 => '正常'];
         return $status[$data['status']] ?? '未知';
+    }
+    
+    /**
+     * 是否渠道单获取器
+     */
+    public function getIsChannelTextAttr($value, $data)
+    {
+        return $data['is_channel'] ? '是' : '否';
+    }
+    
+    /**
+     * 预约渠道获取器
+     */
+    public function getBookingChannelTextAttr($value, $data)
+    {
+        $channels = [
+            'H5' => 'H5网页',
+            '小程序' => '微信小程序'
+        ];
+        return $channels[$data['booking_channel']] ?? $data['booking_channel'];
+    }
+    
+    /**
+     * 关联小程序用户
+     */
+    public function user()
+    {
+        return $this->belongsTo(\app\model\User::class, 'user_id');
     }
     
     /**
@@ -244,6 +301,46 @@ class TutorOrder extends Model
     {
         if ($value) {
             $query->where('admin_id', $value);
+        }
+    }
+    
+    /**
+     * 搜索器：是否渠道单
+     */
+    public function searchIsChannelAttr($query, $value)
+    {
+        if ($value !== '') {
+            $query->where('is_channel', $value);
+        }
+    }
+    
+    /**
+     * 搜索器：渠道代号
+     */
+    public function searchChannelCodeAttr($query, $value)
+    {
+        if ($value) {
+            $query->where('channel_code', $value);
+        }
+    }
+    
+    /**
+     * 搜索器：预约渠道
+     */
+    public function searchBookingChannelAttr($query, $value)
+    {
+        if ($value) {
+            $query->where('booking_channel', $value);
+        }
+    }
+    
+    /**
+     * 搜索器：用户ID
+     */
+    public function searchUserIdAttr($query, $value)
+    {
+        if ($value) {
+            $query->where('user_id', $value);
         }
     }
 }

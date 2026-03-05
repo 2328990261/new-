@@ -89,6 +89,44 @@ class District extends BaseController
     }
     
     /**
+     * 根据城市ID获取区域列表（路由方法）
+     */
+    public function getByCityId()
+    {
+        if (session_status() === PHP_SESSION_NONE) {
+            session_start();
+        }
+        if (!isset($_SESSION['admin_id'])) {
+            return json(['success' => false, 'error' => '未登录']);
+        }
+        
+        $cityId = $this->request->param('city_id');
+        $status = $this->request->get('status', 1);
+        $limit = $this->request->get('limit', 1000);
+        
+        if (!$cityId) {
+            return json(['success' => false, 'error' => '请提供城市ID']);
+        }
+        
+        try {
+            $query = DistrictModel::where('city_id', $cityId);
+            
+            if ($status !== '' && $status !== null) {
+                $query->where('status', $status);
+            }
+            
+            $districts = $query->order('sort', 'asc')
+                ->limit($limit)
+                ->select();
+            
+            return json(['success' => true, 'data' => $districts]);
+            
+        } catch (\Exception $e) {
+            return json(['success' => false, 'error' => $e->getMessage()]);
+        }
+    }
+    
+    /**
      * 创建区域
      */
     public function save()

@@ -62,6 +62,7 @@
                 <el-option label="高一" value="高一" />
                 <el-option label="高二" value="高二" />
                 <el-option label="高三" value="高三" />
+                <el-option label="成人" value="成人" />
                 <el-option label="其他" value="其他" />
               </el-select>
             </el-form-item>
@@ -309,7 +310,7 @@ const handleSubmit = async () => {
     
     submitting.value = true
     
-    const res = await request.post('/api/order/booking', form)
+    const res = await request.post('/order/booking', form)
     
     if (res.code === 200) {
       ElMessage.success({

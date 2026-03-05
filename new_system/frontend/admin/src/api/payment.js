@@ -1,4 +1,4 @@
-import request from '@/utils/request'
+﻿import request from '@/utils/request'
 
 // 获取支付列表
 export function getPaymentList(params) {
@@ -72,7 +72,7 @@ export function updatePaymentConfig(data) {
 // 测试支付配置
 export function testPaymentConfig(data) {
   return request({
-    url: '/payments/config/test',
+    url: '/payment-config/test',
     method: 'post',
     data
   })
@@ -92,5 +92,30 @@ export function updateServiceAgreement(data) {
     url: '/payments/agreement',
     method: 'post',
     data
+  })
+}
+
+// 获取今日交易额
+export function getTodayAmount() {
+  return request({
+    url: '/payments/today-amount',
+    method: 'get'
+  })
+}
+
+// 获取数据面板
+export function getPaymentDataPanel(params) {
+  return request({
+    url: '/payments/data-panel',
+    method: 'get',
+    params
+  })
+}
+
+// 获取派单员列表
+export function getDispatchers() {
+  return request({
+    url: '/payments/dispatchers',
+    method: 'get'
   })
 }

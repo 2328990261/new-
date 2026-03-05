@@ -20,6 +20,11 @@ export const useAppStore = defineStore('app', {
       this.sidebar.opened = !this.sidebar.opened
     },
     
+    setCollapsed(collapsed) {
+      this.collapsed = collapsed
+      this.sidebar.opened = !collapsed
+    },
+    
     closeSidebar(withoutAnimation = false) {
       this.collapsed = true
       this.sidebar.opened = false

@@ -1,9 +1,9 @@
-import request from './config'
+import request from '@/utils/request'
 
 // 登录
 export function login(data) {
   return request({
-    url: '/admin/login',
+    url: '/login',
     method: 'post',
     data
   })
@@ -12,7 +12,7 @@ export function login(data) {
 // 注册
 export function register(data) {
   return request({
-    url: '/admin/register',
+    url: '/register',
     method: 'post',
     data
   })
@@ -21,7 +21,7 @@ export function register(data) {
 // 获取用户信息
 export function getUserInfo() {
   return request({
-    url: '/admin/info',
+    url: '/info',
     method: 'get'
   })
 }
@@ -29,7 +29,7 @@ export function getUserInfo() {
 // 退出登录
 export function logout() {
   return request({
-    url: '/admin/logout',
+    url: '/logout',
     method: 'post'
   })
 }
@@ -37,7 +37,7 @@ export function logout() {
 // 检查登录状态
 export function checkLoginStatus() {
   return request({
-    url: '/admin/info',
+    url: '/info',
     method: 'get'
   })
 }

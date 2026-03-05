@@ -1,4 +1,4 @@
-import request from '@/utils/request'
+﻿import request from '@/utils/request'
 
 // 获取科目树形列表
 export function getSubjectList(params) {
@@ -59,5 +59,3 @@ export function toggleSubjectStatus(id) {
     method: 'put'
   })
 }
-
-

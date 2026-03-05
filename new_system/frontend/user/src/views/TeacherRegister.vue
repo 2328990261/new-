@@ -236,7 +236,7 @@ const rules = {
 // 加载城市列表
 const loadCities = async () => {
   try {
-    const res = await request.get('/api/cities')
+    const res = await request.get('/cities')
     if (res.data.success) {
       cities.value = res.data.data
     }
@@ -248,7 +248,7 @@ const loadCities = async () => {
 // 加载科目列表
 const loadSubjects = async () => {
   try {
-    const res = await request.get('/api/subjects')
+    const res = await request.get('/subjects')
     if (res.data.success) {
       subjects.value = res.data.data
     }
@@ -323,7 +323,7 @@ const handleSubmit = async () => {
     await formRef.value.validate()
     loading.value = true
     
-    const res = await request.post('/api/teachers/register', form)
+    const res = await request.post('/teachers/register', form)
     
     if (res.data.success) {
       ElMessage.success('提交成功，请等待审核')

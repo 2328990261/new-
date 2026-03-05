@@ -17,7 +17,7 @@ export function updateNotificationConfig(data) {
   })
 }
 
-// 测试邮件发�?
+// 测试邮件发送
 export function testEmail(data) {
   return request({
     url: '/notification/test-email',
@@ -26,7 +26,7 @@ export function testEmail(data) {
   })
 }
 
-// 测试微信消息发�?
+// 测试微信消息发送
 export function testWechat(data) {
   return request({
     url: '/notification/test-wechat',
@@ -102,5 +102,3 @@ export function getNotificationLogs(params) {
     params
   })
 }
-
-

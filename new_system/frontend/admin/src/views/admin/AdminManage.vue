@@ -19,6 +19,7 @@
           <el-select v-model="searchForm.role" placeholder="全部" clearable filterable>
             <el-option label="全部" value=""></el-option>
             <el-option label="超级管理员" value="super_admin"></el-option>
+            <el-option label="客服组长" value="team_leader"></el-option>
             <el-option label="客服组" value="customer_service"></el-option>
             <el-option label="派单组" value="dispatcher"></el-option>
           </el-select>
@@ -29,26 +30,86 @@
         </el-form-item>
       </el-form>
 
+      <!-- 批量操作栏 -->
+      <div class="batch-actions" v-if="selectedRows.length > 0">
+        <span class="selected-count">已选择 {{ selectedRows.length }} 项</span>
+        <el-button type="primary" size="small" @click="showBatchLeaderDialog">
+          批量设置组长
+        </el-button>
+        <el-button size="small" @click="clearSelection">
+          取消选择
+        </el-button>
+      </div>
+
       <!-- 管理员表格 -->
-      <el-table :data="tableData" border v-loading="loading" style="width: 100%">
+      <el-table 
+        ref="tableRef"
+        :data="tableData" 
+        border 
+        v-loading="loading" 
+        style="width: 100%"
+        @selection-change="handleSelectionChange"
+      >
+        <el-table-column type="selection" width="55" :selectable="canSelectRow" />
         <el-table-column prop="id" label="ID" width="60" />
         <el-table-column prop="username" label="用户名" width="120" />
         <el-table-column prop="nickname" label="昵称" width="120" />
         <el-table-column label="角色" width="120">
           <template #default="scope">
             <el-tag 
-              :type="scope.row.role === 'super_admin' ? 'danger' : scope.row.role === 'dispatcher' ? 'success' : 'info'"
+              :type="getRoleTagType(scope.row.role)"
             >
-              {{ 
-                scope.row.role === 'super_admin' ? '超级管理员' : 
-                scope.row.role === 'dispatcher' ? '派单组' : 
-                '客服组' 
-              }}
+              {{ getRoleLabel(scope.row.role) }}
             </el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column label="所属组长" width="120">
+          <template #default="scope">
+            <span v-if="scope.row.leader_name">{{ scope.row.leader_name }}</span>
+            <span v-else style="color: #999;">-</span>
           </template>
         </el-table-column>
         <el-table-column prop="contact" label="联系方式" width="150" />
         <el-table-column prop="email" label="邮箱地址" width="200" />
+        <el-table-column label="微信二维码" width="140" v-if="isSuperAdmin">
+          <template #default="scope">
+            <div v-if="scope.row.role === 'dispatcher' || scope.row.role === 'customer_service'" style="display: flex; align-items: center; gap: 8px;">
+              <el-upload
+                :action="uploadAction"
+                :headers="uploadHeaders"
+                :data="{ type: 'qrcode' }"
+                :show-file-list="false"
+                :before-upload="(file) => beforeUploadQrcode(file, scope.row)"
+                :on-success="(res) => handleQrcodeUploadSuccess(res, scope.row)"
+                :on-error="(err) => handleQrcodeUploadError(err, scope.row)"
+                accept="image/*"
+                class="qrcode-uploader"
+                :http-request="customUpload"
+              >
+                <el-button type="primary" size="small" :loading="scope.row.uploadingQrcode">
+                  {{ scope.row.wechat_qrcode ? '更换' : '上传' }}
+                </el-button>
+              </el-upload>
+              <el-button 
+                v-if="scope.row.wechat_qrcode" 
+                type="success" 
+                size="small" 
+                @click="previewQrcode(scope.row)"
+              >
+                查看
+              </el-button>
+              <el-button 
+                v-if="scope.row.wechat_qrcode" 
+                type="danger" 
+                size="small" 
+                @click="deleteQrcode(scope.row)"
+              >
+                删除
+              </el-button>
+            </div>
+            <span v-else style="color: #999;">-</span>
+          </template>
+        </el-table-column>
         <el-table-column label="专属预约链接" min-width="300">
           <template #default="scope">
             <div class="link-cell">
@@ -80,7 +141,7 @@
         </el-table-column>
         <el-table-column prop="last_login_time" label="最后登录时间" width="180" />
         <el-table-column prop="create_time" label="创建时间" width="180" />
-        <el-table-column label="操作" fixed="right" width="180" align="center">
+        <el-table-column label="操作" fixed="right" width="240" align="center">
           <template #default="scope">
             <el-button 
               type="primary" 
@@ -145,8 +206,9 @@
           <el-input v-model="form.nickname" placeholder="请输入昵称" />
         </el-form-item>
         <el-form-item label="角色" prop="role">
-          <el-radio-group v-model="form.role" :disabled="!isSuperAdmin || form.id === currentAdminId">
+          <el-radio-group v-model="form.role" :disabled="!isSuperAdmin || form.id === currentAdminId" @change="handleRoleChange">
             <el-radio label="super_admin" v-if="isSuperAdmin">超级管理员</el-radio>
+            <el-radio label="team_leader">客服组长</el-radio>
             <el-radio label="customer_service">客服组</el-radio>
             <el-radio label="dispatcher">派单组</el-radio>
           </el-radio-group>
@@ -154,14 +216,27 @@
             只有超级管理员可以修改角色
           </div>
         </el-form-item>
+        <el-form-item label="所属组长" prop="leader_id" v-if="form.role === 'customer_service'">
+          <el-select v-model="form.leader_id" placeholder="请选择组长（可选）" clearable filterable>
+            <el-option 
+              v-for="leader in teamLeaders" 
+              :key="leader.id" 
+              :label="leader.nickname || leader.username" 
+              :value="leader.id" 
+            />
+          </el-select>
+          <div class="form-tip">选择组长后，该组长可以查看此客服的线索和跟进记录</div>
+        </el-form-item>
         <el-form-item label="联系方式" prop="contact" v-if="form.role === 'dispatcher'">
           <el-input v-model="form.contact" placeholder="请输入联系方式，用于显示给用户" />
           <div class="form-tip">派单组成员需要填写联系方式，用于家教订单派单</div>
         </el-form-item>
-        <el-form-item label="邮箱地址" prop="email">
+        <el-form-item label="邮箱地址" prop="email" :required="form.role === 'customer_service'">
           <el-input v-model="form.email" placeholder="请输入邮箱地址" />
           <div class="form-tip">
-            <span v-if="form.role === 'customer_service'">用于接收归属于您的新订单审核通知</span>
+            <span v-if="form.role === 'customer_service'" style="color: #E6A23C; font-weight: bold;">
+              客服组角色必填！用于接收线索指派通知和订单审核通知
+            </span>
             <span v-else-if="form.role === 'dispatcher'">用于接收归属于您的交易支付成功通知</span>
             <span v-else>用于接收系统通知</span>
           </div>
@@ -183,14 +258,47 @@
         </el-button>
       </template>
     </el-dialog>
+
+    <!-- 批量设置组长对话框 -->
+    <el-dialog
+      v-model="batchLeaderDialogVisible"
+      title="批量设置归属组长"
+      width="400px"
+    >
+      <el-form label-width="100px">
+        <el-form-item label="选择组长">
+          <el-select v-model="batchLeaderId" placeholder="请选择组长" clearable filterable style="width: 100%">
+            <el-option label="取消归属（无组长）" :value="0" />
+            <el-option 
+              v-for="leader in teamLeaders" 
+              :key="leader.id" 
+              :label="leader.nickname || leader.username" 
+              :value="leader.id" 
+            />
+          </el-select>
+        </el-form-item>
+        <el-form-item>
+          <div class="batch-info">
+            将为 <strong>{{ selectedRows.length }}</strong> 名客服设置归属组长
+          </div>
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="batchLeaderDialogVisible = false">取消</el-button>
+        <el-button type="primary" @click="handleBatchSetLeader" :loading="batchLoading">
+          确定
+        </el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
 <script setup>
-import { ref, reactive, onMounted, computed } from 'vue'
+import { ref, reactive, onMounted, computed, h } from 'vue'
 import { Plus, CopyDocument } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { getAdminList, addAdmin, updateAdmin, deleteAdmin } from '@/api/admin'
+import { getAdminList, addAdmin, updateAdmin, deleteAdmin, updateAdminWechatQrcode, getTeamLeaders, batchUpdateLeader } from '@/api/admin'
+import { uploadImage } from '@/api/upload'
 import { useUserStore } from '@/store'
 
 const userStore = useUserStore()
@@ -199,8 +307,15 @@ const isSuperAdmin = computed(() => userStore.isSuperAdmin)
 
 const loading = ref(false)
 const tableData = ref([])
+const tableRef = ref(null)
+const selectedRows = ref([])
 const currentPage = ref(1)
 const pageSize = ref(20)
+
+// 批量设置组长相关
+const batchLeaderDialogVisible = ref(false)
+const batchLeaderId = ref(null)
+const batchLoading = ref(false)
 const total = ref(0)
 
 const searchForm = reactive({
@@ -219,10 +334,14 @@ const form = reactive({
   password: '',
   nickname: '',
   role: 'customer_service',
+  leader_id: null,
   contact: '',
   email: '',
   status: 1
 })
+
+// 组长列表
+const teamLeaders = ref([])
 
 const rules = {
   username: [
@@ -230,6 +349,7 @@ const rules = {
     { pattern: /^[a-zA-Z0-9_]{4,20}$/, message: '用户名须为4-20个字母、数字或下划线', trigger: 'blur' }
   ],
   email: [
+    { required: function() { return form.role === 'customer_service' }, message: '客服组角色必须填写邮箱', trigger: 'blur' },
     { type: 'email', message: '请输入正确的邮箱地址', trigger: ['blur', 'change'] }
   ],
   password: [
@@ -249,6 +369,7 @@ const rules = {
 
 onMounted(() => {
   loadData()
+  loadTeamLeaders()
 })
 
 const loadData = async () => {
@@ -296,9 +417,98 @@ const resetForm = () => {
   form.password = ''
   form.nickname = ''
   form.role = 'customer_service'
+  form.leader_id = null
   form.contact = ''
   form.email = ''
   form.status = 1
+}
+
+// 加载组长列表
+const loadTeamLeaders = async () => {
+  try {
+    const res = await getTeamLeaders()
+    teamLeaders.value = res.data || []
+  } catch (error) {
+    // 静默处理
+  }
+}
+
+// 角色变更处理
+const handleRoleChange = (role) => {
+  // 如果不是客服角色，清空组长选择
+  if (role !== 'customer_service') {
+    form.leader_id = null
+  }
+}
+
+// 获取角色标签类型
+const getRoleTagType = (role) => {
+  const typeMap = {
+    'super_admin': 'danger',
+    'team_leader': 'warning',
+    'customer_service': 'info',
+    'dispatcher': 'success'
+  }
+  return typeMap[role] || 'info'
+}
+
+// 获取角色显示名称
+const getRoleLabel = (role) => {
+  const labelMap = {
+    'super_admin': '超级管理员',
+    'team_leader': '客服组长',
+    'customer_service': '客服组',
+    'dispatcher': '派单组'
+  }
+  return labelMap[role] || role
+}
+
+// 表格选择变化
+const handleSelectionChange = (selection) => {
+  selectedRows.value = selection
+}
+
+// 判断行是否可选（只有客服角色可以设置组长）
+const canSelectRow = (row) => {
+  return row.role === 'customer_service'
+}
+
+// 清除选择
+const clearSelection = () => {
+  tableRef.value?.clearSelection()
+  selectedRows.value = []
+}
+
+// 显示批量设置组长对话框
+const showBatchLeaderDialog = () => {
+  if (selectedRows.value.length === 0) {
+    ElMessage.warning('请先选择要设置的客服')
+    return
+  }
+  batchLeaderId.value = null
+  batchLeaderDialogVisible.value = true
+}
+
+// 批量设置组长
+const handleBatchSetLeader = async () => {
+  if (batchLeaderId.value === null) {
+    ElMessage.warning('请选择组长')
+    return
+  }
+  
+  batchLoading.value = true
+  try {
+    const adminIds = selectedRows.value.map(row => row.id)
+    await batchUpdateLeader(adminIds, batchLeaderId.value)
+    ElMessage.success('批量设置成功')
+    batchLeaderDialogVisible.value = false
+    clearSelection()
+    loadData()
+  } catch (error) {
+    ElMessage.error('批量设置失败')
+  } finally {
+    batchLoading.value = false
+  }
 }
 
 const showAddDialog = () => {
@@ -315,6 +525,7 @@ const showEditDialog = (row) => {
     password: '',
     nickname: row.nickname,
     role: row.role,
+    leader_id: row.leader_id || null,
     contact: row.contact || '',
     email: row.email || '',
     status: row.status
@@ -401,6 +612,160 @@ const copyLink = async (adminId) => {
     document.body.removeChild(textarea)
   }
 }
+
+// 二维码上传相关
+const uploadAction = computed(() => {
+  // 使用相对路径，由axios配置处理
+  return '/admin/api/upload/image'
+})
+
+const uploadHeaders = computed(() => {
+  // 管理端使用session认证，不需要额外的headers
+  return {}
+})
+
+// 自定义上传方法，使用axios确保经过拦截器处理
+const customUpload = async (options) => {
+  const { file, onSuccess, onError } = options
+  
+  try {
+    const { uploadImage } = await import('@/api/upload')
+    const response = await uploadImage(file, 'qrcode')
+    onSuccess(response)
+  } catch (error) {
+    onError(error)
+  }
+}
+
+// 上传前验证
+const beforeUploadQrcode = (file, row) => {
+  const isImage = file.type.startsWith('image/')
+  const isLt5M = file.size / 1024 / 1024 < 5
+
+  if (!isImage) {
+    ElMessage.error('只能上传图片文件!')
+    return false
+  }
+  if (!isLt5M) {
+    ElMessage.error('图片大小不能超过 5MB!')
+    return false
+  }
+  
+  // 设置上传中状态
+  row.uploadingQrcode = true
+  return true
+}
+
+// 上传成功
+const handleQrcodeUploadSuccess = async (response, row) => {
+  if (!row) {
+    row = findRowByUploading()
+  }
+  
+  if (!row) {
+    ElMessage.error('无法找到对应的管理员记录')
+    return
+  }
+  
+  row.uploadingQrcode = false
+  
+  // response已经被axios拦截器处理，格式为 { success: true, data: {...} }
+  if (!response.success) {
+    ElMessage.error(response.error || response.message || '上传失败')
+    return
+  }
+  
+  try {
+    // 更新管理员的二维码URL
+    await updateAdminWechatQrcode(row.id, response.data.url)
+    row.wechat_qrcode = response.data.url
+    ElMessage.success('二维码上传成功')
+    // 刷新列表以确保数据同步
+    await loadData()
+  } catch (error) {
+    ElMessage.error('保存二维码失败：' + (error.response?.data?.error || error.message || '请重试'))
+  }
+}
+
+// 辅助函数：查找正在上传的行
+const findRowByUploading = () => {
+  return tableData.value.find(r => r.uploadingQrcode === true)
+}
+
+// 上传失败
+const handleQrcodeUploadError = (error, row) => {
+  console.error('上传失败:', error)
+  
+  if (!row) {
+    row = findRowByUploading()
+  }
+  
+  if (row) {
+    row.uploadingQrcode = false
+  }
+  
+  ElMessage.error('上传失败：' + (error.response?.data?.error || error.message || '网络错误，请重试'))
+}
+
+// 预览二维码
+const previewQrcode = (row) => {
+  if (!row.wechat_qrcode) {
+    ElMessage.warning('该管理员还没有上传微信二维码')
+    return
+  }
+  
+  // 使用Element Plus的图片预览功能
+  let imageUrl = row.wechat_qrcode
+  // 如果不是完整URL，使用相对路径
+  if (!imageUrl.startsWith('http://') && !imageUrl.startsWith('https://')) {
+    // 确保以/开头
+    imageUrl = imageUrl.startsWith('/') ? imageUrl : '/' + imageUrl
+  }
+  
+  // 创建预览对话框
+  ElMessageBox({
+    title: `${row.nickname || row.username} 的微信二维码`,
+    message: h('div', {
+      style: {
+        textAlign: 'center',
+        padding: '20px'
+      }
+    }, [
+      h('img', {
+        src: imageUrl,
+        style: {
+          maxWidth: '300px',
+          maxHeight: '300px',
+          width: '100%',
+          height: 'auto'
+        },
+        alt: '微信二维码'
+      })
+    ]),
+    showConfirmButton: true,
+    confirmButtonText: '关闭',
+    showCancelButton: false
+  })
+}
+
+// 删除二维码
+const deleteQrcode = async (row) => {
+  try {
+    await ElMessageBox.confirm('确定要删除该微信二维码吗？', '提示', {
+      confirmButtonText: '确定',
+      cancelButtonText: '取消',
+      type: 'warning'
+    })
+    
+    await updateAdminWechatQrcode(row.id, '')
+    row.wechat_qrcode = null
+    ElMessage.success('二维码已删除')
+  } catch (error) {
+    if (error !== 'cancel') {
+      ElMessage.error('删除失败：' + (error.message || '请重试'))
+    }
+  }
+}
 </script>
 
 <style scoped>
@@ -436,5 +801,34 @@ const copyLink = async (adminId) => {
 
 .link-cell :deep(.el-input-group__append) {
   padding: 0 8px;
+}
+
+.batch-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  margin-bottom: 16px;
+  background: #f0f9ff;
+  border-radius: 8px;
+  border: 1px solid #b3d8ff;
+}
+
+.selected-count {
+  font-size: 14px;
+  color: #409eff;
+  font-weight: 500;
+}
+
+.batch-info {
+  font-size: 14px;
+  color: #606266;
+  padding: 8px 12px;
+  background: #f5f7fa;
+  border-radius: 4px;
+}
+
+.batch-info strong {
+  color: #409eff;
 }
 </style>

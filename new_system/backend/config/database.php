@@ -1,49 +1,49 @@
 <?php
 /**
- * 数据库配置
+ * 数据库配置 - 使用环境变量
+ * 安全提示：敏感信息已移至 .env 文件
  */
-return [
-    // 默认使用的数据库连接配置
-    'default'         => 'mysql',
 
-    // 数据库连接配置信息
-    'connections'     => [
+// 从环境变量读取配置
+$database = env('DB_NAME', env('DB_DATABASE', 'myjiajiao'));
+$username = env('DB_USER', env('DB_USERNAME', 'jE2se7DGe5HfE6zL'));
+$password = env('DB_PASSWORD', 'myjiajiao');
+$hostname = env('DB_HOST', '127.0.0.1');
+$hostport = env('DB_PORT', '3306');
+$domain = env('APP_DOMAIN', 'http://localhost');
+
+// 判断是否为本地环境（用于debug模式）
+$serverName = $_SERVER['SERVER_NAME'] ?? 'localhost';
+$httpHost = $_SERVER['HTTP_HOST'] ?? 'localhost';
+$isLocal = in_array($serverName, ['localhost', '127.0.0.1', '0.0.0.0']) 
+    || strpos($httpHost, 'localhost') !== false 
+    || strpos($httpHost, '127.0.0.1') !== false;
+
+define('APP_DOMAIN', $domain);
+
+return [
+    'default' => 'mysql',
+    'connections' => [
         'mysql' => [
-            // 数据库类型
             'type'            => 'mysql',
-            // 服务器地址
-            'hostname'        => 'localhost',
-            // 数据库名
-            'database'        => 'myjiajiao',
-            // 用户名
-            'username'        => 'jE2se7DGe5HfE6zL',
-            // 密码
-            'password'        => 'myjiajiao',
-            // 端口
-            'hostport'        => '3306',
-            // 数据库连接参数
-            'params'          => [],
-            // 数据库编码默认采用utf8mb4
+            'hostname'        => $hostname,
+            'database'        => $database,
+            'username'        => $username,
+            'password'        => $password,
+            'hostport'        => $hostport,
+            'params'          => [
+                \PDO::MYSQL_ATTR_INIT_COMMAND => 'SET NAMES utf8mb4 COLLATE utf8mb4_unicode_ci'
+            ],
             'charset'         => 'utf8mb4',
-            // 数据库表前缀
             'prefix'          => 'fa_',
-            // 数据库调试模式
-            'debug'           => true,
-            // 数据库部署方式:0 集中式(单一服务器),1 分布式(主从服务器)
+            'debug'           => $isLocal,
             'deploy'          => 0,
-            // 数据库读写是否分离 主从式有效
             'rw_separate'     => false,
-            // 读写分离后 主服务器数量
             'master_num'      => 1,
-            // 指定从服务器序号
             'slave_no'        => '',
-            // 是否严格检查字段是否存在
             'fields_strict'   => true,
-            // 是否需要断线重连
             'break_reconnect' => false,
-            // 监听SQL
             'trigger_sql'     => true,
-            // 开启字段缓存
             'fields_cache'    => false,
         ],
     ],

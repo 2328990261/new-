@@ -1,24 +1,42 @@
 <template>
   <div id="app">
+    <!-- 使用TopNavbar组件 -->
     <TopNavbar />
-    <router-view />
+    
+    <div class="main-content">
+      <router-view />
+    </div>
   </div>
 </template>
 
 <script setup>
 import { onMounted } from 'vue'
-import { useRouter } from 'vue-router'
 import TopNavbar from './components/TopNavbar.vue'
+import { initWechatShare, setWechatShare } from './utils/wechatShare'
 
-const router = useRouter()
-
-onMounted(() => {
+onMounted(async () => {
   // 应用初始化逻辑
-  console.log('用户端应用已启动')
+  // 用户端应用已启动
+  
+  // 初始化微信分享
+  try {
+    await initWechatShare()
+    // 设置默认分享信息
+    setWechatShare()
+  } catch (error) {
+    // 静默处理错误
+  }
 })
 </script>
 
 <style>
+/* 全局重置和基础样式 */
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
 #app {
   font-family: Avenir, Helvetica, Arial, sans-serif;
   -webkit-font-smoothing: antialiased;
@@ -26,52 +44,27 @@ onMounted(() => {
   color: #2c3e50;
 }
 
-* {
-  margin: 0;
-  padding: 0;
-  box-sizing: border-box;
-}
-
 body {
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
   line-height: 1.6;
   color: #333;
+  overflow-x: hidden;
+  max-width: 100vw;
+  width: 100%;
 }
 
-a {
-  color: #409eff;
-  text-decoration: none;
+.main-content {
+  min-height: 100vh;
+  overflow-x: hidden;
+  max-width: 100vw;
+  width: 100%;
 }
 
-a:hover {
-  color: #66b1ff;
-}
-
+/* 工具类 */
 .container {
   max-width: 1200px;
   margin: 0 auto;
   padding: 0 20px;
-}
-
-.btn {
-  display: inline-block;
-  padding: 8px 16px;
-  background-color: #409eff;
-  color: white;
-  border: none;
-  border-radius: 4px;
-  cursor: pointer;
-  text-decoration: none;
-  transition: background-color 0.3s;
-}
-
-.btn:hover {
-  background-color: #66b1ff;
-}
-
-.btn:disabled {
-  background-color: #c0c4cc;
-  cursor: not-allowed;
 }
 
 .text-center {
@@ -90,6 +83,7 @@ a:hover {
   padding: 20px;
 }
 
+/* 状态样式 */
 .loading {
   display: flex;
   justify-content: center;
@@ -117,7 +111,29 @@ a:hover {
   margin: 10px 0;
 }
 
-/* 响应式设计 */
+/* 按钮样式 */
+.btn {
+  display: inline-block;
+  padding: 8px 16px;
+  background-color: #409eff;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  text-decoration: none;
+  transition: background-color 0.3s;
+}
+
+.btn:hover {
+  background-color: #66b1ff;
+}
+
+.btn:disabled {
+  background-color: #c0c4cc;
+  cursor: not-allowed;
+}
+
+/* 响应式 */
 @media (max-width: 768px) {
   .container {
     padding: 0 10px;

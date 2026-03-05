@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>测试用户管理 API</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 1200px;
+            margin: 20px auto;
+            padding: 20px;
+        }
+        .section {
+            margin-bottom: 30px;
+            padding: 20px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+        }
+        button {
+            padding: 10px 20px;
+            margin: 5px;
+            cursor: pointer;
+            background: #409EFF;
+            color: white;
+            border: none;
+            border-radius: 4px;
+        }
+        button:hover {
+            background: #66b1ff;
+        }
+        pre {
+            background: #f5f5f5;
+            padding: 15px;
+            border-radius: 4px;
+            overflow-x: auto;
+        }
+        .success { color: green; }
+        .error { color: red; }
+    </style>
+</head>
+<body>
+    <h1>测试用户管理 API</h1>
+    
+    <div class="section">
+        <h2>1. 测试获取用户列表</h2>
+        <button onclick="testGetList()">获取用户列表</button>
+        <div id="list-result"></div>
+    </div>
+    
+    <div class="section">
+        <h2>2. 测试获取统计数据</h2>
+        <button onclick="testGetStats()">获取统计数据</button>
+        <div id="stats-result"></div>
+    </div>
+    
+    <div class="section">
+        <h2>3. 直接访问后端 API</h2>
+        <button onclick="testDirectAPI()">直接访问后端</button>
+        <div id="direct-result"></div>
+    </div>
+
+    <script>
+        // 测试获取用户列表
+        async function testGetList() {
+            const resultDiv = document.getElementById('list-result');
+            resultDiv.innerHTML = '<p>请求中...</p>';
+            
+            try {
+                const response = await fetch('/admin/api/mini-users?page=1&pageSize=20', {
+                    method: 'GET',
+                    credentials: 'include',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    }
+                });
+                
+                const data = await response.json();
+                
+                resultDiv.innerHTML = `
+                    <p class="success">✅ 请求成功</p>
+                    <p>状态码: ${response.status}</p>
+                    <p>响应代码: ${data.code}</p>
+                    <p>响应消息: ${data.message}</p>
+                    <p>数据总数: ${data.data?.total || 0}</p>
+                    <p>返回条数: ${data.data?.list?.length || 0}</p>
+                    <pre>${JSON.stringify(data, null, 2)}</pre>
+                `;
+            } catch (error) {
+                resultDiv.innerHTML = `
+                    <p class="error">❌ 请求失败</p>
+                    <p>${error.message}</p>
+                `;
+            }
+        }
+        
+        // 测试获取统计数据
+        async function testGetStats() {
+            const resultDiv = document.getElementById('stats-result');
+            resultDiv.innerHTML = '<p>请求中...</p>';
+            
+            try {
+                const response = await fetch('/admin/api/mini-users/stats', {
+                    method: 'GET',
+                    credentials: 'include',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    }
+                });
+                
+                const data = await response.json();
+                
+                resultDiv.innerHTML = `
+                    <p class="success">✅ 请求成功</p>
+                    <p>状态码: ${response.status}</p>
+                    <p>响应代码: ${data.code}</p>
+                    <p>总用户数: ${data.data?.totalUsers || 0}</p>
+                    <p>今日新增: ${data.data?.todayUsers || 0}</p>
+                    <p>小程序用户: ${data.data?.miniprogramUsers || 0}</p>
+                    <pre>${JSON.stringify(data, null, 2)}</pre>
+                `;
+            } catch (error) {
+                resultDiv.innerHTML = `
+                    <p class="error">❌ 请求失败</p>
+                    <p>${error.message}</p>
+                `;
+            }
+        }
+        
+        // 直接访问后端 API
+        async function testDirectAPI() {
+            const resultDiv = document.getElementById('direct-result');
+            resultDiv.innerHTML = '<p>请求中...</p>';
+            
+            // 尝试多个可能的 URL
+            const urls = [
+                '/admin/api/mini-users',
+                '/api/admin/mini-users',
+                '/new_system/backend/public/index.php/admin/mini-users'
+            ];
+            
+            let results = '';
+            
+            for (const url of urls) {
+                try {
+                    const response = await fetch(url + '?page=1&pageSize=20', {
+                        method: 'GET',
+                        credentials: 'include'
+                    });
+                    
+                    const text = await response.text();
+                    let data;
+                    try {
+                        data = JSON.parse(text);
+                    } catch {
+                        data = text;
+                    }
+                    
+                    results += `
+                        <h4>${url}</h4>
+                        <p>状态码: ${response.status}</p>
+                        <pre>${typeof data === 'object' ? JSON.stringify(data, null, 2) : text.substring(0, 500)}</pre>
+                        <hr>
+                    `;
+                } catch (error) {
+                    results += `
+                        <h4>${url}</h4>
+                        <p class="error">❌ ${error.message}</p>
+                        <hr>
+                    `;
+                }
+            }
+            
+            resultDiv.innerHTML = results;
+        }
+        
+        // 页面加载时自动测试
+        window.onload = function() {
+            console.log('页面加载完成，可以开始测试');
+        };
+    </script>
+</body>
+</html>

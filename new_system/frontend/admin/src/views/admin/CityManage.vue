@@ -10,6 +10,43 @@
         </div>
       </template>
 
+      <!-- 搜索表单 -->
+      <el-form :inline="true" class="search-form">
+        <el-form-item label="城市名称">
+          <el-input 
+            v-model="searchKeyword" 
+            placeholder="请输入城市名称" 
+            clearable
+            @clear="handleSearch"
+            @keyup.enter="handleSearch"
+            style="width: 200px"
+          />
+        </el-form-item>
+        <el-form-item label="省份">
+          <el-select 
+            v-model="searchProvinceId" 
+            placeholder="全部省份" 
+            clearable
+            filterable
+            @change="handleSearch"
+            style="width: 200px"
+          >
+            <el-option
+              v-for="province in provinces"
+              :key="province.id"
+              :label="province.name"
+              :value="province.id"
+            />
+          </el-select>
+        </el-form-item>
+        <el-form-item>
+          <el-button type="primary" @click="handleSearch">
+            <el-icon><Search /></el-icon> 搜索
+          </el-button>
+          <el-button @click="handleReset">重置</el-button>
+        </el-form-item>
+      </el-form>
+
       <el-table v-loading="loading" :data="tableData" border>
         <el-table-column prop="id" label="ID" width="80" />
         <el-table-column prop="name" label="城市名称" />
@@ -24,9 +61,12 @@
         <el-table-column prop="sort" label="排序" width="100" />
         <el-table-column label="热门" width="100">
           <template #default="{ row }">
-            <el-tag :type="row.is_hot ? 'success' : 'info'" size="small">
-              {{ row.is_hot ? '是' : '否' }}
-            </el-tag>
+            <el-switch 
+              v-model="row.is_hot" 
+              :active-value="1" 
+              :inactive-value="0"
+              @change="handleHotToggle(row)"
+            />
           </template>
         </el-table-column>
         <el-table-column label="操作" width="200">
@@ -103,7 +143,7 @@
 
 <script setup>
 import { ref, reactive, onMounted } from 'vue'
-import { Plus } from '@element-plus/icons-vue'
+import { Plus, Search } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 import { getCityList, addCity, updateCity, deleteCity } from '@/api/city'
 import { getProvinceList } from '@/api/province'
@@ -114,6 +154,10 @@ const currentPage = ref(1)
 const pageSize = ref(20)
 const total = ref(0)
 const provinces = ref([])
+
+// 搜索相关
+const searchKeyword = ref('')
+const searchProvinceId = ref(null)
 
 const dialogVisible = ref(false)
 const dialogTitle = ref('添加城市')
@@ -151,15 +195,39 @@ const loadProvinces = async () => {
 const loadData = async () => {
   loading.value = true
   try {
-    const res = await getCityList({
+    const params = {
       page: currentPage.value,
       limit: pageSize.value
-    })
+    }
+    
+    // 添加搜索条件
+    if (searchKeyword.value) {
+      params.keyword = searchKeyword.value
+    }
+    if (searchProvinceId.value) {
+      params.province_id = searchProvinceId.value
+    }
+    
+    const res = await getCityList(params)
     tableData.value = res.data
     total.value = res.total
   } finally {
     loading.value = false
   }
+}
+
+// 搜索处理
+const handleSearch = () => {
+  currentPage.value = 1
+  loadData()
+}
+
+// 重置搜索
+const handleReset = () => {
+  searchKeyword.value = ''
+  searchProvinceId.value = null
+  currentPage.value = 1
+  loadData()
 }
 
 const showAddDialog = () => {
@@ -177,7 +245,7 @@ const showEditDialog = (row) => {
     code: row.code,
     level: row.level,
     sort: row.sort,
-    is_hot: row.is_hot
+    is_hot: Boolean(row.is_hot)  // 将数字转换为布尔值
   })
   dialogVisible.value = true
 }
@@ -186,11 +254,17 @@ const handleSubmit = async () => {
   await formRef.value.validate(async (valid) => {
     if (valid) {
       try {
+        // 准备提交数据，将布尔值转换为数字
+        const submitData = {
+          ...form,
+          is_hot: form.is_hot ? 1 : 0
+        }
+        
         if (form.id) {
-          await updateCity(form.id, form)
+          await updateCity(form.id, submitData)
           ElMessage.success('更新成功')
         } else {
-          await addCity(form)
+          await addCity(submitData)
           ElMessage.success('添加成功')
         }
         dialogVisible.value = false
@@ -211,6 +285,18 @@ const handleDelete = async (id) => {
   } catch (error) {
     
     ElMessage.error(error.response?.data?.error || '删除失败')
+  }
+}
+
+// 切换热门状态
+const handleHotToggle = async (row) => {
+  try {
+    await updateCity(row.id, { is_hot: row.is_hot })
+    ElMessage.success(row.is_hot ? '已设为热门城市' : '已取消热门城市')
+  } catch (error) {
+    // 如果更新失败，恢复原来的状态
+    row.is_hot = row.is_hot === 1 ? 0 : 1
+    ElMessage.error(error.response?.data?.error || '操作失败')
   }
 }
 
@@ -236,6 +322,10 @@ const resetForm = () => {
 
 .card-header h3 {
   margin: 0;
+}
+
+.search-form {
+  margin-bottom: 20px;
 }
 
 .pagination {

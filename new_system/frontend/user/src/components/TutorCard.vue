@@ -32,6 +32,13 @@
         <el-icon><Money /></el-icon>
         <span>{{ tutor.salary }}</span>
       </div>
+      <div 
+        class="info-tag"
+        :class="tutor.teacher_type === 'professional' ? 'tag-professional' : 'tag-student'"
+      >
+        <el-icon><User /></el-icon>
+        <span>{{ tutor.teacher_type === 'professional' ? '专职老师' : '大学生' }}</span>
+      </div>
     </div>
 
     <!-- 需求描述 -->
@@ -92,11 +99,11 @@
 </template>
 
 <script setup>
-import { defineProps, defineEmits, computed } from 'vue'
+import { computed } from 'vue'
 import { ElMessage } from 'element-plus'
 import { 
   Lightning, Trophy, LocationFilled, School, Reading, Money, 
-  DocumentCopy, ArrowRight 
+  DocumentCopy, ArrowRight, User 
 } from '@element-plus/icons-vue'
 
 const props = defineProps({
@@ -135,30 +142,59 @@ const truncateText = (text, length) => {
   return text.substring(0, length) + '...'
 }
 
-const copyText = async (text) => {
-  try {
-    await navigator.clipboard.writeText(text)
-    ElMessage.success('复制成功')
-  } catch (err) {
-    ElMessage.error('复制失败，请手动复制')
+// 复制文本到剪贴板（带兼容性处理）
+const copyText = (text) => {
+  if (!text) {
+    ElMessage.warning('没有可复制的内容')
+    return
+  }
+  
+  // 使用 Clipboard API
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(text).then(() => {
+      ElMessage.success('已复制到剪贴板')
+    }).catch(() => {
+      fallbackCopy(text)
+    })
+  } else {
+    fallbackCopy(text)
   }
 }
 
-const copyContent = async () => {
-  const { tutor } = props
-  const dispatcher = dispatcherInfo.value
-  const content = `${tutor.city?.name || ''} ${tutor.district?.name || ''} | ${tutor.grade} ${tutor.subject?.name || ''} | ${tutor.salary}
-
-${tutor.content}
-
-${dispatcher ? `派单组：${dispatcher.nickname || dispatcher.username}${dispatcher.contact ? ' ' + dispatcher.contact : ''}` : ''}`
+// 兼容性复制方法
+const fallbackCopy = (text) => {
+  const textArea = document.createElement('textarea')
+  textArea.value = text
+  textArea.style.position = 'fixed'
+  textArea.style.top = '-9999px'
+  textArea.style.left = '-9999px'
+  document.body.appendChild(textArea)
+  textArea.focus()
+  textArea.select()
   
   try {
-    await navigator.clipboard.writeText(content)
-    ElMessage.success('复制成功')
+    const successful = document.execCommand('copy')
+    if (successful) {
+      ElMessage.success('已复制到剪贴板')
+    } else {
+      ElMessage.error('复制失败，请手动复制')
+    }
   } catch (err) {
     ElMessage.error('复制失败，请手动复制')
   }
+  
+  document.body.removeChild(textArea)
+}
+
+const copyContent = () => {
+  const { tutor } = props
+  const dispatcher = dispatcherInfo.value
+  // 直接拼接原始内容
+  const content = `${tutor.content}
+
+${dispatcher ? `派单员：${dispatcher.nickname || dispatcher.username}${dispatcher.contact ? '\n微信号：' + dispatcher.contact : ''}` : ''}`
+  
+  copyText(content)
 }
 
 const viewDetail = () => {
@@ -173,13 +209,11 @@ const viewDetail = () => {
   border-radius: 16px;
   padding: 20px;
   box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
-  transition: all 0.3s ease;
   border: 2px solid transparent;
   cursor: pointer;
 }
 
 .tutor-card:hover {
-  transform: translateY(-4px);
   box-shadow: 0 8px 24px rgba(102, 126, 234, 0.15);
   border-color: #667eea;
 }
@@ -294,6 +328,16 @@ const viewDetail = () => {
   font-weight: 700;
 }
 
+.tag-professional {
+  background: #FFE8E8;
+  color: #F44336;
+}
+
+.tag-student {
+  background: #E3F2FD;
+  color: #2196F3;
+}
+
 /* 需求描述 */
 .card-description {
   font-size: 14px;
@@ -370,7 +414,6 @@ const viewDetail = () => {
   border-radius: 10px;
   font-size: 14px;
   font-weight: 600;
-  transition: all 0.3s ease;
   border: none;
 }
 
@@ -382,7 +425,6 @@ const viewDetail = () => {
 .copy-btn:hover {
   background: #e4e7ed;
   color: #303133;
-  transform: translateY(-2px);
 }
 
 .detail-btn {
@@ -391,17 +433,11 @@ const viewDetail = () => {
 }
 
 .detail-btn:hover {
-  transform: translateY(-2px);
   box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
 }
 
 .detail-btn .el-icon {
   font-size: 16px;
-  transition: transform 0.3s;
-}
-
-.tutor-card:hover .detail-btn .el-icon {
-  transform: translateX(4px);
 }
 
 /* 移动端优化 */

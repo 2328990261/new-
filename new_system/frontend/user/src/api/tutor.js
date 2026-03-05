@@ -33,11 +33,12 @@ export function getHotSubjects() {
   })
 }
 
-// 获取城市列表
-export function getCities() {
+// 获取城市列表（用户端接口）
+export function getCities(params) {
   return request({
     url: '/api/search/cities',
-    method: 'get'
+    method: 'get',
+    params
   })
 }
 
@@ -58,9 +59,13 @@ export function getSubjects() {
   })
 }
 
-
-
-
+// 获取城市统计数据
+export function getCityStats() {
+  return request({
+    url: '/api/tutor/stats/by-city',
+    method: 'get'
+  })
+}
 
 
 

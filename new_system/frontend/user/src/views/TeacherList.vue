@@ -115,14 +115,13 @@
       </div>
       
       <!-- 实际内容 -->
-      <transition-group v-else name="fade-slide">
+      <div v-else>
         <el-card
-          v-for="(teacher, index) in teacherList"
+          v-for="teacher in teacherList"
           :key="teacher.id"
           class="teacher-card"
           shadow="hover"
           @click="goToDetail(teacher.id)"
-          :style="{ animationDelay: `${index * 0.05}s` }"
         >
           <el-badge v-if="teacher.is_top" value="置顶" type="danger" class="top-badge">
             <div class="teacher-avatar">
@@ -166,7 +165,11 @@
             
             <div class="info-row">
               <el-icon class="info-icon"><Reading /></el-icon>
-              <span class="info-text">{{ teacher.subject_names?.join('、') || '暂无' }}</span>
+              <span class="info-text">{{ 
+                Array.isArray(teacher.subject_names) 
+                  ? teacher.subject_names.join('、') 
+                  : (teacher.subject_names || '暂无')
+              }}</span>
             </div>
             
             <div class="intro-text">
@@ -185,7 +188,7 @@
             </div>
           </div>
         </el-card>
-      </transition-group>
+      </div>
     </div>
 
     <!-- 空状态 -->
@@ -256,19 +259,12 @@ const loadTeachers = async () => {
       ...searchForm.value
     }
     
-    console.log('请求参数:', params)
-    console.log('请求URL: /api/teacher/list')
-    
     // 后端路由：GET /api/teacher/list
     const res = await request.get('/teacher/list', { params })
-    
-    console.log('API响应:', res)
     
     if (res.success) {
       teacherList.value = res.data.list || []
       total.value = res.data.total || 0
-      console.log('教师列表数据:', teacherList.value)
-      console.log('总数:', total.value)
       
       // 预取下一页
       const nextPage = currentPage.value + 1
@@ -612,7 +608,6 @@ onMounted(() => {
 
 .teacher-card {
   cursor: pointer;
-  transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
   border-radius: 16px;
   border: 2px solid transparent;
   background: linear-gradient(135deg, #ffffff 0%, #f8f9fa 100%);
@@ -620,7 +615,6 @@ onMounted(() => {
 }
 
 .teacher-card:hover {
-  transform: translateY(-8px) scale(1.02);
   box-shadow: 0 16px 40px rgba(102, 126, 234, 0.3);
   border-color: #667eea;
 }

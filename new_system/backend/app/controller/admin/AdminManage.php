@@ -23,6 +23,7 @@ class AdminManage extends BaseController
         
         try {
             $keyword = $this->request->get('keyword', '');
+            $role = $this->request->get('role', '');
             $page = $this->request->get('page/d', 1);
             $limit = $this->request->get('limit/d', 20);
             
@@ -38,14 +39,37 @@ class AdminManage extends BaseController
                 });
             }
             
+            // 角色筛选
+            if ($role) {
+                $query->where('role', $role);
+            }
+            
             $result = $query->paginate([
                 'list_rows' => $limit,
                 'page' => $page
             ]);
             
+            // 获取所有组长信息用于显示组长名称
+            $leaderIds = array_filter(array_column($result->items(), 'leader_id'));
+            $leaders = [];
+            if (!empty($leaderIds)) {
+                $leaderList = Admin::whereIn('id', $leaderIds)->column('nickname,username', 'id');
+                foreach ($leaderList as $id => $leader) {
+                    $leaders[$id] = $leader['nickname'] ?: $leader['username'];
+                }
+            }
+            
+            // 添加组长名称到每条记录
+            $data = [];
+            foreach ($result->items() as $item) {
+                $itemArray = $item->toArray();
+                $itemArray['leader_name'] = isset($leaders[$item->leader_id]) ? $leaders[$item->leader_id] : null;
+                $data[] = $itemArray;
+            }
+            
             return json([
                 'success' => true,
-                'data' => $result->items(),
+                'data' => $data,
                 'total' => $result->total()
             ]);
             
@@ -72,6 +96,161 @@ class AdminManage extends BaseController
     }
     
     /**
+     * 获取客服组管理员列表（用于筛选，包含超级管理员、客服和组长）
+     * 返回 role='super_admin' 或 role='customer_service' 或 role='team_leader' 且 status=1 的管理员
+     * 
+     * 权限控制：
+     * - 超级管理员：可以看到所有客服
+     * - 客服组长：只能看到自己和自己的组员
+     * - 普通客服：只能看到自己
+     */
+    public function getCustomerServices()
+    {
+        if (session_status() === PHP_SESSION_NONE) {
+            session_start();
+        }
+        if (!isset($_SESSION['admin_id'])) {
+            return json(['success' => false, 'error' => '未登录']);
+        }
+        
+        try {
+            $adminId = $_SESSION['admin_id'];
+            $adminRole = $_SESSION['admin_role'] ?? 'customer_service';
+            
+            // 基础查询：只查询状态为启用的用户，且角色为客服、组长或超级管理员
+            $query = Admin::where('status', '=', 1)
+                ->whereIn('role', ['super_admin', 'customer_service', 'team_leader'])
+                ->field('id,username,nickname,email,role,status,create_time,leader_id');
+            
+            // 根据当前用户角色限制可见范围
+            if ($adminRole === 'team_leader') {
+                // 客服组长只能看到自己和自己的组员
+                $teamMemberIds = Admin::where('leader_id', $adminId)
+                    ->where('status', '=', 1)
+                    ->column('id');
+                $teamMemberIds[] = $adminId; // 包含自己
+                $query->whereIn('id', $teamMemberIds);
+            } elseif ($adminRole === 'customer_service') {
+                // 普通客服只能看到自己
+                $query->where('id', '=', $adminId);
+            }
+            // 超级管理员可以看到所有（不需要额外过滤）
+            
+            $customerServices = $query->select();
+            
+            return json([
+                'success' => true,
+                'data' => $customerServices
+            ]);
+        } catch (\Exception $e) {
+            trace('获取客服组失败: ' . $e->getMessage(), 'error');
+            return json(['success' => false, 'error' => '获取客服组失败']);
+        }
+    }
+    
+    /**
+     * 获取组长列表
+     */
+    public function getTeamLeaders()
+    {
+        try {
+            $teamLeaders = Admin::where('role', '=', 'team_leader')
+                ->where('status', '=', 1)
+                ->field('id,username,nickname')
+                ->select();
+            
+            return json([
+                'success' => true,
+                'data' => $teamLeaders
+            ]);
+        } catch (\Exception $e) {
+            trace('获取组长列表失败: ' . $e->getMessage(), 'error');
+            return json(['success' => false, 'error' => '获取组长列表失败']);
+        }
+    }
+    
+    /**
+     * 获取所有客服和组长（不做权限过滤，用于家教信息筛选等场景）
+     */
+    public function getAllCustomerServices()
+    {
+        if (session_status() === PHP_SESSION_NONE) {
+            session_start();
+        }
+        if (!isset($_SESSION['admin_id'])) {
+            return json(['success' => false, 'error' => '未登录']);
+        }
+        
+        try {
+            // 获取所有启用的客服和组长
+            $customerServices = Admin::where('status', '=', 1)
+                ->whereIn('role', ['customer_service', 'team_leader'])
+                ->field('id,username,nickname,email,role,status,create_time,leader_id')
+                ->order('create_time', 'desc')
+                ->select();
+            
+            return json([
+                'success' => true,
+                'data' => $customerServices
+            ]);
+        } catch (\Exception $e) {
+            trace('获取所有客服失败: ' . $e->getMessage(), 'error');
+            return json(['success' => false, 'error' => '获取所有客服失败']);
+        }
+    }
+    
+    /**
+     * 批量设置归属组长
+     */
+    public function batchUpdateLeader()
+    {
+        if (session_status() === PHP_SESSION_NONE) {
+            session_start();
+        }
+        if (!isset($_SESSION['admin_id'])) {
+            return json(['success' => false, 'error' => '未登录']);
+        }
+        
+        // 只有超级管理员可以批量设置
+        $adminRole = $_SESSION['admin_role'] ?? 'customer_service';
+        if ($adminRole !== 'super_admin') {
+            return json(['success' => false, 'error' => '无权限执行此操作']);
+        }
+        
+        try {
+            $adminIds = $this->request->put('admin_ids', []);
+            $leaderId = $this->request->put('leader_id', 0);
+            
+            if (empty($adminIds) || !is_array($adminIds)) {
+                return json(['success' => false, 'error' => '请选择要设置的管理员']);
+            }
+            
+            // 验证组长是否存在（如果不是取消归属）
+            if ($leaderId > 0) {
+                $leader = Admin::where('id', $leaderId)->where('role', 'team_leader')->find();
+                if (!$leader) {
+                    return json(['success' => false, 'error' => '所选组长不存在或不是组长角色']);
+                }
+            }
+            
+            // 批量更新
+            $updateData = ['leader_id' => $leaderId > 0 ? $leaderId : null];
+            Admin::whereIn('id', $adminIds)
+                ->where('role', 'customer_service') // 只更新客服角色
+                ->update($updateData);
+            
+            return json([
+                'success' => true,
+                'message' => '批量设置成功'
+            ]);
+            
+        } catch (\Exception $e) {
+            trace('批量设置组长失败: ' . $e->getMessage(), 'error');
+            return json(['success' => false, 'error' => '批量设置失败：' . $e->getMessage()]);
+        }
+    }
+    
+    /**
      * 添加管理员
      */
     public function save()
@@ -91,13 +270,20 @@ class AdminManage extends BaseController
                 return json(['success' => false, 'error' => '请填写完整信息']);
             }
             
+            // 客服组邮箱必填验证
+            if (isset($data['role']) && $data['role'] === 'customer_service') {
+                if (empty($data['email'])) {
+                    return json(['success' => false, 'error' => '客服组角色必须填写邮箱']);
+                }
+            }
+            
             // 检查用户名是否已存在
             if (Admin::where('username', $data['username'])->find()) {
                 return json(['success' => false, 'error' => '用户名已存在']);
             }
             
-            // 密码加密
-            $data['password'] = password_hash($data['password'], PASSWORD_DEFAULT);
+            // 密码加密由Admin模型的setPasswordAttr自动处理，避免双重加密
+            // $data['password'] = password_hash($data['password'], PASSWORD_DEFAULT);
             
             Admin::create($data);
             
@@ -129,11 +315,22 @@ class AdminManage extends BaseController
             
             $data = $this->request->put();
             
-            // 如果有密码，则加密
-            if (!empty($data['password'])) {
-                $data['password'] = password_hash($data['password'], PASSWORD_DEFAULT);
-            } else {
-                unset($data['password']);
+            // 客服组邮箱必填验证
+            $role = isset($data['role']) ? $data['role'] : $admin->role;
+            if ($role === 'customer_service') {
+                $email = isset($data['email']) ? $data['email'] : $admin->email;
+                if (empty($email)) {
+                    return json(['success' => false, 'error' => '客服组角色必须填写邮箱']);
+                }
+            }
+            
+            // 密码处理：为空表示不修改密码
+            if (isset($data['password'])) {
+                // 如果密码为空字符串或null，则不修改密码
+                if (empty($data['password']) || trim($data['password']) === '') {
+                    unset($data['password']);
+                }
+                // 如果有密码，由Admin模型的setPasswordAttr自动处理加密，避免双重加密
             }
             
             // 如果修改了用户名，检查是否重复
@@ -185,7 +382,116 @@ class AdminManage extends BaseController
             return json(['success' => false, 'error' => '删除管理员失败：' . $e->getMessage()]);
         }
     }
+    
+    /**
+     * 获取客服统计数据（今日单量和累计单量）
+     */
+    public function getAdminStats()
+    {
+        if (session_status() === PHP_SESSION_NONE) {
+            session_start();
+        }
+        if (!isset($_SESSION['admin_id'])) {
+            return json(['success' => false, 'error' => '未登录']);
+        }
+        
+        try {
+            $adminIds = $this->request->get('admin_ids', '');
+            
+            // 如果没有传入admin_ids，则获取所有有订单的管理员ID（不限角色）
+            if ($adminIds) {
+                $adminIds = explode(',', $adminIds);
+            } else {
+                // 从订单表中获取所有不同的admin_id
+                $adminIds = \app\model\TutorOrder::where('status', 1)
+                    ->where('admin_id', '>', 0)
+                    ->group('admin_id')
+                    ->column('admin_id');
+            }
+            
+            $stats = [];
+            $today = date('Y-m-d');
+            
+            foreach ($adminIds as $adminId) {
+                // 获取今日单量
+                $todayCount = \app\model\TutorOrder::where('admin_id', $adminId)
+                    ->whereTime('create_time', 'today')
+                    ->where('status', 1)
+                    ->count();
+                
+                // 获取累计单量
+                $totalCount = \app\model\TutorOrder::where('admin_id', $adminId)
+                    ->where('status', 1)
+                    ->count();
+                
+                $stats[$adminId] = [
+                    'admin_id' => $adminId,
+                    'today_count' => $todayCount,
+                    'total_count' => $totalCount
+                ];
+            }
+            
+            return json([
+                'success' => true,
+                'data' => $stats
+            ]);
+            
+        } catch (\Exception $e) {
+            trace('获取客服统计失败: ' . $e->getMessage(), 'error');
+            return json(['success' => false, 'error' => '获取客服统计失败']);
+        }
+    }
+    
+    /**
+     * 更新管理员的微信二维码
+     */
+    public function updateWechatQrcode($id)
+    {
+        if (session_status() === PHP_SESSION_NONE) {
+            session_start();
+        }
+        if (!isset($_SESSION['admin_id'])) {
+            return json(['success' => false, 'error' => '未登录']);
+        }
+        
+        try {
+            $admin = Admin::find($id);
+            if (!$admin) {
+                return json(['success' => false, 'error' => '管理员不存在']);
+            }
+            
+            // 允许派单组和客服组成员上传二维码
+            if (!in_array($admin->role, ['dispatcher', 'customer_service'])) {
+                return json(['success' => false, 'error' => '只有派单组和客服组成员可以上传微信二维码']);
+            }
+            
+            $qrcodeUrl = $this->request->post('wechat_qrcode', '');
+            
+            // 清空二维码：传入空字符串或null
+            if ($qrcodeUrl === '' || $qrcodeUrl === null) {
+                $admin->wechat_qrcode = null;
+            } else {
+                $admin->wechat_qrcode = $qrcodeUrl;
+            }
+            
+            $admin->save();
+            
+            return json([
+                'success' => true,
+                'message' => '更新成功',
+                'data' => [
+                    'wechat_qrcode' => $admin->wechat_qrcode
+                ]
+            ]);
+            
+        } catch (\Exception $e) {
+            trace('更新微信二维码失败: ' . $e->getMessage(), 'error');
+            return json(['success' => false, 'error' => '更新失败：' . $e->getMessage()]);
+        }
+    }
 }
+
+
 
 
 

@@ -2216,22 +2216,17 @@ export default {
 					// 清除本地存储
 					uni.removeStorageSync('teacher_register_progress')
 					
-					const title = this.isEditMode ? '更新成功' : '注册成功'
-					const content = this.isEditMode ? '您的信息已更新！' : '您的信息已提交，可以开始接单了！'
+					const title = this.isEditMode ? '更新成功' : '提交成功'
+					const content = this.isEditMode ? '您的信息已更新！' : '提交成功，等待审核'
 					
 					uni.showModal({
 						title: title,
 						content: content,
 						showCancel: false,
 						success: () => {
-							// 返回到个人中心
-							uni.navigateBack({
-								delta: 2,
-								fail: () => {
-									uni.reLaunch({
-										url: '/pages/profile/index'
-									})
-								}
+							// 跳转到家教信息首页
+							uni.reLaunch({
+								url: '/pages/tutor-list/index'
 							})
 						}
 					})

@@ -24,7 +24,13 @@ class WechatPayService
      */
     public function __construct()
     {
-        $this->config = PaymentConfig::getConfig('wechat');
+        try {
+            $this->config = PaymentConfig::getConfig('wechat');
+        } catch (\Exception $e) {
+            // 如果配置表不存在，设置为null
+            $this->config = null;
+            trace('获取微信支付配置失败: ' . $e->getMessage(), 'warning');
+        }
     }
     
     /**
@@ -563,7 +569,98 @@ class WechatPayService
     }
     
     /**
-     * 微信支付退款
+     * 创建H5支付订单（手机浏览器外支付）
+     * @param array $orderData 订单数据
+     * @return array
+     */
+    public function createH5Payment($orderData)
+    {
+        try {
+            if (!$this->config) {
+                throw new \Exception('微信支付配置未设置');
+            }
+            
+            $url = $this->apiUrl . '/pay/unifiedorder';
+            
+            // 构建请求参数
+            $params = [
+                'appid' => $this->config->app_id,
+                'mch_id' => $this->config->mch_id,
+                'nonce_str' => $this->getNonceStr(),
+                'body' => $orderData['body'],
+                'out_trade_no' => $orderData['order_no'],
+                'total_fee' => intval($orderData['amount'] * 100), // 金额转为分
+                'spbill_create_ip' => request()->ip(),
+                'notify_url' => $this->config->notify_url,
+                'trade_type' => 'MWEB', // H5支付类型
+            ];
+            
+            // H5支付需要场景信息
+            $sceneInfo = [
+                'h5_info' => [
+                    'type' => 'Wap',
+                    'wap_url' => request()->domain(),
+                    'wap_name' => '91家教'
+                ]
+            ];
+            $params['scene_info'] = json_encode($sceneInfo, JSON_UNESCAPED_UNICODE);
+            
+            // 生成签名
+            $params['sign'] = $this->generateSign($params);
+            
+            // 转换为XML
+            $xml = $this->arrayToXml($params);
+            
+            // 发送请求
+            $response = $this->httpPost($url, $xml);
+            
+            // 解析响应
+            $result = $this->xmlToArray($response);
+            
+            // 记录完整响应用于调试
+            Log::info('微信H5支付API响应: ' . json_encode($result, JSON_UNESCAPED_UNICODE));
+            
+            if ($result['return_code'] == 'SUCCESS' && $result['result_code'] == 'SUCCESS') {
+                // H5支付返回mweb_url，用户需要在手机浏览器中打开
+                $mwebUrl = $result['mweb_url'];
+                
+                // 可以添加回调地址
+                if (!empty($orderData['redirect_url'])) {
+                    $mwebUrl .= '&redirect_url=' . urlencode($orderData['redirect_url']);
+                }
+                
+                return [
+                    'success' => true,
+                    'data' => [
+                        'order_no' => $orderData['order_no'],
+                        'mweb_url' => $mwebUrl, // H5支付跳转URL
+                        'prepay_id' => $result['prepay_id'],
+                        'trade_type' => 'MWEB'
+                    ]
+                ];
+            } else {
+                // 构造详细错误信息
+                $errorMsg = '';
+                if (isset($result['return_code']) && $result['return_code'] == 'FAIL') {
+                    $errorMsg = '通信失败：' . ($result['return_msg'] ?? '未知错误');
+                } elseif (isset($result['result_code']) && $result['result_code'] == 'FAIL') {
+                    $errorMsg = '业务失败：' . ($result['err_code_des'] ?? $result['err_code'] ?? '未知错误');
+                } else {
+                    $errorMsg = $result['return_msg'] ?? $result['err_code_des'] ?? '创建支付订单失败';
+                }
+                throw new \Exception($errorMsg);
+            }
+        } catch (\Exception $e) {
+            Log::error('创建微信H5支付订单失败: ' . $e->getMessage());
+            return [
+                'success' => false,
+                'message' => $e->getMessage()
+            ];
+        }
+    }
+    
+    /**
+     * 微信退款
      * @param array $refundData 退款数据
      * @return array
      */

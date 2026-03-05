@@ -22,8 +22,16 @@
     </view>
 
     <!-- 投递列表 -->
-    <view class="list-container" :style="{ paddingTop: (navbarHeight + 88) + 'px' }">
-      <view v-if="loading" class="loading">
+    <scroll-view 
+      class="list-container" 
+      :style="{ paddingTop: (navbarHeight + 88) + 'px' }"
+      scroll-y
+      refresher-enabled
+      :refresher-triggered="refreshing"
+      @refresherrefresh="onRefresh"
+      @refresherrestore="onRestore"
+    >
+      <view v-if="loading && !refreshing" class="loading">
         <view class="loading-spinner"></view>
         <text class="loading-text">加载中...</text>
       </view>
@@ -77,7 +85,7 @@
           </view>
         </view>
       </view>
-    </view>
+    </scroll-view>
     
     <!-- 自定义 tabBar -->
     <custom-tabbar current="/pages/my-applications/index" />
@@ -92,6 +100,7 @@ import CustomTabbar from '@/components/custom-tabbar/index.vue'
 const statusBarHeight = ref(0)
 const navbarHeight = ref(0)
 const loading = ref(false)
+const refreshing = ref(false)
 const list = ref([])
 const activeTab = ref('all')
 
@@ -218,6 +227,21 @@ const formatTime = (time) => {
     return date.toLocaleDateString('zh-CN')
   }
 }
+
+// 下拉刷新
+const onRefresh = async () => {
+  refreshing.value = true
+  await loadData()
+  // 延迟一点时间，让用户看到刷新效果
+  setTimeout(() => {
+    refreshing.value = false
+  }, 500)
+}
+
+// 刷新恢复
+const onRestore = () => {
+  refreshing.value = false
+}
 </script>
 
 <style lang="scss" scoped>
@@ -310,8 +334,13 @@ const formatTime = (time) => {
 }
 
 .list-container {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: calc(120rpx + env(safe-area-inset-bottom));
   padding: 20rpx;
-  padding-bottom: calc(160rpx + env(safe-area-inset-bottom));
+  padding-bottom: 20rpx;
 }
 
 .loading {

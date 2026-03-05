@@ -156,7 +156,7 @@ class TeacherAuth extends BaseController
                 'is_used' => 0
             ]);
             
-            // TODO: 实际发送邮件
+            // 实际发送邮件功能待实现
             // 这里应该调用邮件发送服务
             
             return json([
@@ -247,7 +247,7 @@ class TeacherAuth extends BaseController
                 'is_used' => 0
             ]);
             
-            // TODO: 发送邮件
+            // 发送邮件功能待实现
             
             return json([
                 'success' => true,

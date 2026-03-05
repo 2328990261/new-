@@ -10,7 +10,10 @@
 				@click="switchTab(item.path)"
 			>
 				<view class="tabbar-icon">
-					<text class="icon-emoji">{{ item.iconText }}</text>
+					<text 
+						class="icon-text" 
+						:style="{ color: currentPath === item.path ? '#52C9A6' : '#999' }"
+					>{{ item.icon }}</text>
 				</view>
 				<text class="tabbar-label">{{ item.text }}</text>
 			</view>
@@ -26,7 +29,10 @@
 				@click="switchTab(item.path)"
 			>
 				<view class="tabbar-icon">
-					<text class="icon-text" :style="{ color: currentPath === item.path ? '#52C9A6' : '#999' }">{{ item.iconText }}</text>
+					<text 
+						class="icon-text" 
+						:style="{ color: currentPath === item.path ? '#52C9A6' : '#999' }"
+					>{{ item.icon }}</text>
 				</view>
 				<text class="tabbar-label">{{ item.text }}</text>
 			</view>
@@ -51,39 +57,39 @@ export default {
 				{ 
 					path: '/pages/teacher-library/index', 
 					text: '老师', 
-					iconText: '👨‍🏫'  // 教师 emoji
+					icon: '👨‍🏫'  // 教师emoji
 				},
 				{ 
 					path: '/pages/ai-booking/index', 
 					text: '请家教', 
-					iconText: '📝'  // 记事本 emoji
+					icon: '✏️'  // 编辑emoji
 				},
 				{ 
 					path: '/pages/my-demands/index', 
 					text: '我的预约', 
-					iconText: '📅'  // 日历 emoji
+					icon: '📅'  // 日历emoji
 				},
 				{ 
 					path: '/pages/profile/index', 
 					text: '我的', 
-					iconText: '👤'  // 用户 emoji
+					icon: '👤'  // 用户emoji
 				}
 			],
 			teacherTabs: [
 				{ 
 					path: '/pages/tutor-list/index', 
 					text: '生源信息', 
-					iconText: '🏠'  // 房子图标
+					icon: '📋'  // 列表emoji
 				},
 				{ 
 					path: '/pages/my-applications/index', 
 					text: '我的投递', 
-					iconText: '📋'  // 剪贴板图标
+					icon: '📄'  // 文件emoji
 				},
 				{ 
 					path: '/pages/profile/index', 
 					text: '个人中心', 
-					iconText: '👤'  // 用户图标
+					icon: '👤'  // 用户emoji
 				}
 			]
 		}
@@ -218,9 +224,10 @@ export default {
 	justify-content: center;
 }
 
-.tabbar-icon .icon-text {
+.icon-text {
 	font-size: 44rpx;
 	line-height: 1;
+	transition: all 0.2s ease;
 }
 
 .tabbar-label {
@@ -228,6 +235,7 @@ export default {
 	color: #999;
 	font-weight: 400;
 	white-space: nowrap;
+	transition: color 0.2s ease;
 }
 
 .tabbar-item.active .tabbar-label {

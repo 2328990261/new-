@@ -17,12 +17,24 @@ class ParentOrder extends Model
         'order_no'            => 'string',
         'admin_id'            => 'int',
         'grade'               => 'string',
+        'student_gender'      => 'string',  // 学生性别
+        'student_name'        => 'string',  // 学生昵称
         'subject'             => 'string',
         'student_info'        => 'string',
         'frequency'           => 'string',
+        'duration'            => 'string',  // 上课时长
+        'salary'              => 'string',  // 时薪范围字符串
+        'budget_min'          => 'int',     // 最低时薪
+        'budget_max'          => 'int',     // 最高时薪
         'teacher_requirement' => 'string',
+        'teacher_type'        => 'string',  // 教师类型
+        'teacher_gender'      => 'string',  // 教师性别要求
+        'teacher_id'          => 'int',     // 预约的教师ID
+        'teaching_method'     => 'string',  // 授课方式
         'address'             => 'string',
-        'salary'              => 'string',  // 课费薪资
+        'province_id'         => 'int',     // 省份ID
+        'city_id'             => 'int',     // 城市ID
+        'district_id'         => 'int',     // 区县ID
         'parent_name'         => 'string',
         'parent_contact'      => 'string',
         'remark'              => 'string',
@@ -30,6 +42,8 @@ class ParentOrder extends Model
         'reject_reason'       => 'string',
         'tutor_id'            => 'int',
         'audit_time'          => 'datetime',
+        'booking_channel'     => 'string',  // 预约渠道：H5/小程序
+        'user_id'             => 'int',     // 小程序用户ID
         'create_time'         => 'datetime',
         'update_time'         => 'datetime',
     ];
@@ -84,6 +98,14 @@ class ParentOrder extends Model
     public function tutor()
     {
         return $this->belongsTo(TutorOrder::class, 'tutor_id');
+    }
+    
+    /**
+     * 关联预约的教师
+     */
+    public function teacher()
+    {
+        return $this->belongsTo(Teacher::class, 'teacher_id');
     }
     
     /**

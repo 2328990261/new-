@@ -1,4 +1,5 @@
 <?php
+
 namespace app\model;
 
 use think\Model;
@@ -8,7 +9,6 @@ use think\Model;
  */
 class PaymentConfig extends Model
 {
-    // 设置表名
     protected $name = 'payment_config';
     
     // 设置字段信息
@@ -18,7 +18,9 @@ class PaymentConfig extends Model
         'app_id'         => 'string',
         'mch_id'         => 'string',
         'api_key'        => 'string',
+        'app_secret'     => 'string',
         'cert_path'      => 'string',
+        'key_path'       => 'string',
         'notify_url'     => 'string',
         'is_enabled'     => 'int',
         'create_time'    => 'datetime',
@@ -30,6 +32,8 @@ class PaymentConfig extends Model
     
     /**
      * 获取指定支付方式的配置
+     * @param string $method 支付方式 wechat|alipay
+     * @return array|null
      */
     public static function getConfig($method)
     {
@@ -37,13 +41,16 @@ class PaymentConfig extends Model
     }
     
     /**
-     * 检查支付方式是否可用
+     * 检查支付方式是否启用
+     * @param string $method 支付方式
+     * @return bool
      */
     public static function isEnabled($method)
     {
-        $config = self::getConfig($method);
-        return $config && $config->is_enabled == 1;
+        $config = self::where('payment_method', $method)
+            ->where('is_enabled', 1)
+            ->find();
+        
+        return $config !== null;
     }
 }
-
-

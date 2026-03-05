@@ -1,4 +1,4 @@
-import request from './config'
+import request from '@/utils/userRequest'  // 用户端使用独立的request实例
 
 // 提交家长预约（公开接口）
 export function submitBooking(data) {

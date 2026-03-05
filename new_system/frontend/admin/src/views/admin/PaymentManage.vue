@@ -1,14 +1,42 @@
 <template>
   <div class="payment-manage">
+    <!-- 移动端视图 -->
+    <PaymentManageMobile
+      v-if="isMobile"
+      :loading="loading"
+      :statistics="statistics"
+      :payments="paymentList"
+      :active-tab="activeTab"
+      :filters="mobileFilters"
+      :has-more="hasMore"
+      :dispatcher-list="dispatcherList"
+      :status-counts="statusCounts"
+      @tab-change="handleMobileTabChange"
+      @filter-change="handleMobileFilterChange"
+      @view="handleView"
+      @refund="handleRefund"
+      @reject="handleReject"
+      @load-more="loadMore"
+      @go-to-data-panel="goToDataPanel"
+    />
+
+    <!-- 桌面端视图 -->
+    <div v-else class="desktop-view">
     <el-card class="filter-card">
       <!-- 标签组 -->
-      <el-tabs v-model="activeTab" @tab-click="handleTabClick" class="status-tabs">
-        <el-tab-pane label="全部" name="all"></el-tab-pane>
-        <el-tab-pane label="已支付" name="paid"></el-tab-pane>
-        <el-tab-pane label="退费待处理" name="pending"></el-tab-pane>
-        <el-tab-pane label="退费驳回" name="rejected"></el-tab-pane>
-        <el-tab-pane label="已退费" name="completed"></el-tab-pane>
-      </el-tabs>
+      <div class="tabs-header">
+        <el-tabs v-model="activeTab" @tab-click="handleTabClick" class="status-tabs">
+          <el-tab-pane label="全部" name="all"></el-tab-pane>
+          <el-tab-pane label="已支付" name="paid"></el-tab-pane>
+          <el-tab-pane label="退费待处理" name="pending"></el-tab-pane>
+          <el-tab-pane label="退费驳回" name="rejected"></el-tab-pane>
+          <el-tab-pane label="已退费" name="completed"></el-tab-pane>
+        </el-tabs>
+        <el-button type="primary" @click="goToDataPanel" class="data-panel-btn">
+          <el-icon><DataAnalysis /></el-icon>
+          数据面板
+        </el-button>
+      </div>
 
       <!-- 筛选条件 -->
       <div class="search-section">
@@ -51,7 +79,7 @@
                 style="width: 100%"
               >
             <el-option label="待支付" value="pending"></el-option>
-            <el-option label="已支付" value="paid"></el-option>
+            <el-option label="已支付" value="success"></el-option>
             <el-option label="已取消" value="cancelled"></el-option>
               </el-select>
             </el-form-item>
@@ -104,15 +132,22 @@
           <el-col :span="6">
             <el-form-item label="客服">
               <el-select 
-                v-model="searchForm.customerService" 
+                v-model="searchForm.dispatcherId" 
                 placeholder="请选择客服" 
                 clearable 
                 filterable
                 style="width: 100%"
               >
-                <el-option label="客服A" value="客服A"></el-option>
-                <el-option label="客服B" value="客服B"></el-option>
+                <el-option 
+                  v-for="dispatcher in dispatcherList" 
+                  :key="dispatcher.id" 
+                  :label="dispatcher.nickname || dispatcher.username" 
+                  :value="dispatcher.id"
+                ></el-option>
               </el-select>
+              <div v-if="dispatcherList.length === 0" style="color: #999; font-size: 12px; margin-top: 5px;">
+                暂无客服数据
+              </div>
             </el-form-item>
           </el-col>
         </el-row>
@@ -173,15 +208,13 @@
       </div>
 
       <el-table :data="paymentList" v-loading="loading" stripe border :default-sort="{ prop: 'paid_time', order: 'descending' }">
-        <el-table-column v-if="isColumnVisible('id')" prop="id" label="ID" width="80" sortable />
-        <el-table-column v-if="isColumnVisible('order_no')" prop="order_no" label="订单编号" width="180" show-overflow-tooltip />
-        <el-table-column v-if="isColumnVisible('paid_time')" prop="paid_time" label="支付时间" width="160" sortable />
-        <el-table-column v-if="isColumnVisible('tutor_name')" prop="tutor_name" label="家教名称" min-width="180" show-overflow-tooltip />
+        <el-table-column v-if="isColumnVisible('paid_time')" prop="paid_time" label="支付时间" width="160" sortable fixed="left" />
+        <el-table-column v-if="isColumnVisible('tutor_name')" prop="tutor_name" label="家教名称" min-width="200" show-overflow-tooltip />
         <el-table-column v-if="isColumnVisible('teacher_name')" prop="teacher_name" label="老师姓名" width="100" />
         <el-table-column v-if="isColumnVisible('status')" label="状态" width="120">
           <template #default="{ row }">
             <el-tag v-if="row.status === 'pending'" type="warning">待支付</el-tag>
-            <el-tag v-else-if="row.status === 'paid' && !row.refund_status" type="success">已支付</el-tag>
+            <el-tag v-else-if="(row.status === 'paid' || row.status === 'success') && !row.refund_status" type="success">已支付</el-tag>
             <el-tag v-else-if="row.refund_status === 'pending'" type="warning">退款待处理</el-tag>
             <el-tag v-else-if="row.refund_status === 'rejected'" type="danger">退款驳回</el-tag>
             <el-tag v-else-if="row.refund_status === 'completed'" type="info">已退费</el-tag>
@@ -215,27 +248,37 @@
             {{ row.actual_amount ? row.actual_amount.toFixed(2) : '0.00' }}
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="280" fixed="right">
+        <el-table-column label="操作" width="240" fixed="right">
           <template #default="{ row }">
-              <el-button type="primary" size="small" @click="handleView(row)">重查看</el-button>
+            <el-button type="primary" size="small" @click="handleView(row)">查看</el-button>
             <el-button 
               v-if="row.refund_status === 'pending'" 
               type="success" 
               size="small" 
-                @click="handleRefund(row)"
-              >
-                退费
+              @click="handleRefund(row)"
+            >
+              退费
             </el-button>
-            <el-button type="warning" size="small" @click="handleQuery(row)">查询</el-button>
             <el-button 
               v-if="row.refund_status === 'pending'" 
               type="danger" 
               size="small" 
               @click="handleReject(row)"
             >
-              备注
+              驳回
             </el-button>
-            <el-button type="info" size="small" @click="handleMoreAction('more', row)">+</el-button>
+            <el-dropdown trigger="click" @command="(cmd) => handleMoreAction(cmd, row)">
+              <el-button type="info" size="small">
+                更多<el-icon class="el-icon--right"><MoreFilled /></el-icon>
+              </el-button>
+              <template #dropdown>
+                <el-dropdown-menu>
+                  <el-dropdown-item command="query">查询</el-dropdown-item>
+                  <el-dropdown-item command="remark">备注</el-dropdown-item>
+                  <el-dropdown-item command="export">导出</el-dropdown-item>
+                </el-dropdown-menu>
+              </template>
+            </el-dropdown>
           </template>
         </el-table-column>
       </el-table>
@@ -329,19 +372,25 @@
         <el-button type="danger" @click="confirmReject" :loading="rejectLoading">确定驳回</el-button>
       </template>
     </el-dialog>
+    </div>
   </div>
 </template>
 
 <script setup>
-import { ref, reactive, onMounted, computed, watch } from 'vue'
+import { ref, reactive, onMounted, computed, watch, onBeforeUnmount } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { RefreshRight, Grid, Download, Search, MoreFilled, Picture } from '@element-plus/icons-vue'
+import { RefreshRight, Grid, Download, Search, MoreFilled, Picture, DataAnalysis } from '@element-plus/icons-vue'
+import { useRouter } from 'vue-router'
+import PaymentManageMobile from '@/components/payment/PaymentManageMobile.vue'
+
+const router = useRouter()
 import { 
   getPaymentList, 
   getPaymentStatistics,
   getPaymentDetail, 
   processRefund,
-  rejectRefund 
+  rejectRefund,
+  getDispatchers
 } from '@/api/payment'
 
 // 日期快捷选项
@@ -506,8 +555,11 @@ const searchForm = reactive({
   amountMax: '',
   refundTime: null,
   refundApplyTime: null,
-  customerService: undefined
+  dispatcherId: undefined
 })
+
+// 派单员列表
+const dispatcherList = ref([])
 
 // 统计数据
 const statistics = reactive({
@@ -583,7 +635,7 @@ const getList = async () => {
     if (searchForm.tutorName) params.tutor_name = searchForm.tutorName
     if (searchForm.teacherName) params.teacher_name = searchForm.teacherName
     if (searchForm.status) params.status = searchForm.status
-    if (searchForm.customerService) params.customer_service = searchForm.customerService
+    if (searchForm.dispatcherId) params.dispatcher_id = searchForm.dispatcherId
     if (searchForm.amountMin) params.amount_min = searchForm.amountMin
     if (searchForm.amountMax) params.amount_max = searchForm.amountMax
 
@@ -611,7 +663,7 @@ const getList = async () => {
     }
 
     const res = await getPaymentList(params)
-    if (res.code === 200) {
+    if (res.success || res.code === 200) {
       paymentList.value = res.data.list || []
       pagination.total = res.data.total || 0
     }
@@ -631,7 +683,7 @@ const getStatistics = async () => {
     // 添加有值的筛选参数
     if (searchForm.tutorName) params.tutor_name = searchForm.tutorName
     if (searchForm.teacherName) params.teacher_name = searchForm.teacherName
-    if (searchForm.customerService) params.customer_service = searchForm.customerService
+    if (searchForm.dispatcherId) params.dispatcher_id = searchForm.dispatcherId
     if (searchForm.amountMin) params.amount_min = searchForm.amountMin
     if (searchForm.amountMax) params.amount_max = searchForm.amountMax
 
@@ -659,7 +711,7 @@ const getStatistics = async () => {
     }
 
     const res = await getPaymentStatistics(params)
-    if (res.code === 200) {
+    if (res.success || res.code === 200) {
       statistics.totalPaidAmount = res.data.total_paid_amount || 0
       statistics.totalRefundedAmount = res.data.total_refunded_amount || 0
       statistics.totalActualAmount = res.data.total_actual_amount || 0
@@ -687,7 +739,7 @@ const handleReset = () => {
   searchForm.amountMax = ''
   searchForm.refundTime = null
   searchForm.refundApplyTime = null
-  searchForm.customerService = undefined
+  searchForm.dispatcherId = undefined
   delete searchForm.refund_status
   activeTab.value = 'all'
   pagination.page = 1
@@ -699,7 +751,7 @@ const handleReset = () => {
 const handleView = async (row) => {
   try {
     const res = await getPaymentDetail(row.id)
-    if (res.code === 200) {
+    if (res.success || res.code === 200) {
       currentPayment.value = res.data
       viewDialogVisible.value = true
     }
@@ -737,7 +789,7 @@ const confirmRefund = async () => {
       refund_amount: refundForm.refundAmount,
       remark: refundForm.remark
     })
-    if (res.code === 200) {
+    if (res.success || res.code === 200) {
       ElMessage.success('退款成功')
       refundDialogVisible.value = false
       getList()
@@ -774,7 +826,7 @@ const confirmReject = async () => {
       id: rejectForm.id,
       reject_reason: rejectForm.rejectReason
     })
-    if (res.code === 200) {
+    if (res.success || res.code === 200) {
       ElMessage.success('驳回成功')
       rejectDialogVisible.value = false
       getList()
@@ -797,7 +849,13 @@ const handleQuery = (row) => {
 
 // 更多操作
 const handleMoreAction = (command, row) => {
-  if (command === 'edit') {
+  if (command === 'query') {
+    ElMessage.info('查询功能待开发')
+  } else if (command === 'remark') {
+    ElMessage.info('备注功能待开发')
+  } else if (command === 'export') {
+    ElMessage.info('导出功能待开发')
+  } else if (command === 'edit') {
     ElMessage.info('编辑功能待开发')
   } else if (command === 'delete') {
     ElMessageBox.confirm('确定要删除该记录吗？', '提示', {
@@ -810,12 +868,104 @@ const handleMoreAction = (command, row) => {
   }
 }
 
+// 跳转到数据面板
+const goToDataPanel = () => {
+  router.push('/payment-data-panel')
+}
+
+// 获取派单员列表
+const getDispatcherList = async () => {
+  try {
+    console.log('开始获取派单员列表...')
+    const res = await getDispatchers()
+    console.log('派单员列表响应:', res)
+    // 兼容两种响应格式：code: 200 或 success: true
+    if (res.code === 200 || res.success === true) {
+      dispatcherList.value = res.data || []
+      console.log('派单员列表数据:', dispatcherList.value)
+    } else {
+      console.error('获取派单员列表失败:', res.message)
+    }
+  } catch (error) {
+    console.error('获取派单员列表异常:', error)
+  }
+}
+
 // 初始化
 onMounted(() => {
   initVisibleColumns()
+  getDispatcherList()
   getList()
   getStatistics()
+  checkMobile()
+  window.addEventListener('resize', checkMobile)
 })
+
+// 清理
+onBeforeUnmount(() => {
+  window.removeEventListener('resize', checkMobile)
+})
+
+// 移动端检测
+const isMobile = ref(false)
+const checkMobile = () => {
+  isMobile.value = window.innerWidth <= 768
+}
+
+// 移动端筛选条件
+const mobileFilters = ref({
+  keyword: '',
+  timeRange: '',
+  customDateRange: null,
+  payTimeStart: '',
+  payTimeEnd: '',
+  dispatcherId: undefined
+})
+
+// 移动端状态计数
+const statusCounts = computed(() => {
+  // 这里可以根据实际需求计算各状态的数量
+  return {
+    pending: paymentList.value.filter(p => p.refund_status === 'pending').length
+  }
+})
+
+// 是否有更多数据
+const hasMore = computed(() => {
+  return pagination.page * pagination.limit < pagination.total
+})
+
+// 移动端Tab切换
+const handleMobileTabChange = (tab) => {
+  activeTab.value = tab
+  handleTabClick({ props: { name: tab } })
+}
+
+// 移动端筛选变化
+const handleMobileFilterChange = (filters) => {
+  mobileFilters.value = filters
+  
+  // 更新桌面端筛选条件
+  searchForm.tutorName = filters.keyword || ''
+  searchForm.teacherName = filters.keyword || ''
+  searchForm.dispatcherId = filters.dispatcherId
+  
+  if (filters.payTimeStart && filters.payTimeEnd) {
+    searchForm.payTime = [filters.payTimeStart, filters.payTimeEnd]
+  } else {
+    searchForm.payTime = null
+  }
+  
+  pagination.page = 1
+  getList()
+  getStatistics()
+}
+
+// 加载更多
+const loadMore = () => {
+  pagination.page++
+  getList()
+}
 </script>
 
 <style scoped>
@@ -878,14 +1028,25 @@ onMounted(() => {
   padding: 0;
 }
 
+.payment-manage .tabs-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 20px 20px 0;
+}
+
 .payment-manage .status-tabs {
+  flex: 1;
   margin-bottom: 0;
-  padding: 0 20px;
 }
 
 .payment-manage .status-tabs :deep(.el-tabs__header) {
   margin-bottom: 0;
-  padding-top: 20px;
+}
+
+.payment-manage .data-panel-btn {
+  margin-left: 20px;
+  flex-shrink: 0;
 }
 
 .payment-manage .status-tabs :deep(.el-tabs__nav-wrap::after) {
@@ -1563,6 +1724,19 @@ onMounted(() => {
 
   .payment-manage :deep(.el-dialog) {
     width: 98%;
+  }
+}
+
+/* ========== 移动端适配 ========== */
+@media (max-width: 768px) {
+  .payment-manage .desktop-view {
+    display: none;
+  }
+}
+
+@media (min-width: 769px) {
+  .payment-manage :deep(.payment-manage-mobile) {
+    display: none;
   }
 }
 </style>

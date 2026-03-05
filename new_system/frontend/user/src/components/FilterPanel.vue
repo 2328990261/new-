@@ -29,23 +29,19 @@
           filterable
           class="filter-select"
           size="large"
+          :popper-append-to-body="false"
         >
-          <el-option-group
-            v-for="(cities, level) in cityGroups"
-            :key="level"
-            :label="level"
+          <el-option
+            v-for="city in cities"
+            :key="city.id"
+            :label="city.name"
+            :value="city.id"
           >
-            <el-option
-              v-for="city in cities"
-              :key="city.id"
-              :label="city.name"
-              :value="city.id"
-            >
-              <div class="option-item">
-                <span>{{ city.name }}</span>
-              </div>
-            </el-option>
-          </el-option-group>
+            <div class="option-item">
+              <span>{{ city.name }}</span>
+              <el-tag v-if="city.is_hot" type="success" size="small" style="margin-left: 8px">热门</el-tag>
+            </div>
+          </el-option>
         </el-select>
       </div>
 
@@ -63,6 +59,7 @@
           @change="handleSearch"
           class="filter-select"
           size="large"
+          :popper-append-to-body="false"
         >
           <el-option
             v-for="district in districts"
@@ -90,23 +87,18 @@
           @change="handleSearch"
           class="filter-select"
           size="large"
+          :popper-append-to-body="false"
         >
-          <el-option-group
-            v-for="(subjects, category) in subjectGroups"
-            :key="category"
-            :label="category"
+          <el-option
+            v-for="subject in subjects"
+            :key="subject.id"
+            :label="subject.name"
+            :value="subject.id"
           >
-            <el-option
-              v-for="subject in subjects"
-              :key="subject.id"
-              :label="subject.name"
-              :value="subject.id"
-            >
-              <div class="option-item">
-                <span>{{ subject.name }}</span>
-              </div>
-            </el-option>
-          </el-option-group>
+            <div class="option-item">
+              <span>{{ subject.name }}</span>
+            </div>
+          </el-option>
         </el-select>
       </div>
 
@@ -123,6 +115,7 @@
           @change="handleSearch"
           class="filter-select"
           size="large"
+          :popper-append-to-body="false"
         >
           <el-option label="幼儿" value="幼儿">
             <div class="option-item">
@@ -148,6 +141,12 @@
               <span>高中</span>
             </div>
           </el-option>
+          <el-option label="成人" value="成人">
+            <div class="option-item">
+              <el-icon><User /></el-icon>
+              <span>成人</span>
+            </div>
+          </el-option>
         </el-select>
       </div>
 
@@ -163,7 +162,7 @@
 
 <script setup>
 import { ref, reactive, onMounted } from 'vue'
-import { Search, RefreshLeft, Filter, Location, MapLocation, Reading, School, StarFilled, Trophy } from '@element-plus/icons-vue'
+import { Search, RefreshLeft, Filter, Location, MapLocation, Reading, School, StarFilled, Trophy, User } from '@element-plus/icons-vue'
 import { getCities, getDistricts, getSubjects } from '@/api/tutor'
 
 const emit = defineEmits(['search', 'reset'])
@@ -176,18 +175,60 @@ const filters = reactive({
   keyword: ''
 })
 
-const cityGroups = ref({})
+const cities = ref([])
 const districts = ref([])
-const subjectGroups = ref({})
+const subjects = ref([])
+
+// 加载城市数据（带重试机制）
+const loadCitiesWithRetry = async (retryCount = 0) => {
+  try {
+    const citiesRes = await getCities()
+    if (citiesRes && citiesRes.data) {
+      cities.value = citiesRes.data
+      return true
+    }
+    return false
+  } catch (error) {
+    if (retryCount < 2) {
+      // 等待后重试
+      await new Promise(resolve => setTimeout(resolve, 1000 * (retryCount + 1)))
+      return await loadCitiesWithRetry(retryCount + 1)
+    }
+    return false
+  }
+}
+
+// 加载科目数据（带重试机制）
+const loadSubjectsWithRetry = async (retryCount = 0) => {
+  try {
+    const subjectsRes = await getSubjects()
+    if (subjectsRes && subjectsRes.data) {
+      const subjectGroups = subjectsRes.data
+      const flatSubjects = []
+      Object.keys(subjectGroups).forEach(category => {
+        if (Array.isArray(subjectGroups[category])) {
+          flatSubjects.push(...subjectGroups[category])
+        }
+      })
+      subjects.value = flatSubjects
+      return true
+    }
+    return false
+  } catch (error) {
+    if (retryCount < 2) {
+      await new Promise(resolve => setTimeout(resolve, 1000 * (retryCount + 1)))
+      return await loadSubjectsWithRetry(retryCount + 1)
+    }
+    return false
+  }
+}
 
 onMounted(async () => {
-  // 加载城市数据
-  const citiesRes = await getCities()
-  cityGroups.value = citiesRes.data
-
-  // 加载科目数据
-  const subjectsRes = await getSubjects()
-  subjectGroups.value = subjectsRes.data
+  // 并发加载数据，带重试机制
+  await Promise.all([
+    loadCitiesWithRetry(),
+    loadSubjectsWithRetry()
+  ])
 })
 
 const onCityChange = async () => {
@@ -237,6 +278,8 @@ const handleReset = () => {
   border: 1px solid #e8e8e8;
   transition: all 0.3s ease;
   position: relative;
+  overflow: visible;
+  z-index: 1;
 }
 
 .filter-panel:hover {
@@ -422,12 +465,10 @@ const handleReset = () => {
 
 .search-btn:hover {
   background: linear-gradient(135deg, #5568d3 0%, #6a3f8f 100%);
-  transform: translateY(-2px);
   box-shadow: 0 6px 24px rgba(102, 126, 234, 0.4);
 }
 
 .search-btn:active {
-  transform: translateY(0);
   box-shadow: 0 2px 8px rgba(102, 126, 234, 0.3);
 }
 
@@ -500,6 +541,19 @@ const handleReset = () => {
 
   .filter-select :deep(.el-input__inner) {
     font-size: 14px;
+  }
+
+  /* 移动端下拉框修复 */
+  .filter-select :deep(.el-select-dropdown) {
+    max-width: 90vw !important;
+    left: 5vw !important;
+    transform: none !important;
+    z-index: 9999 !important;
+  }
+
+  .filter-select :deep(.el-popper) {
+    max-width: 90vw !important;
+    z-index: 9999 !important;
   }
 }
 

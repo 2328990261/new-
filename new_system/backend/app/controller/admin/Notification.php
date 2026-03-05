@@ -451,6 +451,43 @@ class Notification extends BaseController
             return json(['success' => false, 'error' => '删除失败：' . $e->getMessage()]);
         }
     }
+    
+    /**
+     * 获取微信分享配置（公开接口）
+     */
+    public function getWechatShareConfig()
+    {
+        try {
+            $config = Db::name('notification_config')->find(1);
+            
+            if (!$config) {
+                return json([
+                    'success' => false,
+                    'error' => '配置不存在'
+                ]);
+            }
+            
+            // 返回微信分享相关配置
+            $shareConfig = [
+                'enabled' => !empty($config['wechat_share_enabled']) ? (bool)$config['wechat_share_enabled'] : false,
+                'title' => $config['wechat_share_title'] ?? '',
+                'description' => $config['wechat_share_description'] ?? '',
+                'image' => $config['wechat_share_image'] ?? '',
+                'app_id' => $config['wechat_app_id'] ?? ''
+            ];
+            
+            return json([
+                'success' => true,
+                'data' => $shareConfig
+            ]);
+            
+        } catch (\Exception $e) {
+            return json([
+                'success' => false,
+                'error' => '获取配置失败：' . $e->getMessage()
+            ]);
+        }
+    }
 }
 
 

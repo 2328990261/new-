@@ -23,12 +23,17 @@
 				<!-- 头像授权 -->
 				<view class="auth-item">
 					<text class="auth-label">设置头像</text>
-					<view class="avatar-auth-btn" @click="handleChooseAvatar">
+					<button 
+						class="avatar-auth-btn" 
+						open-type="chooseAvatar"
+						@chooseavatar="onChooseAvatar"
+					>
 						<image v-if="userAvatar" :src="userAvatar" class="auth-avatar" mode="aspectFill" />
 						<view v-else class="auth-avatar-placeholder">
 							<view class="avatar-icon"></view>
 						</view>
-					</view>
+						<view class="avatar-change-hint">用微信头像</view>
+					</button>
 				</view>
 				
 				<!-- 昵称授权 -->
@@ -125,41 +130,87 @@ export default {
 		} catch (e) {
 			console.error('加载用户信息失败', e)
 		}
+		
+		// 检查是否已经登录过（有 token 和 openid）
+		this.checkAutoLogin()
 	},
 	methods: {
-		handleChooseAvatar() {
-			uni.chooseImage({
-				count: 1,
-				sizeType: ['compressed'],
-				sourceType: ['album', 'camera'],
-				success: (res) => {
-					const avatarUrl = res.tempFilePaths[0]
-					this.userAvatar = avatarUrl
+		// 检查是否可以自动登录
+		async checkAutoLogin() {
+			const token = uni.getStorageSync('token')
+			const userInfo = uni.getStorageSync('userInfo')
+			
+			// 如果有 token 和 openid，尝试自动登录
+			if (token && userInfo && userInfo.openid) {
+				console.log('检测到已登录信息，尝试自动登录')
+				
+				uni.showLoading({
+					title: '自动登录中...'
+				})
+				
+				try {
+					// 获取新的微信 code
+					const loginRes = await new Promise((resolve, reject) => {
+						uni.login({
+							provider: 'weixin',
+							success: resolve,
+							fail: reject
+						})
+					})
 					
-					uni.showToast({
-						title: '头像已选择',
-						icon: 'success'
+					// 使用 openid 登录
+					const res = await wechatLogin.loginWithOpenid({
+						code: loginRes.code,
+						openid: userInfo.openid
 					})
-				},
-				fail: (err) => {
-					console.error('选择头像失败:', err)
-					uni.showToast({
-						title: '选择头像失败',
-						icon: 'none'
-					})
+					
+					uni.hideLoading()
+					
+					if (res.code === 200) {
+						console.log('自动登录成功')
+						this.loginSuccess(res.data)
+					} else {
+						console.log('自动登录失败，需要重新授权')
+						// 自动登录失败，清除旧的登录信息
+						uni.removeStorageSync('token')
+					}
+				} catch (err) {
+					uni.hideLoading()
+					console.error('自动登录失败:', err)
+					// 自动登录失败，清除旧的登录信息
+					uni.removeStorageSync('token')
 				}
-			})
+			}
 		},
 		
-		// 选择头像回调（保留以兼容）
+		// 微信头像授权回调
 		onChooseAvatar(e) {
+			console.log('微信头像授权回调:', e)
 			const { avatarUrl } = e.detail
-			this.userAvatar = avatarUrl
-			
-			uni.showToast({
-				title: '头像已选择',
-				icon: 'success'
-			})
+			if (avatarUrl) {
+				this.userAvatar = avatarUrl
+				this.hideAvatarOptions()
+				
+				// 保存头像到本地存储
+				try {
+					const userInfo = uni.getStorageSync('userInfo') || {}
+					userInfo.avatar = avatarUrl
+					uni.setStorageSync('userInfo', userInfo)
+				} catch (e) {
+					console.error('保存头像失败', e)
+				}
+				
+				uni.showToast({
+					title: '头像已设置',
+					icon: 'success'
+				})
+			} else {
+				console.error('未获取到头像URL')
+				uni.showToast({
+					title: '获取头像失败',
+					icon: 'none'
+				})
+			}
 		},
 		
 		// 昵称输入完成
@@ -167,6 +218,15 @@ export default {
 			const nickname = e.detail.value
 			if (nickname) {
 				this.userNickname = nickname
+				
+				// 保存昵称到本地存储
+				try {
+					const userInfo = uni.getStorageSync('userInfo') || {}
+					userInfo.name = nickname
+					uni.setStorageSync('userInfo', userInfo)
+				} catch (e) {
+					console.error('保存昵称失败', e)
+				}
 			}
 		},
 		
@@ -356,7 +416,10 @@ export default {
 			try {
 				const res = await wechatLogin.loginWithPhone({
 					code: this.code,
-					phone_code: phoneCode
+					phone_code: phoneCode,
+					nickname: this.userNickname || '',
+					avatar: this.userAvatar || '',
+					user_type: uni.getStorageSync('userRole') || ''
 				})
 				
 				uni.hideLoading()
@@ -481,7 +544,10 @@ export default {
 				const res = await wechatLogin.loginWithPhone({
 					code: this.code,
 					encrypted_data: encryptedData,
-					iv: iv
+					iv: iv,
+					nickname: this.userNickname || '',
+					avatar: this.userAvatar || '',
+					user_type: uni.getStorageSync('userRole') || ''
 				})
 				
 				uni.hideLoading()
@@ -821,6 +887,15 @@ export default {
 	font-weight: 500;
 }
 
+.avatar-display {
+	width: 100%;
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	gap: 12rpx;
+	cursor: pointer;
+}
+
 .avatar-auth-btn {
 	width: 100%;
 	padding: 0;
@@ -828,8 +903,19 @@ export default {
 	background: transparent;
 	border: none;
 	display: flex;
-	justify-content: center;
-	cursor: pointer;
+	flex-direction: column;
+	align-items: center;
+	gap: 12rpx;
+	
+	&::after {
+		border: none;
+	}
+}
+
+.avatar-change-hint {
+	font-size: 24rpx;
+	color: #52C9A6;
+	font-weight: 500;
 }
 
 .auth-avatar {
