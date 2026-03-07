@@ -3,6 +3,9 @@
 
 use app\Json;
 
+// 引入辅助函数文件
+require_once __DIR__ . '/helper.php';
+
 if (!function_exists('safe_json')) {
     /**
      * 安全的 JSON 响应

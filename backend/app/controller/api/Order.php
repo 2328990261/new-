@@ -119,6 +119,8 @@ class Order extends BaseController
             // 构建查询
             $query = ParentOrder::with(['admin' => function($query) {
                     $query->field('id,username,nickname');
+                }, 'teacher' => function($query) {
+                    $query->field('id,name,phone');
                 }])
                 ->order('create_time', 'desc');
             
@@ -235,7 +237,15 @@ class Order extends BaseController
             }
             
             // 超级管理员可以查看所有订单，其他管理员只能查看自己的订单
-            $query = ParentOrder::where('id', $id);
+            $query = ParentOrder::with([
+                    'teacher' => function($query) {
+                        $query->field('id,name,phone');
+                    },
+                    'admin' => function($query) {
+                        $query->field('id,username,nickname');
+                    }
+                ])
+                ->where('id', $id);
             
             if (!$this->isSuperAdmin()) {
                 $query->where('admin_id', $admin->id);
@@ -365,6 +375,13 @@ class Order extends BaseController
                 $order->save();
                 
                 Db::commit();
+                
+                // 发送邮件通知给匹配的订阅者（异步，不影响主流程）
+                try {
+                    $this->sendOrderNotificationToSubscribers($tutor);
+                } catch (\Exception $e) {
+                    trace('发送订单通知邮件失败（不影响主流程）: ' . $e->getMessage(), 'info');
+                }
                 
                 return json([
                     'code' => 200,
@@ -640,6 +657,187 @@ class Order extends BaseController
     {
         $admin = $this->getAdminInfo();
         return $admin && $admin->role === 'super_admin';
+    }
+    
+    /**
+     * 发送订单通知给匹配的订阅者（异步方式）
+     */
+    private function sendOrderNotificationToSubscribers($order)
+    {
+        try {
+            // 查找匹配的订阅者
+            $subscribers = $this->getMatchedSubscribers($order);
+            
+            if (empty($subscribers)) {
+                trace('没有匹配的订阅者，订单ID: ' . $order->id, 'info');
+                return;
+            }
+            
+            trace('找到 ' . count($subscribers) . ' 个匹配的订阅者，订单ID: ' . $order->id, 'info');
+            
+            // 将邮件添加到队列（异步发送）
+            foreach ($subscribers as $subscriber) {
+                $this->addEmailToQueue($subscriber['email'], $order);
+            }
+            
+        } catch (\Exception $e) {
+            trace('添加订单通知邮件到队列失败: ' . $e->getMessage(), 'error');
+        }
+    }
+    
+    /**
+     * 获取匹配订单的订阅者
+     */
+    private function getMatchedSubscribers($order)
+    {
+        // 查询所有启用且已验证的订阅者
+        $query = \app\model\EmailSubscription::where('status', 1)
+            ->where('is_verified', 1);
+        
+        $subscribers = $query->select()->toArray();
+        
+        // 过滤匹配的订阅者
+        $matched = [];
+        foreach ($subscribers as $subscriber) {
+            $model = new \app\model\EmailSubscription();
+            $model->data($subscriber);
+            
+            // 将订单数据转换为数组格式
+            $orderData = [
+                'city_id' => $order->city_id,
+                'district_id' => $order->district_id,
+                'subject_id' => $order->subject_id,
+                'grade' => $order->grade
+            ];
+            
+            if ($model->matchesOrder($orderData)) {
+                $matched[] = $subscriber;
+            }
+        }
+        
+        return $matched;
+    }
+    
+    /**
+     * 添加邮件到队列
+     */
+    private function addEmailToQueue($email, $order)
+    {
+        try {
+            // 获取邮件配置
+            $config = Db::name('notification_config')->find(1);
+            
+            if (!$config || !$config['smtp_host'] || !$config['email_enabled']) {
+                trace('邮件配置未设置或未启用，跳过发送', 'info');
+                return;
+            }
+            
+            // 构建邮件内容
+            $subject = '新家教信息通知 - ' . ($order->grade ?: '') . ' ' . ($order->subject ? $order->subject->name : '');
+            $body = $this->renderOrderEmailTemplate($order, $config);
+            
+            // 添加到队列
+            \app\model\EmailQueue::create([
+                'email_type' => \app\model\EmailQueue::TYPE_ORDER,
+                'recipient_email' => $email,
+                'subject' => $subject,
+                'body' => $body,
+                'related_id' => $order->id,
+                'status' => \app\model\EmailQueue::STATUS_PENDING,
+                'created_at' => date('Y-m-d H:i:s')
+            ]);
+            
+            trace('订单通知邮件已加入队列: email=' . $email . ', order_id=' . $order->id, 'info');
+            
+        } catch (\Exception $e) {
+            trace('添加邮件到队列失败: ' . $e->getMessage(), 'error');
+        }
+    }
+    
+    /**
+     * 渲染订单邮件模板
+     */
+    private function renderOrderEmailTemplate($order, $config)
+    {
+        // 获取城市区域名称
+        $cityName = $order->city ? $order->city->name : '';
+        $districtName = $order->district ? $order->district->name : '';
+        $subjectName = $order->subject ? $order->subject->name : '';
+        
+        // 使用配置的模板或默认模板
+        if (!empty($config['email_template'])) {
+            // 使用自定义模板
+            $replacements = [
+                '{{city}}' => $cityName,
+                '{{district}}' => $districtName,
+                '{{grade}}' => $order->grade ?: '',
+                '{{subject}}' => $subjectName,
+                '{{salary}}' => $order->salary ?: '',
+                '{{content}}' => nl2br(htmlspecialchars($order->content)),
+            ];
+            
+            return str_replace(
+                array_keys($replacements),
+                array_values($replacements),
+                $config['email_template']
+            );
+        }
+        
+        // 默认模板
+        $html = '<div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">';
+        $html .= '<div style="background: #667eea; color: white; padding: 20px; text-align: center;">';
+        $html .= '<h2 style="margin: 0;">新家教信息通知</h2>';
+        $html .= '</div>';
+        
+        $html .= '<div style="padding: 20px; background: #f9f9f9;">';
+        $html .= '<div style="background: white; padding: 20px; border-radius: 5px; margin-bottom: 15px;">';
+        $html .= '<p style="margin: 10px 0;"><strong>订单编号：</strong>' . htmlspecialchars($order->id) . '</p>';
+        
+        if ($cityName || $districtName) {
+            $html .= '<p style="margin: 10px 0;"><strong>城市区域：</strong>' . htmlspecialchars($cityName . ' ' . $districtName) . '</p>';
+        }
+        
+        if ($order->grade) {
+            $html .= '<p style="margin: 10px 0;"><strong>年级：</strong>' . htmlspecialchars($order->grade) . '</p>';
+        }
+        
+        if ($subjectName) {
+            $html .= '<p style="margin: 10px 0;"><strong>科目：</strong>' . htmlspecialchars($subjectName) . '</p>';
+        }
+        
+        if ($order->salary) {
+            $html .= '<p style="margin: 10px 0;"><strong>薪资：</strong>' . htmlspecialchars($order->salary) . '</p>';
+        }
+        
+        if ($order->teacher_type) {
+            $html .= '<p style="margin: 10px 0;"><strong>老师类型：</strong>' . htmlspecialchars($order->teacher_type) . '</p>';
+        }
+        
+        $html .= '</div>';
+        
+        $html .= '<div style="background: white; padding: 20px; border-radius: 5px; margin-bottom: 15px;">';
+        $html .= '<p style="margin: 0 0 10px 0;"><strong>详细信息：</strong></p>';
+        $html .= '<div style="background: #f8f9fa; padding: 15px; border-left: 4px solid #667eea; line-height: 1.6;">';
+        $html .= nl2br(htmlspecialchars($order->content));
+        $html .= '</div>';
+        $html .= '</div>';
+        
+        $html .= '<div style="background: #fff3cd; padding: 15px; border-left: 4px solid #ffc107; border-radius: 3px; margin-bottom: 15px;">';
+        $html .= '<p style="margin: 0; color: #856404; font-size: 14px;">';
+        $html .= '💡 如果您对此家教信息感兴趣，请联系平台获取详细联系方式。';
+        $html .= '</p>';
+        $html .= '</div>';
+        
+        $html .= '</div>';
+        
+        $html .= '<div style="text-align: center; padding: 20px; color: #999; font-size: 12px;">';
+        $html .= '<p style="margin: 0;">此邮件由系统自动发送，请勿直接回复。</p>';
+        $html .= '<p style="margin: 5px 0 0 0;">如需取消订阅，请登录平台管理您的订阅设置。</p>';
+        $html .= '</div>';
+        
+        $html .= '</div>';
+        
+        return $html;
     }
     
     /**

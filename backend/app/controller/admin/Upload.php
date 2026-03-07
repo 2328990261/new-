@@ -3,6 +3,7 @@
 namespace app\controller\admin;
 
 use app\BaseController;
+use app\service\WatermarkService;
 
 /**
  * 文件上传控制器
@@ -60,6 +61,10 @@ class Upload extends BaseController
             
             // 移动文件
             $file->move($fullPath, $filename);
+            
+            // 添加水印
+            $imagePath = $fullPath . $filename;
+            WatermarkService::addWatermark($imagePath, '91家教中心', 'right-bottom');
             
             // 返回文件URL
             $url = '/uploads/lead/' . $dateDir . '/' . $filename;

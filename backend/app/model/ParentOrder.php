@@ -18,6 +18,7 @@ class ParentOrder extends Model
         'admin_id'            => 'int',
         'grade'               => 'string',
         'student_gender'      => 'string',  // 学生性别
+        'student_name'        => 'string',  // 学生昵称
         'subject'             => 'string',
         'student_info'        => 'string',
         'frequency'           => 'string',
@@ -28,6 +29,7 @@ class ParentOrder extends Model
         'teacher_requirement' => 'string',
         'teacher_type'        => 'string',  // 教师类型
         'teacher_gender'      => 'string',  // 教师性别要求
+        'teacher_id'          => 'int',     // 预约的教师ID
         'teaching_method'     => 'string',  // 授课方式
         'address'             => 'string',
         'province_id'         => 'int',     // 省份ID
@@ -96,6 +98,14 @@ class ParentOrder extends Model
     public function tutor()
     {
         return $this->belongsTo(TutorOrder::class, 'tutor_id');
+    }
+    
+    /**
+     * 关联预约的教师
+     */
+    public function teacher()
+    {
+        return $this->belongsTo(Teacher::class, 'teacher_id');
     }
     
     /**

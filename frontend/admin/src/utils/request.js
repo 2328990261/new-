@@ -38,9 +38,8 @@ request.interceptors.response.use(
   response => {
     // 处理 304 Not Modified 等缓存响应
     if (response.status === 304) {
-      // 304 响应表示使用缓存，直接返回成功
       return {
-        success: true,
+        code: 200,
         data: null,
         message: 'Not Modified'
       }
@@ -51,33 +50,15 @@ request.interceptors.response.use(
     // 处理空响应
     if (!res) {
       return {
-        success: true,
+        code: 200,
         data: null,
         message: 'Empty response'
       }
     }
     
-    // 兼容两种返回格式：
-    // 1. { success: true/false, data: ..., error: ... }
-    // 2. { code: 200/400/500, message: ..., data: ... }
-    
-    if (res.success || res.code === 200 || res.code === 0) {
-      // 统一返回格式为 { success: true, data: ..., message: ... }
-      return {
-        success: true,
-        data: res.data,
-        message: res.message || res.msg,
-        total: res.total,
-        is_batch: res.is_batch,  // 保留is_batch字段用于识别
-        is_duplicate: res.is_duplicate,  // 保留重复标记
-        existing_id: res.existing_id,  // 保留已存在记录ID
-        existing_data: res.existing_data  // 保留已存在记录数据
-      }
-    } else {
-      const errorMsg = res.error || res.message || res.msg || '请求失败'
-      ElMessage.error(errorMsg)
-      return Promise.reject(new Error(errorMsg))
-    }
+    // 直接返回原始响应，不做格式转换
+    // 后端返回格式：{ code: 200, message: '...', data: {...} }
+    return res
   },
   error => {
     if (error.response?.status === 401) {

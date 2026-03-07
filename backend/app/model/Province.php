@@ -8,8 +8,11 @@ use think\Model;
  */
 class Province extends Model
 {
-    // 设置表名
+    // 设置表名（不需要加前缀，ThinkPHP会自动添加）
     protected $name = 'provinces';
+    
+    // 或者直接设置完整表名（包含前缀）
+    // protected $table = 'fa_provinces';
     
     // 设置字段信息
     protected $schema = [

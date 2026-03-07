@@ -6,3 +6,13 @@
   RewriteCond %{REQUEST_FILENAME} !-f
   RewriteRule ^(.*)$ index.php/$1 [QSA,PT,L]
 </IfModule>
+
+# CORS 配置 - 允许图片跨域访问
+<IfModule mod_headers.c>
+  # 允许所有来源访问图片资源
+  <FilesMatch "\.(jpg|jpeg|png|gif|webp|svg|ico)$">
+    Header set Access-Control-Allow-Origin "*"
+    Header set Access-Control-Allow-Methods "GET, OPTIONS"
+    Header set Access-Control-Allow-Headers "Content-Type"
+  </FilesMatch>
+</IfModule>

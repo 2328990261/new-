@@ -103,7 +103,7 @@
         <el-table-column prop="nickname" label="昵称" min-width="120">
           <template #default="{ row }">
             <div class="user-info">
-              <el-avatar :size="32" :src="row.avatar" v-if="row.avatar">
+              <el-avatar :size="32" :src="row.headimgurl || row.avatar" v-if="row.headimgurl || row.avatar">
                 {{ row.nickname?.charAt(0) }}
               </el-avatar>
               <el-avatar :size="32" v-else>
@@ -117,6 +117,13 @@
           <template #default="{ row }">
             <span v-if="row.phone">{{ row.phone }}</span>
             <el-tag v-else type="info" size="small">未绑定</el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column prop="user_type" label="用户角色" width="100" align="center">
+          <template #default="{ row }">
+            <el-tag v-if="row.user_type === 'teacher'" type="success" size="small">教师</el-tag>
+            <el-tag v-else-if="row.user_type === 'parent'" type="primary" size="small">家长</el-tag>
+            <el-tag v-else type="info" size="small">未选择</el-tag>
           </template>
         </el-table-column>
         <el-table-column prop="openid" label="OpenID" min-width="200" show-overflow-tooltip />
@@ -219,8 +226,13 @@
         <el-descriptions-item label="OpenID">
           {{ currentUser.openid }}
         </el-descriptions-item>
+        <el-descriptions-item label="用户角色">
+          <el-tag v-if="currentUser.user_type === 'teacher'" type="success">教师</el-tag>
+          <el-tag v-else-if="currentUser.user_type === 'parent'" type="primary">家长</el-tag>
+          <el-tag v-else type="info">未选择</el-tag>
+        </el-descriptions-item>
         <el-descriptions-item label="头像">
-          <el-avatar :size="50" :src="currentUser.avatar" v-if="currentUser.avatar">
+          <el-avatar :size="50" :src="currentUser.headimgurl || currentUser.avatar" v-if="currentUser.headimgurl || currentUser.avatar">
             {{ currentUser.nickname?.charAt(0) }}
           </el-avatar>
           <span v-else>未设置</span>

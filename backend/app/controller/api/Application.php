@@ -293,4 +293,93 @@ class Application extends BaseController
             ]);
         }
     }
+    
+    /**
+     * 获取指定订单的投递列表（家长查看）
+     */
+    public function listByOrder()
+    {
+        $orderId = $this->request->param('order_id');
+        
+        if (empty($orderId)) {
+            return json(['success' => false, 'error' => '缺少订单ID']);
+        }
+        
+        try {
+            // 查询该订单的所有投递记录，关联教师信息
+            $list = Db::name('resume_application')
+                ->alias('ra')
+                ->leftJoin('teachers t', 'ra.teacher_id = t.id')
+                ->where('ra.tutor_id', $orderId)
+                ->field('ra.id, ra.teacher_id, ra.status, ra.apply_time, 
+                        t.name as teacher_name, t.phone as teacher_phone, 
+                        t.school as teacher_school, t.major as teacher_major,
+                        t.education as teacher_education, t.photos as teacher_photos')
+                ->order('ra.apply_time', 'desc')
+                ->select()
+                ->toArray();
+            
+            // 处理教师头像
+            foreach ($list as &$item) {
+                if (!empty($item['teacher_photos'])) {
+                    $photos = json_decode($item['teacher_photos'], true);
+                    if (is_array($photos)) {
+                        // 新格式：{avatar: "", teaching_photos: []}
+                        if (isset($photos['avatar'])) {
+                            $item['teacher_avatar'] = $this->getFullImageUrl($photos['avatar']);
+                        } else {
+                            // 旧格式：数组
+                            $item['teacher_avatar'] = $this->getFullImageUrl($photos[0] ?? '');
+                        }
+                    } else {
+                        // 逗号分隔的字符串
+                        $photoArray = array_filter(array_map('trim', explode(',', $item['teacher_photos'])));
+                        $item['teacher_avatar'] = $this->getFullImageUrl($photoArray[0] ?? '');
+                    }
+                } else {
+                    $item['teacher_avatar'] = '';
+                }
+                
+                // 移除不需要的字段
+                unset($item['teacher_photos']);
+            }
+            
+            return json([
+                'success' => true,
+                'data' => $list
+            ]);
+            
+        } catch (\Exception $e) {
+            return json([
+                'success' => false,
+                'error' => '获取失败：' . $e->getMessage()
+            ]);
+        }
+    }
+    
+    /**
+     * 获取完整图片URL
+     */
+    private function getFullImageUrl($path)
+    {
+        if (empty($path)) {
+            return '';
+        }
+        
+        // 如果已经是完整URL，直接返回
+        if (strpos($path, 'http://') === 0 || strpos($path, 'https://') === 0) {
+            return $path;
+        }
+        
+        // 获取当前域名
+        $request = request();
+        $domain = $request->domain();
+        
+        // 确保路径以 / 开头
+        if (strpos($path, '/') !== 0) {
+            $path = '/' . $path;
+        }
+        
+        return $domain . $path;
+    }
 }

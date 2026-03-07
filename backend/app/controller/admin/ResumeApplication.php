@@ -29,11 +29,17 @@ class ResumeApplication extends BaseController
             $query = Db::name('resume_application')->alias('ra')
                 ->leftJoin('teachers t', 'ra.teacher_id = t.id')
                 ->leftJoin('tutor_orders_new o', 'ra.tutor_id = o.id')
+                ->leftJoin('admin a', 'ra.reviewer_id = a.id')
+                ->leftJoin('cities c', 'o.city_id = c.id')
+                ->leftJoin('districts d', 'o.district_id = d.id')
+                ->leftJoin('subjects s', 'o.subject_id = s.id')
                 ->field('ra.*, t.name as teacher_name, t.phone as teacher_phone, 
                         t.education as teacher_education, t.school as teacher_school,
                         t.subject_names as teacher_subjects,
                         o.content as tutor_title, o.grade as tutor_grade, 
-                        o.salary as tutor_salary');
+                        o.salary as tutor_salary, s.name as tutor_subject,
+                        c.name as tutor_city, d.name as tutor_district,
+                        a.nickname as reviewer_name');
             
             // 状态筛选
             if ($status) {
@@ -90,11 +96,17 @@ class ResumeApplication extends BaseController
             $application = Db::name('resume_application')->alias('ra')
                 ->leftJoin('teachers t', 'ra.teacher_id = t.id')
                 ->leftJoin('tutor_orders_new o', 'ra.tutor_id = o.id')
+                ->leftJoin('admin a', 'ra.reviewer_id = a.id')
+                ->leftJoin('cities c', 'o.city_id = c.id')
+                ->leftJoin('districts d', 'o.district_id = d.id')
+                ->leftJoin('subjects s', 'o.subject_id = s.id')
                 ->field('ra.*, t.name as teacher_name, t.phone as teacher_phone, 
                         t.education as teacher_education, t.school as teacher_school,
                         t.subject_names as teacher_subjects,
                         o.content as tutor_title, o.grade as tutor_grade, 
-                        o.salary as tutor_salary')
+                        o.salary as tutor_salary, s.name as tutor_subject,
+                        c.name as tutor_city, d.name as tutor_district,
+                        a.nickname as reviewer_name')
                 ->where('ra.id', $id)
                 ->find();
             
@@ -144,10 +156,14 @@ class ResumeApplication extends BaseController
                 ]);
             }
             
+            // 获取当前登录管理员ID
+            $adminId = $this->request->adminId ?? null;
+            
             // 更新状态
             $application->status = $status;
             $application->admin_remark = $remark;
             $application->review_time = date('Y-m-d H:i:s');
+            $application->reviewer_id = $adminId;
             $application->save();
             
             $statusText = $status === 'approved' ? '通过' : '拒绝';
@@ -189,10 +205,14 @@ class ResumeApplication extends BaseController
                 ]);
             }
             
+            // 获取当前登录管理员ID
+            $adminId = $this->request->adminId ?? null;
+            
             ApplicationModel::whereIn('id', $ids)->update([
                 'status' => $status,
                 'admin_remark' => $remark,
-                'review_time' => date('Y-m-d H:i:s')
+                'review_time' => date('Y-m-d H:i:s'),
+                'reviewer_id' => $adminId
             ]);
             
             $statusText = $status === 'approved' ? '通过' : '拒绝';

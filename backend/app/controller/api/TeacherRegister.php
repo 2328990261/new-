@@ -178,7 +178,7 @@ class TeacherRegister extends BaseController
             // 只保留数据库中存在的字段
             $allowedFields = [
                 'name', 'gender', 'phone', 'wechat_id', 'wechat_nickname', 'openid', 'email',
-                'hometown', 'teaching_years', 'birth_year',
+                'hometown', 'teaching_years', 'birth_date',
                 'location_province', 'location_city', 'location_district', 'location_address',
                 'location_longitude', 'location_latitude',
                 'education', 'school', 'major', 'teacher_type', 'grade_level', 'education_level',
@@ -227,6 +227,109 @@ class TeacherRegister extends BaseController
     }
     
     /**
+     * 更新教师信息
+     */
+    public function update()
+    {
+        $data = $this->request->post();
+        
+        // 验证必填字段
+        if (empty($data['id'])) {
+            return json(['success' => false, 'error' => '缺少教师ID']);
+        }
+        
+        $teacherId = $data['id'];
+        unset($data['id']);
+        
+        try {
+            // 查找教师记录
+            $teacher = Teacher::find($teacherId);
+            if (!$teacher) {
+                return json(['success' => false, 'error' => '教师不存在']);
+            }
+            
+            // 处理教学经历（结构化JSON数组）
+            if (isset($data['experiences']) && is_array($data['experiences'])) {
+                $validExperiences = [];
+                foreach ($data['experiences'] as $exp) {
+                    if (is_array($exp)) {
+                        $validExperiences[] = [
+                            'start_date' => $exp['start_date'] ?? '',
+                            'end_date' => $exp['end_date'] ?? '',
+                            'subject' => $exp['subject'] ?? '',
+                            'location' => $exp['location'] ?? '',
+                            'description' => $exp['description'] ?? ''
+                        ];
+                    }
+                }
+                $data['experience'] = json_encode($validExperiences, JSON_UNESCAPED_UNICODE);
+                unset($data['experiences']);
+            }
+            
+            // 处理教学照片（区分头像和教学照片）
+            if (isset($data['avatar']) || isset($data['teaching_photos'])) {
+                $photosData = [
+                    'avatar' => $data['avatar'] ?? '',
+                    'teaching_photos' => []
+                ];
+                
+                if (isset($data['teaching_photos']) && is_array($data['teaching_photos'])) {
+                    $photosData['teaching_photos'] = $data['teaching_photos'];
+                    unset($data['teaching_photos']);
+                }
+                
+                $data['photos'] = json_encode($photosData, JSON_UNESCAPED_UNICODE);
+            }
+            
+            // 处理优势标签
+            if (isset($data['advantage_tags']) && is_array($data['advantage_tags'])) {
+                $data['advantage_tags'] = json_encode($data['advantage_tags'], JSON_UNESCAPED_UNICODE);
+            }
+            
+            // 只保留数据库中存在的字段
+            $allowedFields = [
+                'name', 'gender', 'phone', 'wechat_id', 'wechat_nickname', 'openid', 'email',
+                'hometown', 'teaching_years', 'birth_date',
+                'location_province', 'location_city', 'location_district', 'location_address',
+                'location_longitude', 'location_latitude',
+                'education', 'school', 'major', 'teacher_type', 'grade_level', 'education_level',
+                'hourly_rate', 'subject_ids', 'subject_names', 'district_ids', 'district_names',
+                'experience', 'self_intro', 'personal_advantage', 'advantage_tags', 'photos',
+                'id_card_front', 'id_card_back', 'education_certificate', 'teacher_certificate'
+            ];
+            
+            $updateData = [];
+            foreach ($allowedFields as $field) {
+                if (isset($data[$field])) {
+                    $updateData[$field] = $data[$field];
+                }
+            }
+            
+            // 更新后需要重新审核(无论之前是什么状态)
+            $updateData['review_status'] = 'pending';
+            $updateData['reject_reason'] = null;
+            $updateData['review_remark'] = null;
+            $updateData['review_time'] = null;
+            $updateData['reviewer_id'] = null;
+            
+            // 更新教师记录
+            $teacher->save($updateData);
+            
+            return json([
+                'success' => true,
+                'message' => '更新成功',
+                'data' => [
+                    'id' => $teacher->id,
+                    'name' => $teacher->name,
+                    'review_status' => $teacher->review_status
+                ]
+            ]);
+        } catch (\Exception $e) {
+            return json(['success' => false, 'error' => '更新失败：' . $e->getMessage()]);
+        }
+    }
+    
+    /**
      * 上传图片
      */
     public function uploadImage()
@@ -269,20 +372,29 @@ class TeacherRegister extends BaseController
             // 移动文件
             $file->move($fullPath, $filename);
             
-            // 返回文件路径
-            $url = '/uploads/teacher/' . $dateDir . '/' . $filename;
-            $relativePath = 'teacher/' . $dateDir . '/' . $filename;
+            // 添加水印
+            $imagePath = $fullPath . $filename;
+            \app\service\WatermarkService::addWatermark($imagePath, '91家教中心', 'right-bottom');
+            
+            // 获取当前域名
+            $request = request();
+            $domain = $request->domain();
+            
+            // 返回完整URL
+            $url = $domain . '/uploads/teacher/' . $dateDir . '/' . $filename;
+            $relativePath = '/uploads/teacher/' . $dateDir . '/' . $filename;
             
             return json([
                 'success' => true,
                 'message' => '上传成功',
                 'data' => [
-                    'url' => $url,
-                    'path' => $relativePath,
+                    'url' => $url,  // 完整URL，用于显示
+                    'path' => $relativePath,  // 相对路径，用于保存到数据库
                     'compressed' => false
                 ]
             ]);
         } catch (\Exception $e) {
+            \think\facade\Log::error('图片上传失败: ' . $e->getMessage());
             return json(['success' => false, 'error' => '上传失败：' . $e->getMessage()]);
         }
     }
@@ -505,5 +617,61 @@ class TeacherRegister extends BaseController
                 'message' => $exists ? '该手机号已注册' : '手机号可用'
             ]
         ]);
+    }
+    
+    /**
+     * 获取当前用户的教师注册状态
+     */
+    public function getRegistrationStatus()
+    {
+        $openid = $this->request->param('openid', '');
+        $phone = $this->request->param('phone', '');
+        
+        if (empty($openid) && empty($phone)) {
+            return json(['success' => false, 'error' => '缺少用户标识']);
+        }
+        
+        try {
+            // 查找教师记录
+            $query = Teacher::where(function($query) use ($openid, $phone) {
+                if (!empty($openid)) {
+                    $query->where('openid', $openid);
+                }
+                if (!empty($phone)) {
+                    $query->whereOr('phone', $phone);
+                }
+            });
+            
+            $teacher = $query->find();
+            
+            // 如果没有找到教师记录，说明未注册
+            if (!$teacher) {
+                return json([
+                    'success' => true,
+                    'data' => [
+                        'registered' => false,
+                        'status' => null,
+                        'review_status' => null,
+                        'reject_reason' => null
+                    ]
+                ]);
+            }
+            
+            // 返回教师注册状态
+            return json([
+                'success' => true,
+                'data' => [
+                    'registered' => true,
+                    'teacher_id' => $teacher->id,
+                    'status' => $teacher->status,
+                    'review_status' => $teacher->review_status,
+                    'reject_reason' => $teacher->review_note,
+                    'review_remark' => $teacher->review_note,  // 审核备注（通过或驳回都可能有）
+                    'review_time' => $teacher->review_time
+                ]
+            ]);
+        } catch (\Exception $e) {
+            return json(['success' => false, 'error' => '获取状态失败：' . $e->getMessage()]);
+        }
     }
 }

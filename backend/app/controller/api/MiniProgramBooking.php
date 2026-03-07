@@ -71,6 +71,7 @@ class MiniProgramBooking extends BaseController
                 'admin_id' => 0,  // 小程序预约暂无管理员，设为0
                 'grade' => $bookingData['grade'] ?? '',
                 'student_gender' => $bookingData['gender'] ?? '',
+                'student_name' => $bookingData['student_name'] ?? '',  // 学生昵称
                 'subject' => $bookingData['subject'] ?? '',
                 'student_info' => $studentInfo,  // 学生情况描述
                 'frequency' => $bookingData['frequency'] ?? '',
@@ -81,6 +82,7 @@ class MiniProgramBooking extends BaseController
                 'teacher_requirement' => $teacherRequirement,  // 教师要求
                 'teacher_type' => $bookingData['teacher_type'] ?? '',
                 'teacher_gender' => $bookingData['teacher_gender'] ?? '',
+                'teacher_id' => $bookingData['teacher_id'] ?? null,  // 预约的教师ID
                 'teaching_method' => $bookingData['teaching_method'] ?? '',
                 'address' => $bookingData['address'] ?? '',
                 'province_id' => $bookingData['province_id'] ?? 0,

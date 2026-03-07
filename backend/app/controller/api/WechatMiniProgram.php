@@ -62,6 +62,20 @@ class WechatMiniProgram extends BaseController
         $encryptedData = Request::post('encrypted_data'); // 加密数据（旧版）
         $iv = Request::post('iv'); // 初始向量（旧版）
         
+        // 接收用户输入的昵称和头像
+        $nickname = Request::post('nickname', '');
+        $avatar = Request::post('avatar', '');
+        $userType = Request::post('user_type', ''); // 用户类型：teacher/parent
+        
+        // 记录接收到的参数（调试用）
+        \think\facade\Log::info('登录参数', [
+            'code' => $code,
+            'phoneCode' => $phoneCode,
+            'nickname' => $nickname,
+            'avatar' => $avatar,
+            'userType' => $userType
+        ]);
+        
         if (empty($code)) {
             return json([
                 'code' => 400,
@@ -70,11 +84,23 @@ class WechatMiniProgram extends BaseController
         }
         
         try {
+            // 构建额外信息
+            $extraInfo = [];
+            if (!empty($nickname)) {
+                $extraInfo['nickname'] = $nickname;
+            }
+            if (!empty($avatar)) {
+                $extraInfo['avatar'] = $avatar;
+            }
+            if (!empty($userType)) {
+                $extraInfo['user_type'] = $userType;
+            }
+            
             // 优先使用新版phone_code
             if (!empty($phoneCode)) {
-                $result = $this->service->loginWithPhoneCode($code, $phoneCode);
+                $result = $this->service->loginWithPhoneCode($code, $phoneCode, $extraInfo);
             } elseif (!empty($encryptedData) && !empty($iv)) {
-                $result = $this->service->loginWithEncryptedData($code, $encryptedData, $iv);
+                $result = $this->service->loginWithEncryptedData($code, $encryptedData, $iv, $extraInfo);
             } else {
                 return json([
                     'code' => 400,
@@ -88,6 +114,54 @@ class WechatMiniProgram extends BaseController
                 'data' => $result
             ]);
         } catch (\Exception $e) {
+            \think\facade\Log::error('登录失败', [
+                'message' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ]);
+            return json([
+                'code' => 500,
+                'message' => $e->getMessage()
+            ]);
+        }
+    }
+    
+    /**
+     * 使用 openid 自动登录（无需手机号授权）
+     * @return Response
+     */
+    public function loginWithOpenid()
+    {
+        $code = Request::post('code'); // 微信登录code
+        $openid = Request::post('openid'); // 用户的openid
+        
+        if (empty($code)) {
+            return json([
+                'code' => 400,
+                'message' => '缺少code参数'
+            ]);
+        }
+        
+        if (empty($openid)) {
+            return json([
+                'code' => 400,
+                'message' => '缺少openid参数'
+            ]);
+        }
+        
+        try {
+            $result = $this->service->loginWithOpenid($code, $openid);
+            
+            return json([
+                'code' => 200,
+                'message' => '登录成功',
+                'data' => $result
+            ]);
+        } catch (\Exception $e) {
+            \think\facade\Log::error('自动登录失败', [
+                'message' => $e->getMessage(),
+                'openid' => $openid,
+                'trace' => $e->getTraceAsString()
+            ]);
             return json([
                 'code' => 500,
                 'message' => $e->getMessage()
@@ -106,6 +180,7 @@ class WechatMiniProgram extends BaseController
         $width = Request::post('width', 430);
         $envVersion = Request::post('env_version', 'release');
         $isHyaline = Request::post('is_hyaline', false);
+        $checkPath = Request::post('check_path', false); // 默认关闭路径检查
         
         if (empty($scene)) {
             return json([
@@ -118,7 +193,7 @@ class WechatMiniProgram extends BaseController
             $options = [
                 'width' => $width,
                 'env_version' => $envVersion,
-                'check_path' => true,
+                'check_path' => $checkPath,
                 'auto_color' => false,
                 'is_hyaline' => $isHyaline
             ];

@@ -18,6 +18,7 @@ class EmailSubscription extends Model
         'city_ids'     => 'string',
         'district_ids' => 'string',
         'subject_ids'  => 'string',
+        'grade_levels' => 'string',
         'status'       => 'int',
         'verify_token' => 'string',
         'is_verified'  => 'int',
@@ -73,6 +74,14 @@ class EmailSubscription extends Model
     }
     
     /**
+     * 获取订阅年级段数组
+     */
+    public function getGradeLevelsArrayAttr($value, $data)
+    {
+        return $data['grade_levels'] ? explode(',', $data['grade_levels']) : [];
+    }
+    
+    /**
      * 设置城市ID修改器
      */
     public function setCityIdsAttr($value)
@@ -92,6 +101,14 @@ class EmailSubscription extends Model
      * 设置科目ID修改器
      */
     public function setSubjectIdsAttr($value)
+    {
+        return is_array($value) ? implode(',', $value) : $value;
+    }
+    
+    /**
+     * 设置年级段修改器
+     */
+    public function setGradeLevelsAttr($value)
     {
         return is_array($value) ? implode(',', $value) : $value;
     }
@@ -125,7 +142,38 @@ class EmailSubscription extends Model
             }
         }
         
+        // 检查年级段
+        if ($this->grade_levels) {
+            $gradeLevels = $this->getGradeLevelsArrayAttr(null, $this->getData());
+            $orderGradeLevel = $this->getGradeLevelFromGrade($order['grade']);
+            if ($orderGradeLevel && !in_array($orderGradeLevel, $gradeLevels)) {
+                return false;
+            }
+        }
+        
         return true;
+    }
+    
+    /**
+     * 从年级字符串中提取年级段
+     * 例如：小学一年级 -> 小学，初中二年级 -> 初中，高三 -> 高中
+     */
+    private function getGradeLevelFromGrade($grade)
+    {
+        if (empty($grade)) {
+            return null;
+        }
+        
+        // 年级段映射
+        if (strpos($grade, '小学') !== false || strpos($grade, '幼儿') !== false) {
+            return '小学';
+        } elseif (strpos($grade, '初') !== false) {
+            return '初中';
+        } elseif (strpos($grade, '高') !== false) {
+            return '高中';
+        }
+        
+        return null;
     }
     
     /**

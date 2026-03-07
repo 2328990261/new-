@@ -20,6 +20,8 @@ Route::group('api', function () {
     Route::get('provinces/all', 'api.Region/provinces');
     Route::get('cities/all', 'api.Region/cities');
     Route::get('cities/:city_id/districts', 'api.Region/districts');
+    Route::get('grades/all', 'api.Region/grades');
+    Route::get('subjects/all', 'api.Region/subjects');
     
     // 地理编码服务（公开接口）
     Route::get('geocode/reverse', 'api.Geocode/reverse');
@@ -31,10 +33,6 @@ Route::group('api', function () {
     
     // 家长预约订单（公开接口）
     Route::post('order/booking', 'api.Order/booking');
-    
-    // 测试接口（无需认证）
-    Route::get('order/test-list', 'api.Order/testList');
-    Route::get('order/test-stats', 'api.Order/testStats');
     
     // 订单管理（需要登录）
     Route::get('order/list', 'api.Order/list');
@@ -58,16 +56,19 @@ Route::group('api', function () {
     Route::post('teacher-register/save-progress', 'api.TeacherRegister/saveProgress');
     Route::get('teacher-register/get-progress', 'api.TeacherRegister/getProgress');
     Route::post('teacher-register/submit', 'api.TeacherRegister/submit');
+    Route::post('teacher-register/update', 'api.TeacherRegister/update');
     Route::post('teacher-register/upload-image', 'api.TeacherRegister/uploadImage');
     Route::get('teacher-register/teacher-types', 'api.TeacherRegister/getTeacherTypes');
     Route::get('teacher-register/advantage-tags', 'api.TeacherRegister/getAdvantageTags');
     Route::get('teacher-register/check-phone', 'api.TeacherRegister/checkPhone');
+    Route::get('teacher-register/status', 'api.TeacherRegister/getRegistrationStatus');
     
     // 投递管理
     Route::post('application/apply', 'api.Application/apply');
     Route::get('application/my-list', 'api.Application/myList');
     Route::get('application/detail/:id', 'api.Application/detail');
     Route::post('application/cancel/:id', 'api.Application/cancel');
+    Route::get('application/list-by-order', 'api.Application/listByOrder');
     
     // 支付相关
     Route::get('payment/search', 'api.Payment/search');
@@ -104,6 +105,7 @@ Route::group('api', function () {
     // 微信小程序登录
     Route::post('wechat/login', 'api.WechatMiniProgram/login');
     Route::post('wechat/login-phone', 'api.WechatMiniProgram/loginWithPhone');
+    Route::post('wechat/login-openid', 'api.WechatMiniProgram/loginWithOpenid');
     
     // 微信小程序二维码生成
     Route::post('wechat/generate-qrcode', 'api.WechatMiniProgram/generateQRCode');
@@ -136,6 +138,20 @@ Route::group('api', function () {
     Route::get('site-config', 'api.SiteConfig/getConfig');
     Route::get('site-banners', 'api.SiteBanner/index');
     
+    // 授课信息管理
+    Route::get('teaching-info/get', 'api.TeachingInfo/getInfo');
+    Route::post('teaching-info/save', 'api.TeachingInfo/saveInfo');
+    
+    // 收藏家教管理
+    Route::get('favorite-tutor/list', 'api.FavoriteTutor/getList');
+    Route::post('favorite-tutor/add', 'api.FavoriteTutor/add');
+    Route::post('favorite-tutor/remove', 'api.FavoriteTutor/remove');
+    Route::get('favorite-tutor/check', 'api.FavoriteTutor/checkFavorite');
+    
 })->middleware(\app\middleware\Cors::class);
 
 return [];
+
+    // 订阅消息
+    Route::post('subscribe-message/record', 'api.SubscribeMessage/record');
+    Route::get('subscribe-message/template-id', 'api.SubscribeMessage/getTemplateId');

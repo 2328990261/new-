@@ -13,15 +13,6 @@ Route::group('admin/api', function () {
     Route::post('leads/recognize', 'admin.Lead/recognize');  // 线索智能识别（无需登录）
     Route::post('tutors/recognize', 'admin.Tutor/recognize');  // 家教订单智能识别（无需登录）
     
-    // 测试接口（无需认证）
-    Route::get('test-mini-users', 'admin.MiniProgramUser/list');
-    Route::get('test-mini-stats', 'admin.MiniProgramUser/stats');
-    
-    // 简单诊断测试（无需认证）
-    Route::get('simple-test', 'admin.SimpleTest/index');
-    Route::get('test-db', 'admin.SimpleTest/testDb');
-    Route::get('test-table', 'admin.SimpleTest/testTable');
-    
     // 需要认证的路由
     Route::group(function () {
         // 退出登录
@@ -29,6 +20,9 @@ Route::group('admin/api', function () {
         
         // 文件上传
         Route::post('upload/image', 'admin.Upload/image');
+        
+        // 图片代理（解决Canvas跨域）
+        Route::get('image-proxy', 'admin.ImageProxy/getImageBase64');
         
         // 仪表盘统计
         Route::get('dashboard/stats', 'admin.Dashboard/stats');
@@ -121,6 +115,15 @@ Route::group('admin/api', function () {
         Route::get('email-logs', 'admin.EmailLog/getList');
         Route::delete('email-logs/:id', 'admin.EmailLog/delete');
         
+        // 邮件订阅管理
+        Route::get('email-subscriptions/stats', 'admin.EmailSubscription/stats');
+        Route::post('email-subscriptions/batch-status', 'admin.EmailSubscription/batchStatus');
+        Route::get('email-subscriptions/:id', 'admin.EmailSubscription/detail');
+        Route::get('email-subscriptions', 'admin.EmailSubscription/list');
+        Route::post('email-subscriptions', 'admin.EmailSubscription/create');
+        Route::put('email-subscriptions/:id', 'admin.EmailSubscription/update');
+        Route::delete('email-subscriptions/:id', 'admin.EmailSubscription/delete');
+        
         // 兼容旧的email路由（逐步废弃）
         Route::get('email/config', 'admin.Notification/getConfig');
         Route::post('email/config', 'admin.Notification/updateConfig');
@@ -168,6 +171,7 @@ Route::group('admin/api', function () {
         Route::get('teachers/statistics', 'admin.Teacher/statistics');  // 统计信息（必须在 teachers/:id 之前）
         Route::post('teachers/batch-delete', 'admin.Teacher/batchDelete');  // 批量删除
         Route::post('teachers/batch-update-status', 'admin.Teacher/batchUpdateStatus');  // 批量更新状态
+        Route::post('teachers/generate-poster', 'admin.Teacher/generatePoster');  // 生成教师海报
         Route::get('teachers/:id', 'admin.Teacher/read');  // 获取单个教师详情（必须在 teachers 之前）
         Route::get('teachers', 'admin.Teacher/index');  // 获取教师列表
         Route::put('teachers/:id', 'admin.Teacher/update');  // 更新教师信息
@@ -239,16 +243,11 @@ Route::group('admin/api', function () {
         Route::put('leads/:id', 'admin.Lead/update');
         Route::delete('leads/:id', 'admin.Lead/delete');
         
-        // 小程序用户管理（注意：具体路径必须在动态路由前面）
-        Route::get('test-user', 'admin.TestUser/test');
-        Route::get('test-user/stats', 'admin.TestUser/testStats');
-        Route::get('test-user/list', 'admin.TestUser/testList');
-        Route::get('debug/logs', 'admin.DebugLog/viewLogs');
-        Route::get('debug/phpinfo', 'admin.DebugLog/phpInfo');
+        // 小程序用户管理
         Route::get('mini-users/stats', 'admin.MiniProgramUser/stats');
-        Route::post('mini-users/batch-delete', 'admin.MiniProgramUser/batchDelete');
-        Route::get('mini-users', 'admin.MiniProgramUser/list');
         Route::get('mini-users/:id', 'admin.MiniProgramUser/detail');
+        Route::get('mini-users', 'admin.MiniProgramUser/list');
+        Route::post('mini-users/batch-delete', 'admin.MiniProgramUser/batchDelete');
         Route::put('mini-users/:id', 'admin.MiniProgramUser/update');
         Route::delete('mini-users/:id', 'admin.MiniProgramUser/delete');
         
@@ -269,3 +268,10 @@ Route::group('admin/api', function () {
 
 return [];
 
+
+        // 订阅消息日志管理
+        Route::get('subscribe-message-log/list', 'admin.SubscribeMessageLog/list');
+        Route::get('subscribe-message-log/stats', 'admin.SubscribeMessageLog/stats');
+        Route::get('subscribe-message-log/detail/:id', 'admin.SubscribeMessageLog/detail');
+        Route::delete('subscribe-message-log/delete/:id', 'admin.SubscribeMessageLog/delete');
+        Route::post('subscribe-message-log/batch-delete', 'admin.SubscribeMessageLog/batchDelete');

@@ -29,6 +29,9 @@ class Teacher extends BaseController
             $teacherType = $this->request->get('teacher_type'); // 教师类型筛选
             $school = $this->request->get('school'); // 学校筛选
             $isTop = $this->request->get('is_top'); // 置顶筛选
+            $cityId = $this->request->get('city_id'); // 授课城市筛选
+            $districtIds = $this->request->get('district_ids'); // 授课区域筛选（多选）
+            $subjectIds = $this->request->get('subject_ids'); // 科目筛选（多选）
             $page = $this->request->get('page', 1);
             $limit = $this->request->get('limit', 20);
             
@@ -39,7 +42,13 @@ class Teacher extends BaseController
                 $where[] = function($query) use ($keyword) {
                     $query->where('name', 'like', '%' . $keyword . '%')
                           ->whereOr('phone', 'like', '%' . $keyword . '%')
-                          ->whereOr('wechat_id', 'like', '%' . $keyword . '%');
+                          ->whereOr('wechat_id', 'like', '%' . $keyword . '%')
+                          ->whereOr('school', 'like', '%' . $keyword . '%')
+                          ->whereOr('hometown', 'like', '%' . $keyword . '%')
+                          ->whereOr('major', 'like', '%' . $keyword . '%')
+                          ->whereOr('personal_advantage', 'like', '%' . $keyword . '%')
+                          ->whereOr('self_intro', 'like', '%' . $keyword . '%')
+                          ->whereOr('experience', 'like', '%' . $keyword . '%');
                 };
             }
             
@@ -63,11 +72,72 @@ class Teacher extends BaseController
                 $where[] = ['is_top', '=', intval($isTop)];
             }
             
+            // 科目筛选（多选）- 使用 JSON_CONTAINS 或 LIKE 查询
+            if ($subjectIds) {
+                // 如果是字符串，转换为数组
+                if (is_string($subjectIds)) {
+                    $subjectIds = explode(',', $subjectIds);
+                }
+                
+                if (!empty($subjectIds)) {
+                    $where[] = function($query) use ($subjectIds) {
+                        foreach ($subjectIds as $subjectId) {
+                            $query->whereOr('subject_ids', 'like', '%"' . $subjectId . '"%');
+                        }
+                    };
+                }
+            }
+            
+            // 如果有城市或区域筛选，需要关联 teacher_teaching_info 表
+            if ($cityId || $districtIds) {
+                // 先从 teacher_teaching_info 表中查询符合条件的 teacher_id
+                $teachingInfoQuery = \think\facade\Db::name('teacher_teaching_info');
+                
+                if ($cityId) {
+                    $teachingInfoQuery->where('city_id', $cityId);
+                }
+                
+                if ($districtIds) {
+                    // 如果是字符串，转换为数组
+                    if (is_string($districtIds)) {
+                        $districtIds = explode(',', $districtIds);
+                    }
+                    
+                    if (!empty($districtIds)) {
+                        $teachingInfoQuery->where(function($query) use ($districtIds) {
+                            foreach ($districtIds as $districtId) {
+                                $query->whereOr('districts', 'like', '%"id":' . $districtId . '%');
+                            }
+                        });
+                    }
+                }
+                
+                // 获取符合条件的 teacher_id 列表
+                $teacherIds = $teachingInfoQuery->column('teacher_id');
+                
+                if (empty($teacherIds)) {
+                    // 如果没有符合条件的教师，直接返回空结果
+                    return json([
+                        'success' => true,
+                        'data' => [
+                            'list' => [],
+                            'total' => 0,
+                            'page' => (int)$page,
+                            'limit' => (int)$limit
+                        ]
+                    ]);
+                }
+                
+                // 添加 teacher_id 筛选条件
+                $where[] = ['id', 'in', $teacherIds];
+            }
+            
             // 获取总数
             $total = TeacherModel::where($where)->count();
             
-            // 获取数据列表
+            // 获取数据列表 - 按最新登录时间排序，然后按置顶和创建时间
             $list = TeacherModel::where($where)
+                ->order('last_login_time', 'desc')
                 ->order('is_top', 'desc')
                 ->order('create_time', 'desc')
                 ->page($page, $limit)
@@ -160,6 +230,19 @@ class Teacher extends BaseController
             $data['wechat_nickname'] = $data['wechat_nickname'] ?? '';
             $data['openid'] = $data['openid'] ?? '';
             $data['last_login_time'] = $data['last_login_time'] ?? null;
+            
+            // 获取教师授课信息
+            $teachingInfo = \app\model\TeacherTeachingInfo::getByTeacher($id, $data['openid'] ?? null, $data['phone'] ?? null);
+            if ($teachingInfo) {
+                $data['teaching_info'] = [
+                    'city_name' => $teachingInfo->city_name ?? '',
+                    'districts' => $teachingInfo->districts ?? [],
+                    'grades' => $teachingInfo->grades ?? [],
+                    'subjects' => $teachingInfo->subjects ?? []
+                ];
+            } else {
+                $data['teaching_info'] = null;
+            }
             
             return json([
                 'success' => true,
@@ -425,7 +508,7 @@ class Teacher extends BaseController
             // 允许更新的字段
             $allowedFields = [
                 'name', 'gender', 'phone', 'wechat_id', 'wechat_nickname', 'openid', 'email',
-                'hometown', 'teaching_years', 'birth_year',
+                'hometown', 'teaching_years', 'birth_date',
                 'location_province', 'location_city', 'location_district', 'location_address',
                 'education', 'school', 'major', 'teacher_type', 'grade_level', 'education_level',
                 'hourly_rate', 'subject_ids', 'subject_names', 'district_ids', 'district_names',
@@ -533,6 +616,136 @@ class Teacher extends BaseController
                     'school_stats' => $schoolStats
                 ]
             ]);
+            
+        } catch (\Exception $e) {
+            return json(['success' => false, 'error' => $e->getMessage()]);
+        }
+    }
+    
+    /**
+     * 生成教师小程序海报
+     */
+    public function generatePoster()
+    {
+        if (session_status() === PHP_SESSION_NONE) {
+            session_start();
+        }
+        if (!isset($_SESSION['admin_id'])) {
+            return json(['success' => false, 'error' => '未登录']);
+        }
+        
+        try {
+            $teacherId = $this->request->post('teacher_id');
+            
+            if (empty($teacherId)) {
+                return json(['success' => false, 'error' => '缺少教师ID']);
+            }
+            
+            // 获取教师信息
+            $teacher = TeacherModel::find($teacherId);
+            if (!$teacher) {
+                return json(['success' => false, 'error' => '教师不存在']);
+            }
+            
+            // 调用小程序服务
+            $wechatService = new \app\service\WechatMiniProgramService();
+            
+            // 生成二维码
+            $qrcodeResult = $wechatService->generateQRCode(
+                'pages/teacher-detail/index',
+                'id=' . $teacherId,
+                [
+                    'width' => 430,
+                    'env_version' => 'release',
+                    'check_path' => false,
+                    'is_hyaline' => true
+                ]
+            );
+            
+            // 生成短链接
+            // 尝试生成多种小程序链接格式
+            $links = [];
+            
+            error_log("=== 开始生成教师海报链接 ===");
+            error_log("教师ID: " . $teacherId);
+            error_log("教师姓名: " . $teacher->name);
+            
+            // 1. 尝试生成 URL Scheme（适用于从外部打开小程序）
+            error_log("\n--- 尝试生成 URL Scheme ---");
+            $urlSchemeResult = $wechatService->generateUrlScheme(
+                'pages/teacher-detail/index',
+                'id=' . $teacherId,
+                [
+                    'is_expire' => false,
+                    'expire_type' => 0
+                ]
+            );
+            
+            if ($urlSchemeResult['success'] && !empty($urlSchemeResult['data'])) {
+                $links['url_scheme'] = [
+                    'type' => 'URL Scheme',
+                    'link' => $urlSchemeResult['data'],
+                    'description' => '适用于从外部浏览器、短信等打开小程序'
+                ];
+                error_log("URL Scheme 生成成功");
+            } else {
+                $links['url_scheme_error'] = $urlSchemeResult['error'] ?? '未知错误';
+                error_log("URL Scheme 生成失败: " . ($urlSchemeResult['error'] ?? '未知错误'));
+            }
+            
+            // 2. 尝试生成 Short Link（适用于微信内分享）
+            error_log("\n--- 尝试生成 Short Link ---");
+            $shortLinkResult = $wechatService->generateShortLink(
+                'pages/teacher-detail/index',
+                'id=' . $teacherId,
+                [
+                    'is_permanent' => true
+                ]
+            );
+            
+            if ($shortLinkResult['success'] && !empty($shortLinkResult['data'])) {
+                $links['short_link'] = [
+                    'type' => 'Short Link',
+                    'link' => $shortLinkResult['data'],
+                    'description' => '适用于微信内分享'
+                ];
+                error_log("Short Link 生成成功");
+            } else {
+                $links['short_link_error'] = $shortLinkResult['error'] ?? '未知错误';
+                error_log("Short Link 生成失败: " . ($shortLinkResult['error'] ?? '未知错误'));
+            }
+            
+            // 3. 生成页面路径（备用方案）
+            $links['page_path'] = [
+                'type' => '页面路径',
+                'link' => 'pages/teacher-detail/index?id=' . $teacherId,
+                'description' => '在小程序内使用'
+            ];
+            error_log("页面路径已生成");
+            
+            error_log("=== 教师海报链接生成完成 ===\n");
+            
+            if ($qrcodeResult['success']) {
+                $responseData = [
+                    'qrcode' => $qrcodeResult['data'],
+                    'teacher' => [
+                        'id' => $teacher->id,
+                        'name' => $teacher->name,
+                        'avatar' => $teacher->photos['avatar'] ?? '',
+                        'school' => $teacher->school,
+                        'major' => $teacher->major,
+                        'hourly_rate' => $teacher->hourly_rate
+                    ],
+                    'links' => $links  // 返回所有链接
+                ];
+                
+                return json([
+                    'success' => true,
+                    'data' => $responseData
+                ]);
+            } else {
+                return json(['success' => false, 'error' => $qrcodeResult['error']]);
+            }
             
         } catch (\Exception $e) {
             return json(['success' => false, 'error' => $e->getMessage()]);

@@ -91,10 +91,11 @@ class WechatMiniProgramService
      * 使用手机号code登录（新版API）
      * @param string $code 微信登录code
      * @param string $phoneCode 手机号code
+     * @param array $extraInfo 额外的用户信息
      * @return array
      * @throws \Exception
      */
-    public function loginWithPhoneCode($code, $phoneCode)
+    public function loginWithPhoneCode($code, $phoneCode, $extraInfo = [])
     {
         // 先获取access_token
         $accessToken = $this->getAccessToken();
@@ -118,7 +119,7 @@ class WechatMiniProgramService
         $openid = $loginResult['openid'];
         
         // 注册或更新用户
-        return $this->registerOrUpdateUser($openid, $phone);
+        return $this->registerOrUpdateUser($openid, $phone, $extraInfo);
     }
     
     /**
@@ -126,10 +127,11 @@ class WechatMiniProgramService
      * @param string $code
      * @param string $encryptedData
      * @param string $iv
+     * @param array $extraInfo 额外的用户信息
      * @return array
      * @throws \Exception
      */
-    public function loginWithEncryptedData($code, $encryptedData, $iv)
+    public function loginWithEncryptedData($code, $encryptedData, $iv, $extraInfo = [])
     {
         // 获取openid和session_key
         $loginResult = $this->login($code);
@@ -140,35 +142,95 @@ class WechatMiniProgramService
         $phone = $this->decryptData($encryptedData, $iv, $sessionKey);
         
         // 注册或更新用户
-        return $this->registerOrUpdateUser($openid, $phone);
+        return $this->registerOrUpdateUser($openid, $phone, $extraInfo);
+    }
+    
+    /**
+     * 使用 openid 自动登录（无需手机号授权）
+     * @param string $code 微信登录code
+     * @param string $openid 用户的openid
+     * @return array
+     * @throws \Exception
+     */
+    public function loginWithOpenid($code, $openid)
+    {
+        // 先验证 code 是否有效，获取新的 session_key
+        $loginResult = $this->login($code);
+        $newOpenid = $loginResult['openid'];
+        
+        // 验证 openid 是否匹配
+        if ($newOpenid !== $openid) {
+            throw new \Exception('openid 不匹配，请重新授权登录');
+        }
+        
+        // 查找用户
+        $user = User::where('openid', $openid)->find();
+        
+        if (!$user) {
+            throw new \Exception('用户不存在，请重新授权登录');
+        }
+        
+        // 更新最后登录时间
+        $user->update_time = date('Y-m-d H:i:s');
+        $user->save();
+        
+        // 生成新的token
+        $token = $this->generateToken($user);
+        
+        return [
+            'token' => $token,
+            'userInfo' => [
+                'id' => $user->id,
+                'phone' => $user->phone,
+                'nickname' => $user->nickname,
+                'avatar' => $user->avatar ?? '',
+                'openid' => $openid
+            ]
+        ];
     }
     
     /**
      * 注册或更新用户
      * @param string $openid
      * @param string $phone
+     * @param array $extraInfo 额外的用户信息（昵称、头像等）
      * @return array
      */
-    private function registerOrUpdateUser($openid, $phone)
+    private function registerOrUpdateUser($openid, $phone, $extraInfo = [])
     {
         // 查找用户
         $user = User::where('openid', $openid)->find();
+        
+        $nickname = $extraInfo['nickname'] ?? '用户' . substr($phone, -4);
+        $avatar = $extraInfo['avatar'] ?? '';
+        $userType = $extraInfo['user_type'] ?? null;
         
         if (!$user) {
             // 新用户，创建
             $user = User::create([
                 'openid' => $openid,
                 'phone' => $phone,
-                'nickname' => '用户' . substr($phone, -4),
+                'nickname' => $nickname,
+                'avatar' => $avatar,
+                'platform' => 'miniprogram', // 标记为小程序用户
                 'create_time' => date('Y-m-d H:i:s'),
                 'update_time' => date('Y-m-d H:i:s')
             ]);
         } else {
-            // 更新手机号
+            // 更新手机号和其他信息
             $user->phone = $phone;
+            if (!empty($nickname)) {
+                $user->nickname = $nickname;
+            }
+            if (!empty($avatar)) {
+                $user->avatar = $avatar;
+            }
             $user->update_time = date('Y-m-d H:i:s');
             $user->save();
         }
+        
+        // 同步保存到 fa_wechat_users 表
+        $this->saveToWechatUsers($openid, $phone, $nickname, $avatar, $userType, $user->id);
         
         // 生成token
         $token = $this->generateToken($user);
@@ -179,9 +241,48 @@ class WechatMiniProgramService
                 'id' => $user->id,
                 'phone' => $phone,
                 'nickname' => $user->nickname,
-                'avatar' => $user->avatar ?? ''
+                'avatar' => $user->avatar ?? '',
+                'openid' => $openid
             ]
         ];
+    }
+    
+    /**
+     * 保存用户信息到 fa_wechat_users 表
+     * @param string $openid
+     * @param string $phone
+     * @param string $nickname
+     * @param string $avatar
+     * @param string|null $userType
+     * @param int|null $userId
+     */
+    private function saveToWechatUsers($openid, $phone, $nickname, $avatar, $userType = null, $userId = null)
+    {
+        try {
+            $existing = Db::name('wechat_users')->where('openid', $openid)->find();
+            
+            $data = [
+                'openid' => $openid,
+                'phone' => $phone,
+                'nickname' => $nickname,
+                'headimgurl' => $avatar,
+                'user_type' => $userType,
+                'user_id' => $userId,
+                'update_time' => date('Y-m-d H:i:s')
+            ];
+            
+            if ($existing) {
+                // 更新
+                Db::name('wechat_users')->where('openid', $openid)->update($data);
+            } else {
+                // 新增
+                $data['create_time'] = date('Y-m-d H:i:s');
+                Db::name('wechat_users')->insert($data);
+            }
+        } catch (\Exception $e) {
+            // 记录错误但不影响主流程
+            trace('保存到wechat_users表失败: ' . $e->getMessage(), 'error');
+        }
     }
     
     /**
@@ -343,7 +444,7 @@ class WechatMiniProgramService
             $postData = [
                 'page' => $page,
                 'scene' => $scene,
-                'check_path' => $options['check_path'] ?? true,
+                'check_path' => $options['check_path'] ?? false, // 默认关闭路径检查，避免因路径配置问题导致生成失败
                 'env_version' => $options['env_version'] ?? 'release', // release正式版, trial体验版, develop开发版
                 'width' => $options['width'] ?? 430,
                 'auto_color' => $options['auto_color'] ?? false,
@@ -362,7 +463,8 @@ class WechatMiniProgramService
             if (is_array($result) && isset($result['errcode'])) {
                 return [
                     'success' => false,
-                    'error' => $result['errmsg'] ?? '生成小程序码失败'
+                    'error' => $result['errmsg'] ?? '生成小程序码失败',
+                    'errcode' => $result['errcode']
                 ];
             }
             
@@ -374,6 +476,144 @@ class WechatMiniProgramService
                 'data' => 'data:image/png;base64,' . $base64Image
             ];
         } catch (\Exception $e) {
+            return [
+                'success' => false,
+                'error' => $e->getMessage()
+            ];
+        }
+    }
+    
+    /**
+     * 生成小程序 URL Scheme（用于分享到微信外）
+     * @param string $path 页面路径
+     * @param string $query 查询参数
+     * @param array $options 可选参数
+     * @return array
+     */
+    public function generateUrlScheme($path, $query = '', $options = [])
+    {
+        try {
+            $accessToken = $this->getAccessToken();
+            $url = "https://api.weixin.qq.com/wxa/generatescheme?access_token=" . $accessToken;
+            
+            $jumpWxa = [
+                'path' => $path
+            ];
+            
+            if (!empty($query)) {
+                $jumpWxa['query'] = $query;
+            }
+            
+            $postData = [
+                'jump_wxa' => $jumpWxa,
+                'is_expire' => $options['is_expire'] ?? false,
+                'expire_type' => $options['expire_type'] ?? 0
+            ];
+            
+            // 如果设置了过期时间
+            if (isset($options['expire_time'])) {
+                $postData['expire_time'] = $options['expire_time'];
+            }
+            
+            // 日志：记录请求参数
+            error_log("=== URL Scheme 生成请求 ===");
+            error_log("URL: " . $url);
+            error_log("请求参数: " . json_encode($postData, JSON_UNESCAPED_UNICODE));
+            
+            $response = $this->httpPost($url, json_encode($postData));
+            
+            // 日志：记录原始响应
+            error_log("原始响应: " . $response);
+            
+            $result = json_decode($response, true);
+            
+            // 日志：记录解析后的响应
+            error_log("解析后响应: " . json_encode($result, JSON_UNESCAPED_UNICODE));
+            
+            if (isset($result['errcode']) && $result['errcode'] != 0) {
+                error_log("URL Scheme 生成失败 - errcode: " . $result['errcode'] . ", errmsg: " . ($result['errmsg'] ?? ''));
+                return [
+                    'success' => false,
+                    'error' => $result['errmsg'] ?? '生成URL Scheme失败',
+                    'errcode' => $result['errcode']
+                ];
+            }
+            
+            error_log("URL Scheme 生成成功: " . ($result['openlink'] ?? ''));
+            error_log("=== URL Scheme 生成完成 ===\n");
+            
+            return [
+                'success' => true,
+                'data' => $result['openlink'] ?? ''
+            ];
+        } catch (\Exception $e) {
+            error_log("URL Scheme 生成异常: " . $e->getMessage());
+            error_log("异常堆栈: " . $e->getTraceAsString());
+            return [
+                'success' => false,
+                'error' => $e->getMessage()
+            ];
+        }
+    }
+    
+    /**
+     * 生成小程序 Short Link（短链接，用于微信内分享）
+     * @param string $path 页面路径
+     * @param string $query 查询参数
+     * @param array $options 可选参数
+     * @return array
+     */
+    public function generateShortLink($path, $query = '', $options = [])
+    {
+        try {
+            $accessToken = $this->getAccessToken();
+            $url = "https://api.weixin.qq.com/wxa/generate_shortlink?access_token=" . $accessToken;
+            
+            // 构建完整的页面链接 - 注意：必须以 pages/ 开头
+            $pageUrl = $path;
+            if (!empty($query)) {
+                $pageUrl .= '?' . $query;
+            }
+            
+            $postData = [
+                'page_url' => $pageUrl,
+                'is_permanent' => $options['is_permanent'] ?? true
+            ];
+            
+            // 日志：记录请求参数
+            error_log("=== Short Link 生成请求 ===");
+            error_log("URL: " . $url);
+            error_log("请求参数: " . json_encode($postData, JSON_UNESCAPED_UNICODE));
+            
+            $response = $this->httpPost($url, json_encode($postData));
+            
+            // 日志：记录原始响应
+            error_log("原始响应: " . $response);
+            
+            $result = json_decode($response, true);
+            
+            // 日志：记录解析后的响应
+            error_log("解析后响应: " . json_encode($result, JSON_UNESCAPED_UNICODE));
+            
+            if (isset($result['errcode']) && $result['errcode'] != 0) {
+                error_log("Short Link 生成失败 - errcode: " . $result['errcode'] . ", errmsg: " . ($result['errmsg'] ?? ''));
+                return [
+                    'success' => false,
+                    'error' => $result['errmsg'] ?? '生成短链接失败',
+                    'errcode' => $result['errcode']
+                ];
+            }
+            
+            error_log("Short Link 生成成功: " . ($result['link'] ?? ''));
+            error_log("=== Short Link 生成完成 ===\n");
+            
+            return [
+                'success' => true,
+                'data' => $result['link'] ?? ''
+            ];
+        } catch (\Exception $e) {
+            error_log("Short Link 生成异常: " . $e->getMessage());
+            error_log("异常堆栈: " . $e->getTraceAsString());
             return [
                 'success' => false,
                 'error' => $e->getMessage()

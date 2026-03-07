@@ -5,7 +5,7 @@ use app\BaseController;
 use think\facade\Db;
 
 /**
- * 小程序用户管理控制器
+ * 用户管理控制器
  */
 class MiniProgramUser extends BaseController
 {
@@ -18,9 +18,10 @@ class MiniProgramUser extends BaseController
             $page = (int)$this->request->param('page', 1);
             $pageSize = (int)$this->request->param('pageSize', 20);
             $keyword = trim($this->request->param('keyword', ''));
+            $platform = trim($this->request->param('platform', '')); // 端口筛选
             
-            // 构建查询
-            $query = Db::name('wechat_users');
+            // 构建查询（使用 name 方法会自动加 fa_ 前缀）
+            $query = Db::name('users');
             
             // 搜索条件
             if (!empty($keyword)) {
@@ -29,6 +30,11 @@ class MiniProgramUser extends BaseController
                       ->whereOr('nickname', 'like', "%{$keyword}%")
                       ->whereOr('openid', 'like', "%{$keyword}%");
                 });
+            }
+            
+            // 端口筛选
+            if (!empty($platform)) {
+                $query->where('platform', $platform);
             }
             
             // 分页查询
@@ -57,7 +63,7 @@ class MiniProgramUser extends BaseController
             ], 200, [], ['json_encode_param' => JSON_UNESCAPED_UNICODE]);
             
         } catch (\Exception $e) {
-            \think\facade\Log::error('获取小程序用户列表失败: ' . $e->getMessage());
+            \think\facade\Log::error('获取用户列表失败: ' . $e->getMessage());
             return json([
                 'code' => 500,
                 'message' => '获取失败，请稍后重试'
@@ -80,7 +86,7 @@ class MiniProgramUser extends BaseController
                 ]);
             }
             
-            $user = Db::name('wechat_users')->where('id', $id)->find();
+            $user = Db::name('users')->where('id', $id)->find();
             
             if (!$user) {
                 return json([
@@ -119,7 +125,7 @@ class MiniProgramUser extends BaseController
                 ]);
             }
             
-            $user = Db::name('wechat_users')->where('id', $id)->find();
+            $user = Db::name('users')->where('id', $id)->find();
             
             if (!$user) {
                 return json([
@@ -129,7 +135,7 @@ class MiniProgramUser extends BaseController
             }
             
             // 允许更新的字段
-            $allowFields = ['nickname', 'phone', 'headimgurl', 'remark', 'user_type'];
+            $allowFields = ['nickname', 'phone', 'avatar'];
             $updateData = [];
             
             foreach ($allowFields as $field) {
@@ -146,7 +152,7 @@ class MiniProgramUser extends BaseController
             }
             
             $updateData['update_time'] = date('Y-m-d H:i:s');
-            Db::name('wechat_users')->where('id', $id)->update($updateData);
+            Db::name('users')->where('id', $id)->update($updateData);
             
             return json([
                 'code' => 200,
@@ -176,7 +182,7 @@ class MiniProgramUser extends BaseController
                 ]);
             }
             
-            $user = Db::name('wechat_users')->where('id', $id)->find();
+            $user = Db::name('users')->where('id', $id)->find();
             
             if (!$user) {
                 return json([
@@ -185,7 +191,7 @@ class MiniProgramUser extends BaseController
                 ]);
             }
             
-            Db::name('wechat_users')->where('id', $id)->delete();
+            Db::name('users')->where('id', $id)->delete();
             
             return json([
                 'code' => 200,
@@ -215,7 +221,7 @@ class MiniProgramUser extends BaseController
                 ]);
             }
             
-            $count = Db::name('wechat_users')->whereIn('id', $ids)->delete();
+            $count = Db::name('users')->whereIn('id', $ids)->delete();
             
             return json([
                 'code' => 200,
@@ -237,7 +243,7 @@ class MiniProgramUser extends BaseController
     {
         try {
             // 检查表是否存在
-            $tableExists = Db::query("SHOW TABLES LIKE 'fa_wechat_users'");
+            $tableExists = Db::query("SHOW TABLES LIKE 'fa_users'");
             if (empty($tableExists)) {
                 return json([
                     'code' => 200,
@@ -247,12 +253,14 @@ class MiniProgramUser extends BaseController
                         'todayUsers' => 0,
                         'weekUsers' => 0,
                         'monthUsers' => 0,
+                        'miniprogramUsers' => 0,
+                        'h5Users' => 0,
                         'dailyTrend' => []
                     ]
                 ]);
             }
             
-            $db = Db::name('wechat_users');
+            $db = Db::name('users');
             
             // 总用户数
             $totalUsers = (int)$db->count();
@@ -260,17 +268,23 @@ class MiniProgramUser extends BaseController
             // 今日新增
             $todayStart = date('Y-m-d 00:00:00');
             $todayEnd = date('Y-m-d 23:59:59');
-            $todayUsers = (int)$db->whereBetween('create_time', [$todayStart, $todayEnd])->count();
+            $todayUsers = (int)Db::name('users')->whereBetween('create_time', [$todayStart, $todayEnd])->count();
             
             // 本周新增
             $weekStart = date('Y-m-d 00:00:00', strtotime('this week'));
             $weekEnd = date('Y-m-d 23:59:59');
-            $weekUsers = (int)$db->whereBetween('create_time', [$weekStart, $weekEnd])->count();
+            $weekUsers = (int)Db::name('users')->whereBetween('create_time', [$weekStart, $weekEnd])->count();
             
             // 本月新增
             $monthStart = date('Y-m-01 00:00:00');
             $monthEnd = date('Y-m-d 23:59:59');
-            $monthUsers = (int)$db->whereBetween('create_time', [$monthStart, $monthEnd])->count();
+            $monthUsers = (int)Db::name('users')->whereBetween('create_time', [$monthStart, $monthEnd])->count();
+            
+            // 小程序用户数
+            $miniprogramUsers = (int)Db::name('users')->where('platform', 'miniprogram')->count();
+            
+            // H5用户数
+            $h5Users = (int)Db::name('users')->where('platform', 'h5')->count();
             
             // 最近7天每日新增趋势
             $dailyTrend = [];
@@ -279,7 +293,7 @@ class MiniProgramUser extends BaseController
                 $dayStart = $date . ' 00:00:00';
                 $dayEnd = $date . ' 23:59:59';
                 
-                $count = (int)Db::name('wechat_users')
+                $count = (int)Db::name('users')
                     ->whereBetween('create_time', [$dayStart, $dayEnd])
                     ->count();
                 
@@ -294,6 +308,8 @@ class MiniProgramUser extends BaseController
                 'todayUsers' => $todayUsers,
                 'weekUsers' => $weekUsers,
                 'monthUsers' => $monthUsers,
+                'miniprogramUsers' => $miniprogramUsers,
+                'h5Users' => $h5Users,
                 'dailyTrend' => $dailyTrend
             ];
             
@@ -304,7 +320,7 @@ class MiniProgramUser extends BaseController
             ]);
             
         } catch (\Exception $e) {
-            \think\facade\Log::error('获取小程序用户统计失败: ' . $e->getMessage());
+            \think\facade\Log::error('获取用户统计失败: ' . $e->getMessage());
             return json([
                 'code' => 200,
                 'message' => '获取成功',
@@ -313,6 +329,8 @@ class MiniProgramUser extends BaseController
                     'todayUsers' => 0,
                     'weekUsers' => 0,
                     'monthUsers' => 0,
+                    'miniprogramUsers' => 0,
+                    'h5Users' => 0,
                     'dailyTrend' => []
                 ]
             ]);

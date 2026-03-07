@@ -21,4 +21,5 @@ class EmailQueue extends Model
     // 邮件类型常量
     const TYPE_LEAD_ASSIGN = 'lead_assign';
     const TYPE_BOOKING = 'booking';
+    const TYPE_ORDER = 'order';
 }

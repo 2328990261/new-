@@ -8,21 +8,19 @@ use think\Model;
  */
 class User extends Model
 {
-    protected $name = 'wechat_users';
+    // 不设置 $table，让 ThinkPHP 使用默认规则
+    // 模型名 User 会自动对应表名 fa_user（加前缀）
+    // 但我们的表名是 fa_users（复数），所以需要设置 $name
+    protected $name = 'users';  // 这样会变成 fa_users
     
     // 设置字段信息
     protected $schema = [
         'id' => 'int',
         'openid' => 'string',
-        'unionid' => 'string',
         'phone' => 'string',
         'nickname' => 'string',
-        'headimgurl' => 'string',
-        'subscribe' => 'int',
-        'subscribe_time' => 'int',
-        'user_type' => 'string',
-        'user_id' => 'int',
-        'remark' => 'string',
+        'avatar' => 'string',
+        'platform' => 'string',
         'create_time' => 'datetime',
         'update_time' => 'datetime'
     ];

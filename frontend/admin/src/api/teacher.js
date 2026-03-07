@@ -121,3 +121,14 @@ export function getTeacherStatistics() {
     method: 'get'
   })
 }
+
+/**
+ * 生成教师海报
+ */
+export function generateTeacherPoster(id) {
+  return request({
+    url: `/teachers/generate-poster`,
+    method: 'post',
+    data: { teacher_id: id }
+  })
+}

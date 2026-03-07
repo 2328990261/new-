@@ -29,19 +29,19 @@ export default defineConfig(({ command }) => {
       },
       proxy: {
         '/admin/api': {
-          target: 'http://localhost:8000',
+          target: 'http://localhost:8080',
           changeOrigin: true,
           timeout: 300000,
           proxyTimeout: 300000
         },
         '/api': {
-          target: 'http://localhost:8000',
+          target: 'http://localhost:8080',
           changeOrigin: true,
           timeout: 300000,
           proxyTimeout: 300000
         },
         '/uploads': {
-          target: 'http://localhost:8000',
+          target: 'http://localhost:8080',
           changeOrigin: true
         }
       }

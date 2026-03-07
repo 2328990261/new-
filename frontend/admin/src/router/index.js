@@ -11,6 +11,7 @@ const OrderManage = () => import('@/views/admin/OrderManage.vue')
 const NotificationConfig = () => import('@/views/admin/NotificationConfig.vue')
 const EmailLogManage = () => import('@/views/admin/EmailLogManage.vue')
 const TeacherManage = () => import('@/views/admin/TeacherManage.vue')
+const TeacherDetail = () => import('@/views/admin/TeacherDetail.vue')
 const PaymentManage = () => import('@/views/admin/PaymentManage.vue')
 const PaymentDataPanel = () => import('@/views/admin/PaymentDataPanel.vue')
 const PaymentStats = () => import('@/views/admin/PaymentStats.vue')
@@ -89,6 +90,12 @@ const routes = [
         name: 'TeacherManage',
         component: TeacherManage,
         meta: { title: '教师管理', keepAlive: true }
+      },
+      {
+        path: 'teachers/:id',
+        name: 'TeacherDetail',
+        component: TeacherDetail,
+        meta: { title: '教师详情', keepAlive: false }
       },
       {
         path: 'payment',

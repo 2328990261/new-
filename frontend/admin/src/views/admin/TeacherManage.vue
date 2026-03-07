@@ -83,11 +83,79 @@
             />
           </el-form-item>
           
+          <!-- 授课城市筛选 -->
+          <el-form-item>
+            <el-select 
+              v-model="searchForm.city_id" 
+              placeholder="授课城市" 
+              clearable 
+              filterable
+              style="width: 140px"
+              @change="handleCityChange"
+            >
+              <el-option 
+                v-for="city in cityList" 
+                :key="city.id" 
+                :label="city.name" 
+                :value="city.id"
+              />
+            </el-select>
+          </el-form-item>
+          
+          <!-- 授课区域筛选（多选） -->
+          <el-form-item>
+            <el-select 
+              v-model="searchForm.district_ids" 
+              placeholder="授课区域" 
+              clearable 
+              multiple
+              collapse-tags
+              collapse-tags-tooltip
+              style="width: 160px"
+              :disabled="!searchForm.city_id"
+            >
+              <el-option 
+                v-for="district in districtList" 
+                :key="district.id" 
+                :label="district.name" 
+                :value="district.id"
+              />
+            </el-select>
+          </el-form-item>
+          
+          <!-- 授课科目筛选（多选） -->
+          <el-form-item>
+            <el-select 
+              v-model="searchForm.subject_ids" 
+              placeholder="授课科目" 
+              clearable 
+              multiple
+              collapse-tags
+              collapse-tags-tooltip
+              filterable
+              style="width: 160px"
+            >
+              <el-option 
+                v-for="subject in subjectList" 
+                :key="subject.id" 
+                :label="subject.name" 
+                :value="subject.id"
+              />
+            </el-select>
+          </el-form-item>
+          
           <el-form-item>
             <el-button type="primary" @click="handleSearch" icon="Search">搜索</el-button>
             <el-button @click="handleReset" icon="RefreshLeft">重置</el-button>
           </el-form-item>
         </el-form>
+        
+        <!-- 快捷操作按钮 -->
+        <div class="quick-actions" v-if="selectedRows.length === 1">
+          <el-button @click="handleCopyResume" icon="DocumentCopy" size="small">复制简历</el-button>
+          <el-button @click="handleShowResumePoster" icon="Picture" type="warning" size="small">简历海报</el-button>
+          <el-button @click="handleShowMiniPoster" icon="Picture" type="success" size="small">小程序海报</el-button>
+        </div>
       </div>
 
       <!-- 标签页和操作按钮 -->
@@ -1056,9 +1124,12 @@ export default {
 <script setup>
 import { ref, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { List, CircleCheck, Clock, CircleClose, Lock, Delete, DocumentDelete, Search, Setting, Location, Plus, Close } from '@element-plus/icons-vue'
+import { useRouter } from 'vue-router'
+import { List, CircleCheck, Clock, CircleClose, Lock, Delete, DocumentDelete, Search, Setting, Location, Plus, Close, DocumentCopy, Picture } from '@element-plus/icons-vue'
 import TeacherCard from '@/components/teacher/TeacherCard.vue'
 import { getTeacherList, updateTeacherStatus, setTeacherTop, deleteTeacher, batchDeleteTeachers, batchUpdateTeacherStatus, updateTeacher, getTeacherStatistics, reviewTeacher, getTeacherDetail } from '@/api/teacher'
+
+const router = useRouter()
 
 const loading = ref(false)
 const saveLoading = ref(false)
@@ -1068,8 +1139,16 @@ const searchForm = ref({
   review_status: '',
   teacher_type: '',
   school: '',
-  is_top: ''
+  is_top: '',
+  city_id: '',
+  district_ids: [],
+  subject_ids: []
 })
+
+// 城市、区域、科目数据
+const cityList = ref([])
+const districtList = ref([])
+const subjectList = ref([])
 
 const teacherList = ref([])
 const currentPage = ref(1)
@@ -1161,6 +1240,14 @@ const loadData = async () => {
       ...searchForm.value
     }
     
+    // 将数组转换为逗号分隔的字符串
+    if (params.district_ids && Array.isArray(params.district_ids)) {
+      params.district_ids = params.district_ids.join(',')
+    }
+    if (params.subject_ids && Array.isArray(params.subject_ids)) {
+      params.subject_ids = params.subject_ids.join(',')
+    }
+    
     // 根据标签页设置状态或审核状态
     if (activeTab.value === 'pending') {
       params.review_status = 'pending'
@@ -1232,9 +1319,75 @@ const handleReset = () => {
     review_status: '',
     teacher_type: '',
     school: '',
-    is_top: ''
+    is_top: '',
+    city_id: '',
+    district_ids: [],
+    subject_ids: []
   }
+  districtList.value = []
   handleSearch()
+}
+
+// 城市改变时，清空区域选择并加载新的区域列表
+const handleCityChange = async (cityId) => {
+  searchForm.value.district_ids = []
+  districtList.value = []
+  
+  if (cityId) {
+    await loadDistricts(cityId)
+  }
+}
+
+// 加载城市列表
+const loadCities = async () => {
+  try {
+    const response = await fetch('/api/cities/all')
+    const res = await response.json()
+    if (res.success) {
+      cityList.value = res.data || []
+    }
+  } catch (error) {
+    console.error('加载城市列表失败:', error)
+  }
+}
+
+// 加载区域列表
+const loadDistricts = async (cityId) => {
+  try {
+    const response = await fetch(`/api/cities/${cityId}/districts`)
+    const res = await response.json()
+    if (res.success) {
+      districtList.value = res.data || []
+    }
+  } catch (error) {
+    console.error('加载区域列表失败:', error)
+  }
+}
+
+// 加载科目列表
+const loadSubjects = async () => {
+  try {
+    const response = await fetch('/api/subjects/all')
+    const res = await response.json()
+    if (res.success) {
+      // 将二级结构展平为一级列表
+      const flatSubjects = []
+      res.data.forEach(category => {
+        if (category.children && category.children.length > 0) {
+          category.children.forEach(subject => {
+            flatSubjects.push({
+              id: subject.id,
+              name: subject.name,
+              category: category.name
+            })
+          })
+        }
+      })
+      subjectList.value = flatSubjects
+    }
+  } catch (error) {
+    console.error('加载科目列表失败:', error)
+  }
 }
 
 // 卡片选择
@@ -1259,23 +1412,12 @@ const clearSelection = () => {
 
 // 查看详情
 const handleView = async (row) => {
-  try {
-    loading.value = true
-    showContactInfo.value = false // 重置联系方式显示状态
-    const res = await getTeacherDetail(row.id)
-    
-    if (res.success) {
-      currentTeacher.value = res.data
-      detailVisible.value = true
-    } else {
-      ElMessage.error(res.error || '获取详情失败')
-    }
-  } catch (error) {
-    console.error('获取详情失败:', error)
-    ElMessage.error('获取详情失败')
-  } finally {
-    loading.value = false
-  }
+  // 使用路由跳转到详情页,标题会在详情页动态设置
+  router.push({
+    name: 'TeacherDetail',
+    params: { id: row.id },
+    query: { name: row.name } // 传递姓名用于标题
+  })
 }
 
 // 从详情页打开编辑
@@ -1805,8 +1947,129 @@ const getEducationLevelLabel = (educationLevel) => {
   return eduMap[educationLevel] || educationLevel
 }
 
+// ========== 快捷操作功能 ==========
+
+// 复制简历
+const handleCopyResume = async () => {
+  if (selectedRows.value.length !== 1) {
+    ElMessage.warning('请选择一个教师')
+    return
+  }
+  
+  try {
+    const teacher = selectedRows.value[0]
+    const res = await getTeacherDetail(teacher.id)
+    
+    if (!res.success) {
+      ElMessage.error('获取教师详情失败')
+      return
+    }
+    
+    const t = res.data
+    
+    // 构建简历文本
+    let resume = `【教师简历】\n\n`
+    
+    // 基本信息
+    resume += `=== 基本信息 ===\n`
+    resume += `姓名：${t.name || ''}\n`
+    resume += `性别：${t.gender || ''}\n`
+    if (t.teacher_type) {
+      resume += `教师类型：${getTeacherTypeLabel(t.teacher_type, t.grade_level, t.education_level)}\n`
+    }
+    resume += `籍贯：${t.hometown || ''}\n`
+    if (t.birth_year) resume += `出生年月：${t.birth_year}\n`
+    if (t.teaching_years) resume += `教龄：${t.teaching_years}年\n`
+    
+    // 教育信息
+    resume += `\n=== 教育信息 ===\n`
+    if (t.school) resume += `学校：${t.school}\n`
+    if (t.major) resume += `专业：${t.major}\n`
+    if (t.grade_level) {
+      resume += `年级/学历：${getGradeLevelLabel(t.grade_level)}\n`
+    } else if (t.education_level) {
+      resume += `年级/学历：${getEducationLevelLabel(t.education_level)}\n`
+    }
+    
+    // 教学信息
+    if (t.hourly_rate) resume += `\n时薪：${t.hourly_rate}元/小时\n`
+    if (t.subject_names && t.subject_names.length > 0) {
+      resume += `科目：${t.subject_names.join('、')}\n`
+    }
+    if (t.district_names && t.district_names.length > 0) {
+      resume += `区域：${t.district_names.join('、')}\n`
+    }
+    
+    // 个人介绍
+    if (t.self_intro) {
+      resume += `\n=== 自我介绍 ===\n${t.self_intro}\n`
+    }
+    if (t.personal_advantage) {
+      resume += `\n=== 个人优势 ===\n${t.personal_advantage}\n`
+    }
+    if (t.advantage_tags && t.advantage_tags.length > 0) {
+      resume += `\n优势标签：${t.advantage_tags.join('、')}\n`
+    }
+    
+    // 教学经历
+    if (t.experience && t.experience.length > 0) {
+      resume += `\n=== 教学经历 ===\n`
+      t.experience.forEach((exp, index) => {
+        resume += `${index + 1}. ${exp.subject || ''}`
+        if (exp.start_date && exp.end_date) {
+          resume += ` (${exp.start_date} - ${exp.end_date})`
+        }
+        resume += `\n`
+        if (exp.location) resume += `   地点：${exp.location}\n`
+        if (exp.description) resume += `   ${exp.description}\n`
+      })
+    }
+    
+    // 复制到剪贴板
+    await navigator.clipboard.writeText(resume)
+    ElMessage.success('简历已复制到剪贴板')
+  } catch (error) {
+    console.error('复制简历失败:', error)
+    ElMessage.error('复制失败')
+  }
+}
+
+// 显示简历海报
+const handleShowResumePoster = () => {
+  if (selectedRows.value.length !== 1) {
+    ElMessage.warning('请选择一个教师')
+    return
+  }
+  
+  const teacher = selectedRows.value[0]
+  // 跳转到详情页并触发简历海报功能
+  router.push({
+    name: 'TeacherDetail',
+    params: { id: teacher.id },
+    query: { action: 'resume-poster' }
+  })
+}
+
+// 显示小程序海报
+const handleShowMiniPoster = () => {
+  if (selectedRows.value.length !== 1) {
+    ElMessage.warning('请选择一个教师')
+    return
+  }
+  
+  const teacher = selectedRows.value[0]
+  // 跳转到详情页并触发小程序海报功能
+  router.push({
+    name: 'TeacherDetail',
+    params: { id: teacher.id },
+    query: { action: 'mini-poster' }
+  })
+}
+
 onMounted(() => {
   restoreColumnSettings()
+  loadCities()
+  loadSubjects()
   loadData()
   loadStatistics()
 })
@@ -1879,6 +2142,23 @@ onMounted(() => {
   background: #f9fafc;
   border-radius: 8px;
   margin-bottom: 16px;
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.search-form {
+  flex: 1;
+  min-width: 0;
+}
+
+.quick-actions {
+  display: flex;
+  gap: 8px;
+  flex-shrink: 0;
+  align-items: center;
 }
 
 .search-form {

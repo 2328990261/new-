@@ -19,6 +19,10 @@ class Teacher extends BaseController
         $subjects = $this->request->param('subjects', ''); // 支持多科目，逗号分隔
         $subjectId = (int)$this->request->param('subject_id', 0);
         $cityId = (int)$this->request->param('city_id', 0);
+        
+        // 获取用户位置（用于计算距离）
+        $userLatitude = (float)$this->request->param('latitude', 0);
+        $userLongitude = (float)$this->request->param('longitude', 0);
 
         try {
             // 先检查表是否存在
@@ -29,7 +33,7 @@ class Teacher extends BaseController
             
             $query = Db::name('teachers')->alias('t'); // 实际表名为 fa_teachers，框架会自动加前缀
 
-            // 关键词搜索：支持姓名、学校、专业、科目、自我介绍、教学经历
+            // 关键词搜索：支持姓名、学校、专业、科目、自我介绍、个人优势、教学经历、籍贯
             if ($keyword !== '') {
                 $query->where(function($q) use ($keyword) {
                     $q->whereLike('t.name', "%{$keyword}%")
@@ -37,7 +41,10 @@ class Teacher extends BaseController
                       ->whereOr('t.major', 'like', "%{$keyword}%")
                       ->whereOr('t.subject_names', 'like', "%{$keyword}%")
                       ->whereOr('t.self_intro', 'like', "%{$keyword}%")
-                      ->whereOr('t.experience', 'like', "%{$keyword}%");
+                      ->whereOr('t.personal_advantage', 'like', "%{$keyword}%")
+                      ->whereOr('t.experience', 'like', "%{$keyword}%")
+                      ->whereOr('t.hometown', 'like', "%{$keyword}%")
+                      ->whereOr('t.advantage_tags', 'like', "%{$keyword}%");
                 });
             }
             
@@ -95,7 +102,7 @@ class Teacher extends BaseController
                 ->order('t.is_top', 'desc')
                 ->order('t.create_time', 'desc')
                 ->page($page, $limit)
-                ->field('id,name,gender,education,school,major,teacher_type,grade_level,education_level,hourly_rate,subject_names,district_names,photos,self_intro,experience,advantage_tags,is_top,status,real_name_verified,education_verified,teacher_verified')
+                ->field('id,name,gender,birth_date,education,school,major,teacher_type,grade_level,education_level,hourly_rate,subject_names,district_names,photos,self_intro,personal_advantage,experience,advantage_tags,is_top,status,real_name_verified,education_verified,teacher_verified,location_longitude,location_latitude,location_address')
                 ->select()
                 ->toArray();
 
@@ -153,6 +160,22 @@ class Teacher extends BaseController
                 
                 // 添加认证状态
                 $item['is_verified'] = $item['real_name_verified'] || $item['education_verified'] || $item['teacher_verified'];
+                
+                // 计算距离（如果用户提供了位置且教师有位置信息）
+                if ($userLatitude && $userLongitude && 
+                    !empty($item['location_latitude']) && !empty($item['location_longitude'])) {
+                    $distance = calculate_distance(
+                        $userLatitude, 
+                        $userLongitude, 
+                        $item['location_latitude'], 
+                        $item['location_longitude']
+                    );
+                    $item['distance'] = $distance;
+                    $item['distance_text'] = format_distance($distance);
+                } else {
+                    $item['distance'] = null;
+                    $item['distance_text'] = '';
+                }
             }
 
             return json(['success' => true, 'data' => [
@@ -172,6 +195,10 @@ class Teacher extends BaseController
      */
     public function detail($id)
     {
+        // 获取用户位置（用于计算距离）
+        $userLatitude = (float)$this->request->param('latitude', 0);
+        $userLongitude = (float)$this->request->param('longitude', 0);
+        
         try {
             $teacher = Db::name('teachers')->where('id', (int)$id)->find();
             if (!$teacher) {
@@ -233,6 +260,22 @@ class Teacher extends BaseController
             $teacher['is_verified'] = $teacher['real_name_verified'] || 
                                      $teacher['education_verified'] || 
                                      $teacher['teacher_verified'];
+            
+            // 计算距离（如果用户提供了位置且教师有位置信息）
+            if ($userLatitude && $userLongitude && 
+                !empty($teacher['location_latitude']) && !empty($teacher['location_longitude'])) {
+                $distance = calculate_distance(
+                    $userLatitude, 
+                    $userLongitude, 
+                    $teacher['location_latitude'], 
+                    $teacher['location_longitude']
+                );
+                $teacher['distance'] = $distance;
+                $teacher['distance_text'] = format_distance($distance);
+            } else {
+                $teacher['distance'] = null;
+                $teacher['distance_text'] = '';
+            }
             
             return json(['success' => true, 'data' => $teacher]);
         } catch (\Exception $e) {
