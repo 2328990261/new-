@@ -1,0 +1,257 @@
+{
+	"pages": [
+		{
+			"path": "pages/tutor-list/index",
+			"style": {
+				"navigationBarTitleText": "生源信息",
+				"navigationStyle": "custom",
+<<<<<<< HEAD
+				"enablePullDownRefresh": true,
+				"backgroundColor": "#F5F7FA",
+				"backgroundColorTop": "#FFFFFF",
+				"backgroundColorBottom": "#F5F7FA"
+=======
+				"enablePullDownRefresh": true
+>>>>>>> 2ca99ce764ce15fd60539a088e0876caeb4c698e
+			}
+		},
+		{
+			"path": "pages/ai-booking/index",
+			"style": {
+				"navigationBarTitleText": "小萌AI",
+				"navigationStyle": "custom",
+				"enablePullDownRefresh": false,
+				"backgroundColor": "#F5F7FA",
+				"backgroundColorTop": "#FFFFFF",
+				"backgroundColorBottom": "#F5F7FA"
+			}
+		},
+		{
+<<<<<<< HEAD
+			"path": "pages/step-booking/index",
+			"style": {
+				"navigationBarTitleText": "预约家教",
+				"navigationStyle": "custom",
+				"backgroundColor": "#F5F7FA",
+				"backgroundColorTop": "#FFFFFF",
+				"backgroundColorBottom": "#F5F7FA"
+			}
+		},
+		{
+			"path": "pages/booking-form/index",
+			"style": {
+				"navigationBarTitleText": "预约家教",
+				"navigationStyle": "custom",
+				"backgroundColor": "#F5F7FA",
+				"backgroundColorTop": "#FFFFFF",
+				"backgroundColorBottom": "#F5F7FA"
+=======
+			"path": "pages/booking-form/index",
+			"style": {
+				"navigationBarTitleText": "预约家教",
+				"navigationStyle": "custom"
+>>>>>>> 2ca99ce764ce15fd60539a088e0876caeb4c698e
+			}
+		},
+		{
+			"path": "pages/resume/index",
+			"style": {
+				"navigationBarTitleText": "我的简历",
+				"navigationBarBackgroundColor": "#ffffff",
+				"navigationBarTextStyle": "black"
+			}
+		},
+		{
+			"path": "pages/teacher-library/index",
+			"style": {
+				"navigationStyle": "custom",
+<<<<<<< HEAD
+				"enablePullDownRefresh": true,
+				"backgroundColor": "#F5F7FA",
+				"backgroundColorTop": "#FFFFFF",
+				"backgroundColorBottom": "#F5F7FA"
+=======
+				"enablePullDownRefresh": true
+>>>>>>> 2ca99ce764ce15fd60539a088e0876caeb4c698e
+			}
+		},
+
+		{
+			"path": "pages/demand-detail/index",
+			"style": {
+				"navigationBarTitleText": "需求详情",
+				"navigationBarBackgroundColor": "#ffffff",
+				"navigationBarTextStyle": "black"
+			}
+		},
+		{
+			"path": "pages/booking-detail/index",
+			"style": {
+				"navigationBarTitleText": "预约详情",
+				"navigationBarBackgroundColor": "#ffffff",
+				"navigationBarTextStyle": "black"
+			}
+		},
+		{
+			"path": "pages/my-demands/index",
+			"style": {
+				"navigationBarTitleText": "预约管理",
+				"navigationStyle": "custom",
+<<<<<<< HEAD
+				"enablePullDownRefresh": true,
+				"backgroundColor": "#F5F7FA",
+				"backgroundColorTop": "#FFFFFF",
+				"backgroundColorBottom": "#F5F7FA"
+=======
+				"enablePullDownRefresh": true
+>>>>>>> 2ca99ce764ce15fd60539a088e0876caeb4c698e
+			}
+		},
+		{
+			"path": "pages/teachers/index",
+			"style": {
+				"navigationBarTitleText": "教师列表",
+				"navigationBarBackgroundColor": "#ffffff",
+				"navigationBarTextStyle": "black",
+				"enablePullDownRefresh": true
+			}
+		},
+		{
+			"path": "pages/teacher-detail/index",
+			"style": {
+				"navigationStyle": "custom"
+			}
+		},
+		{
+			"path": "pages/teacher-booking/index",
+			"style": {
+				"navigationStyle": "custom"
+			}
+		},
+		{
+			"path": "pages/login/index",
+			"style": {
+				"navigationBarTitleText": "登录",
+				"navigationStyle": "custom"
+			}
+		},
+		{
+			"path": "pages/role-select/index",
+			"style": {
+				"navigationBarTitleText": "选择身份",
+				"navigationStyle": "custom"
+			}
+		},
+		{
+			"path": "pages/privacy-policy/index",
+			"style": {
+				"navigationBarTitleText": "隐私政策",
+				"navigationBarBackgroundColor": "#ffffff",
+				"navigationBarTextStyle": "black"
+			}
+		},
+		{
+			"path": "pages/agreement/index",
+			"style": {
+				"navigationBarTitleText": "用户服务协议",
+				"navigationBarBackgroundColor": "#ffffff",
+				"navigationBarTextStyle": "black"
+			}
+		},
+		{
+			"path": "pages/teacher-register/index",
+			"style": {
+				"navigationBarTitleText": "成为老师",
+				"navigationBarBackgroundColor": "#ffffff",
+				"navigationBarTextStyle": "black",
+				"enablePullDownRefresh": false
+			}
+		},
+		{
+			"path": "pages/teacher-resume-preview/index",
+			"style": {
+				"navigationBarTitleText": "简历预览",
+				"navigationBarBackgroundColor": "#7FDFB8",
+				"navigationBarTextStyle": "white",
+				"enablePullDownRefresh": false,
+				"backgroundColorTop": "#7FDFB8",
+				"backgroundColorBottom": "#F5F9FF"
+			}
+		},
+		{
+			"path": "pages/tutor-detail/index",
+			"style": {
+				"navigationBarTitleText": "家教详情",
+				"navigationBarBackgroundColor": "#52C9A6",
+				"navigationBarTextStyle": "white",
+				"backgroundColor": "#F5F7FA",
+				"enablePullDownRefresh": false
+			}
+		},
+		{
+			"path": "pages/my-applications/index",
+			"style": {
+				"navigationBarTitleText": "我的投递",
+				"navigationStyle": "custom",
+<<<<<<< HEAD
+				"enablePullDownRefresh": true,
+				"backgroundColor": "#F5F7FA",
+				"backgroundColorTop": "#FFFFFF",
+				"backgroundColorBottom": "#F5F7FA"
+=======
+				"enablePullDownRefresh": true
+>>>>>>> 2ca99ce764ce15fd60539a088e0876caeb4c698e
+			}
+		},
+		{
+			"path": "pages/my-favorites/index",
+			"style": {
+				"navigationStyle": "custom",
+<<<<<<< HEAD
+				"enablePullDownRefresh": true,
+				"backgroundColor": "#F5F7FA",
+				"backgroundColorTop": "#FFFFFF",
+				"backgroundColorBottom": "#F5F7FA"
+=======
+				"enablePullDownRefresh": true
+>>>>>>> 2ca99ce764ce15fd60539a088e0876caeb4c698e
+			}
+		},
+		{
+			"path": "pages/application-detail/index",
+			"style": {
+				"navigationBarTitleText": "投递详情",
+				"navigationBarBackgroundColor": "#ffffff",
+				"navigationBarTextStyle": "black",
+				"enablePullDownRefresh": false
+			}
+		},
+		{
+			"path": "pages/profile/index",
+			"style": {
+				"navigationStyle": "custom",
+<<<<<<< HEAD
+				"backgroundColor": "#7FDFB8",
+				"backgroundColorTop": "#7FDFB8",
+				"backgroundColorBottom": "#F5F7FA"
+=======
+				"backgroundColor": "#7FDFB8"
+>>>>>>> 2ca99ce764ce15fd60539a088e0876caeb4c698e
+			}
+		},
+		{
+			"path": "pages/teaching-info/index",
+			"style": {
+				"navigationStyle": "custom",
+				"backgroundColor": "#f5f7fa"
+			}
+		}
+	],
+	"globalStyle": {
+		"navigationBarTextStyle": "black",
+		"navigationBarTitleText": "优博家教",
+		"navigationBarBackgroundColor": "#ffffff",
+		"backgroundColor": "#F8F8F8"
+	},
+	"uniIdRouter": {}
+}

@@ -211,10 +211,18 @@
 
 					<view class="form-item">
 						<text class="label">期望课时费</text>
-						<view class="fee-input-wrapper">
-							<input class="input fee-input" v-model="formData.expectedFee" type="digit" 
-								placeholder="请输入期望课时费" />
-							<text class="fee-unit">元/小时</text>
+						<view class="fee-range-wrapper">
+							<view class="fee-input-group">
+								<input class="input fee-input-small" v-model="formData.expectedFeeMin" type="digit" 
+									placeholder="最低" />
+								<text class="fee-unit-small">元/小时</text>
+							</view>
+							<text class="fee-separator">-</text>
+							<view class="fee-input-group">
+								<input class="input fee-input-small" v-model="formData.expectedFeeMax" type="digit" 
+									placeholder="最高" />
+								<text class="fee-unit-small">元/小时</text>
+							</view>
 						</view>
 					</view>
 				</view>
@@ -282,7 +290,8 @@ export default {
 				address: '',
 				latitude: '',
 				longitude: '',
-				expectedFee: '',
+				expectedFeeMin: '',
+				expectedFeeMax: '',
 				contactName: '',
 				contactPhone: '',
 				wechat: ''
@@ -318,6 +327,7 @@ export default {
 		
 		this.loadSubjects()
 		this.loadSavedData()
+		this.loadUserInfo()
 	},
 	watch: {
 		formData: {
@@ -329,6 +339,20 @@ export default {
 		}
 	},
 	methods: {
+		loadUserInfo() {
+			// 自动获取用户信息
+			const userInfo = auth.getUserInfo()
+			if (userInfo) {
+				// 自动填充手机号
+				if (userInfo.phone && !this.formData.contactPhone) {
+					this.$set(this.formData, 'contactPhone', userInfo.phone)
+				}
+				// 自动填充昵称作为联系人
+				if (userInfo.name && !this.formData.contactName) {
+					this.$set(this.formData, 'contactName', userInfo.name)
+				}
+			}
+		},
 		loadSavedData() {
 			try {
 				const savedData = uni.getStorageSync('booking_form_data')
@@ -615,6 +639,17 @@ export default {
 
 			try {
 				// 格式化数据为后端期望的格式
+				const budgetMin = this.formData.expectedFeeMin ? parseInt(this.formData.expectedFeeMin) : 0
+				const budgetMax = this.formData.expectedFeeMax ? parseInt(this.formData.expectedFeeMax) : 0
+				let budgetText = ''
+				if (budgetMin && budgetMax) {
+					budgetText = `${budgetMin}-${budgetMax}元/小时`
+				} else if (budgetMin) {
+					budgetText = `${budgetMin}元/小时起`
+				} else if (budgetMax) {
+					budgetText = `${budgetMax}元/小时内`
+				}
+				
 				const bookingData = {
 					grade: this.formData.grade,
 					gender: this.formData.gender,
@@ -628,9 +663,11 @@ export default {
 					teaching_method: this.formData.teachingMethod,
 					address: this.formData.address,
 					contact: this.formData.contactName,
-					budget: this.formData.expectedFee ? `${this.formData.expectedFee}元/小时` : '',
-					budget_min: this.formData.expectedFee ? parseInt(this.formData.expectedFee) : 0,
-					budget_max: this.formData.expectedFee ? parseInt(this.formData.expectedFee) : 0,
+					phone: this.formData.contactPhone,
+					wechat: this.formData.wechat,
+					budget: budgetText,
+					budget_min: budgetMin,
+					budget_max: budgetMax,
 					teacher_id: this.teacherId || null // 添加教师ID
 				}
 
@@ -678,6 +715,24 @@ export default {
 					icon: 'none'
 				})
 			}
+		}
+	},
+	
+	// 分享给好友/群聊
+	onShareAppMessage() {
+		return {
+			title: '快速预约家教，找到适合孩子的好老师！',
+			path: '/pages/booking-form/index',
+			imageUrl: '/static/share-booking.png'
+		}
+	},
+	
+	// 分享到朋友圈
+	onShareTimeline() {
+		return {
+			title: '快速预约家教，找到适合孩子的好老师！',
+			query: '',
+			imageUrl: '/static/share-booking.png'
 		}
 	}
 }
@@ -981,22 +1036,36 @@ export default {
 	font-weight: 500;
 }
 
-.fee-input-wrapper {
+.fee-range-wrapper {
+	display: flex;
+	align-items: center;
+	gap: 16rpx;
+}
+
+.fee-input-group {
+	flex: 1;
 	position: relative;
 	display: flex;
 	align-items: center;
 }
 
-.fee-input {
+.fee-input-small {
 	flex: 1;
-	padding-right: 120rpx;
+	padding-right: 100rpx;
 }
 
-.fee-unit {
+.fee-unit-small {
 	position: absolute;
 	right: 24rpx;
+	font-size: 24rpx;
+	color: #999;
+	white-space: nowrap;
+}
+
+.fee-separator {
 	font-size: 28rpx;
 	color: #999;
+	flex-shrink: 0;
 }
 
 .address-display {

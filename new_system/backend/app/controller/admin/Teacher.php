@@ -508,7 +508,7 @@ class Teacher extends BaseController
             // 允许更新的字段
             $allowedFields = [
                 'name', 'gender', 'phone', 'wechat_id', 'wechat_nickname', 'openid', 'email',
-                'hometown', 'teaching_years', 'birth_date',
+                'hometown', 'teaching_years', 'birth_year',
                 'location_province', 'location_city', 'location_district', 'location_address',
                 'education', 'school', 'major', 'teacher_type', 'grade_level', 'education_level',
                 'hourly_rate', 'subject_ids', 'subject_names', 'district_ids', 'district_names',

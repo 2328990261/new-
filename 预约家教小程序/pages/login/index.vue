@@ -1,4 +1,4 @@
-<template>
+﻿<template>
 	<view class="login-container">
 		<!-- 顶部导航 -->
 		<view class="nav-bar" :style="{ paddingTop: statusBarHeight + 'px' }">
@@ -95,6 +95,7 @@
 </template>
 
 <script>
+import { requestLocationAuth, showLocationAuthDialog } from '@/utils/location-auth.js'
 import { wechatLogin } from '@/utils/api.js'
 import auth from '@/utils/auth.js'
 
@@ -701,8 +702,11 @@ export default {
 				title: '登录成功',
 				icon: 'success'
 			})
-			
-			// 延迟跳转到角色选择页面
+		
+		// 请求位置授权
+		this.requestLocationPermission()
+		
+		// 延迟跳转到角色选择页面
 			setTimeout(() => {
 				// 检查是否已经选择过角色
 				const userRole = uni.getStorageSync('userRole')
@@ -732,6 +736,29 @@ export default {
 					})
 				}
 			}, 500)
+		},
+		
+		// 请求位置授权
+		async requestLocationPermission() {
+			try {
+				// 显示授权说明弹窗
+				await showLocationAuthDialog()
+				
+				// 请求位置授权并保存
+				await requestLocationAuth({
+					saveToUser: true,
+					onSuccess: (locationData) => {
+						console.log('位置授权成功:', locationData)
+					},
+					onFail: (err) => {
+						console.log('位置授权失败:', err)
+						// 失败不影响登录流程
+					}
+				})
+			} catch (err) {
+				console.log('用户拒绝位置授权或授权失败:', err)
+				// 不影响登录流程
+			}
 		}
 	}
 }

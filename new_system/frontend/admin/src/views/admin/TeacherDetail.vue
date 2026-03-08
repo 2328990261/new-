@@ -30,7 +30,7 @@
           <el-divider content-position="left">基本信息</el-divider>
           <el-descriptions :column="2" border>
             <el-descriptions-item label="头像" :span="2">
-              <el-avatar :src="teacher.avatar" :size="80">
+              <el-avatar :src="getImageUrl(teacher.avatar)" :size="80">
                 {{ teacher.name?.charAt(0) || '?' }}
               </el-avatar>
             </el-descriptions-item>
@@ -160,8 +160,8 @@
             <el-image
               v-for="(photo, index) in teacher.teaching_photos"
               :key="index"
-              :src="photo"
-              :preview-src-list="teacher.teaching_photos"
+              :src="getImageUrl(photo)"
+              :preview-src-list="teacher.teaching_photos.map(p => getImageUrl(p))"
               fit="cover"
               style="width: 120px; height: 120px; border-radius: 8px; cursor: pointer; border: 2px solid #e4e7ed;"
             />
@@ -184,11 +184,11 @@
             <div v-if="teacher.id_card_front || teacher.id_card_back" style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px;">
               <div v-if="teacher.id_card_front">
                 <div style="margin-bottom: 6px;">身份证正面</div>
-                <el-image :src="teacher.id_card_front" :preview-src-list="[teacher.id_card_front]" fit="cover" style="width: 100%; height: 160px;" />
+                <el-image :src="getImageUrl(teacher.id_card_front)" :preview-src-list="[getImageUrl(teacher.id_card_front)]" fit="cover" style="width: 100%; height: 160px;" />
               </div>
               <div v-if="teacher.id_card_back">
                 <div style="margin-bottom: 6px;">身份证反面</div>
-                <el-image :src="teacher.id_card_back" :preview-src-list="[teacher.id_card_back]" fit="cover" style="width: 100%; height: 160px;" />
+                <el-image :src="getImageUrl(teacher.id_card_back)" :preview-src-list="[getImageUrl(teacher.id_card_back)]" fit="cover" style="width: 100%; height: 160px;" />
               </div>
             </div>
             <div v-else style="color: #909399;">暂无身份证明材料</div>
@@ -203,7 +203,7 @@
               </el-tag>
             </div>
             <div v-if="teacher.education_certificate">
-              <el-image :src="teacher.education_certificate" :preview-src-list="[teacher.education_certificate]" fit="cover" style="width: 100%; max-width: 400px; height: 160px;" />
+              <el-image :src="getImageUrl(teacher.education_certificate)" :preview-src-list="[getImageUrl(teacher.education_certificate)]" fit="cover" style="width: 100%; max-width: 400px; height: 160px;" />
             </div>
             <div v-else style="color: #909399;">暂无学历证明材料</div>
           </div>
@@ -217,7 +217,7 @@
               </el-tag>
             </div>
             <div v-if="teacher.teacher_certificate">
-              <el-image :src="teacher.teacher_certificate" :preview-src-list="[teacher.teacher_certificate]" fit="cover" style="width: 100%; max-width: 400px; height: 160px;" />
+              <el-image :src="getImageUrl(teacher.teacher_certificate)" :preview-src-list="[getImageUrl(teacher.teacher_certificate)]" fit="cover" style="width: 100%; max-width: 400px; height: 160px;" />
             </div>
             <div v-else style="color: #909399;">暂无教师资格证材料</div>
           </div>
@@ -665,6 +665,20 @@ const posterData = ref(null)
 const resumePosterDialogVisible = ref(false)
 const resumePosterLoading = ref(false)
 const resumePosterUrl = ref(null)
+
+// 获取完整的图片 URL
+const getImageUrl = (path) => {
+  if (!path) return ''
+  // 如果已经是完整 URL，直接返回
+  if (path.startsWith('http://') || path.startsWith('https://')) {
+    return path
+  }
+  // 拼接后端服务器地址
+  const backendUrl = import.meta.env.VITE_BACKEND_URL || 'http://localhost:8080'
+  // 确保路径以 / 开头
+  const imagePath = path.startsWith('/') ? path : `/${path}`
+  return `${backendUrl}${imagePath}`
+}
 
 const fetchTeacherDetail = async () => {
   try {
@@ -1173,88 +1187,98 @@ const generateResumePoster = async () => {
     ctx.stroke()
     y += 50
     
-    // === 头像和基本信息 ===
-    if (teacher.value.avatar) {
-      const avatar = new Image()
-      avatar.crossOrigin = 'anonymous'
-      avatar.onload = () => {
-        // 绘制圆形头像带阴影
-        ctx.save()
-        ctx.shadowColor = 'rgba(0, 0, 0, 0.15)'
-        ctx.shadowBlur = 15
-        ctx.shadowOffsetY = 5
-        ctx.beginPath()
-        ctx.arc(width / 2, y + 60, 60, 0, Math.PI * 2)
-        ctx.closePath()
-        ctx.clip()
-        ctx.drawImage(avatar, width / 2 - 60, y, 120, 120)
-        ctx.restore()
-        
-        // 头像外圈 - 淡绿色
-        ctx.strokeStyle = '#52C9A6'
-        ctx.lineWidth = 4
-        ctx.beginPath()
-        ctx.arc(width / 2, y + 60, 63, 0, Math.PI * 2)
-        ctx.stroke()
-        
-        y += 180
-        continueDrawing()
-      }
-      avatar.onerror = () => {
-        // 如果头像加载失败，绘制默认头像
-        ctx.fillStyle = '#E8F8F2'
-        ctx.beginPath()
-        ctx.arc(width / 2, y + 60, 60, 0, Math.PI * 2)
-        ctx.fill()
-        
-        ctx.fillStyle = '#52C9A6'
-        ctx.font = 'bold 48px "Microsoft YaHei", Arial'
-        ctx.textAlign = 'center'
-        ctx.fillText(teacher.value.name?.charAt(0) || '?', width / 2, y + 80)
-        
-        y += 180
-        continueDrawing()
-      }
-      avatar.src = teacher.value.avatar
-    } else {
-      continueDrawing()
-    }
+    // === 头像和基本信息（左右布局）===
+    // 直接使用默认头像，避免跨域问题
+    const avatarX = padding + 15
+    const avatarY = y
+    const avatarSize = 120
+    
+    // 绘制默认头像
+    ctx.fillStyle = '#E8F8F2'
+    ctx.beginPath()
+    ctx.arc(avatarX + avatarSize / 2, avatarY + avatarSize / 2, avatarSize / 2, 0, Math.PI * 2)
+    ctx.fill()
+    
+    // 头像外圈 - 淡绿色
+    ctx.strokeStyle = '#52C9A6'
+    ctx.lineWidth = 4
+    ctx.beginPath()
+    ctx.arc(avatarX + avatarSize / 2, avatarY + avatarSize / 2, avatarSize / 2 + 3, 0, Math.PI * 2)
+    ctx.stroke()
+    
+    // 头像文字
+    ctx.fillStyle = '#52C9A6'
+    ctx.font = 'bold 48px "Microsoft YaHei", Arial'
+    ctx.textAlign = 'center'
+    ctx.textBaseline = 'middle'
+    ctx.fillText(teacher.value.name?.charAt(0) || '?', avatarX + avatarSize / 2, avatarY + avatarSize / 2)
+    ctx.textBaseline = 'alphabetic'
+    
+    continueDrawing()
     
     function continueDrawing() {
-      // === 姓名 ===
+      // 右侧信息区域起始位置
+      const infoX = avatarX + avatarSize + 30
+      const infoY = avatarY + 20
+      
+      // === 第一排：姓名 + 性别、教师类型-年级 ===
       ctx.fillStyle = '#1a202c'
       ctx.font = 'bold 38px "Microsoft YaHei", "PingFang SC", Arial, sans-serif'
-      ctx.textAlign = 'center'
-      ctx.fillText(teacher.value.name || '未填写', width / 2, y)
-      y += 55
+      ctx.textAlign = 'left'
+      ctx.fillText(teacher.value.name || '未填写', infoX, infoY)
       
-      // === 基本信息标签 ===
-      const tags = []
-      if (teacher.value.gender) tags.push(teacher.value.gender)
+      // 计算姓名宽度
+      const nameWidth = ctx.measureText(teacher.value.name || '未填写').width
+      
+      // 第一排其他信息（性别、教师类型-年级）
+      const firstRowInfo = []
+      if (teacher.value.gender) firstRowInfo.push(teacher.value.gender)
       if (teacher.value.teacher_type) {
-        tags.push(getTeacherTypeLabel(teacher.value.teacher_type, teacher.value.grade_level, teacher.value.education_level))
+        const teacherTypeLabel = getTeacherTypeLabel(teacher.value.teacher_type, teacher.value.grade_level, teacher.value.education_level)
+        const gradeLabel = teacher.value.grade_level ? getGradeLevelLabel(teacher.value.grade_level) : ''
+        if (gradeLabel) {
+          firstRowInfo.push(`${teacherTypeLabel}-${gradeLabel}`)
+        } else {
+          firstRowInfo.push(teacherTypeLabel)
+        }
       }
-      if (teacher.value.teaching_years) tags.push(`${teacher.value.teaching_years}年教龄`)
+      
+      if (firstRowInfo.length > 0) {
+        ctx.fillStyle = '#000000'
+        ctx.font = '22px "Microsoft YaHei", "PingFang SC", Arial, sans-serif'
+        ctx.fillText(firstRowInfo.join(' · '), infoX + nameWidth + 20, infoY)
+      }
+      
+      // === 第二排：年龄、教龄、籍贯（标签样式）===
+      const secondRowY = infoY + 50
+      const tags = []
+      
+      // 计算年龄
+      if (teacher.value.birth_year) {
+        const currentYear = new Date().getFullYear()
+        const birthYear = parseInt(teacher.value.birth_year)
+        if (!isNaN(birthYear)) {
+          const age = currentYear - birthYear
+          tags.push(`${age}岁`)
+        }
+      }
+      
+      if (teacher.value.teaching_years) {
+        tags.push(`${teacher.value.teaching_years}年教龄`)
+      }
+      
+      if (teacher.value.hometown) {
+        tags.push(`籍贯：${teacher.value.hometown}`)
+      }
       
       if (tags.length > 0) {
-        ctx.textAlign = 'center'
         ctx.font = '20px "Microsoft YaHei", "PingFang SC", Arial, sans-serif'
         
-        // 计算总宽度
-        let totalWidth = 0
-        const tagWidths = []
-        tags.forEach(tag => {
+        let tagX = infoX
+        const tagY = secondRowY
+        
+        tags.forEach((tag) => {
           const tagWidth = ctx.measureText(tag).width + 32
-          tagWidths.push(tagWidth)
-          totalWidth += tagWidth
-        })
-        totalWidth += (tags.length - 1) * 12 // 间距
-        
-        let tagX = (width - totalWidth) / 2
-        const tagY = y
-        
-        tags.forEach((tag, index) => {
-          const tagWidth = tagWidths[index]
           
           // 标签背景 - 淡绿色
           ctx.fillStyle = '#E8F8F2'
@@ -1263,12 +1287,15 @@ const generateResumePoster = async () => {
           
           // 标签文字
           ctx.fillStyle = '#3BA888'
-          ctx.fillText(tag, tagX + tagWidth / 2, tagY)
+          ctx.textAlign = 'left'
+          ctx.fillText(tag, tagX + 16, tagY)
           
           tagX += tagWidth + 12
         })
-        y += 55
       }
+      
+      // 更新y坐标到头像区域之后
+      y = avatarY + avatarSize + 40
       
       // === 分隔线 ===
       ctx.strokeStyle = '#E8F8F2'
@@ -1277,7 +1304,7 @@ const generateResumePoster = async () => {
       ctx.moveTo(padding, y)
       ctx.lineTo(width - padding, y)
       ctx.stroke()
-      y += 40
+      y += 35
       
       // === 绘制简约线性图标函数 ===
       function drawLineIcon(x, y, type) {
@@ -1420,7 +1447,7 @@ const generateResumePoster = async () => {
           ctx.fillText(`专业：${teacher.value.major}`, padding + 15, y)
           y += 50 // 从45增加到50
         }
-        y += 50 // 板块底部间距，从30增加到50
+        y += 35 // 板块底部间距，从50减少到35
       }
       
       // === 教学信息 ===
@@ -1478,7 +1505,7 @@ const generateResumePoster = async () => {
           y = wrapText(ctx, teacher.value.district_names.join('、'), padding + 90, y, contentWidth - 105, 45) // 行高从42增加到45
         }
         
-        y += 50 // 板块底部间距，从30增加到50
+        y += 35 // 板块底部间距，从50减少到35
       }
       
       // === 自我介绍 ===
@@ -1489,7 +1516,7 @@ const generateResumePoster = async () => {
         ctx.font = '21px "Microsoft YaHei", "PingFang SC", Arial, sans-serif'
         ctx.fillStyle = '#4a5568'
         y = wrapText(ctx, teacher.value.self_intro, padding + 15, y, contentWidth - 15, 45, 4) // 行高从40增加到45
-        y += 50 // 板块底部间距，从30增加到50
+        y += 35 // 板块底部间距，从50减少到35
       }
       
       // === 个人优势 ===
@@ -1500,7 +1527,7 @@ const generateResumePoster = async () => {
         ctx.font = '21px "Microsoft YaHei", "PingFang SC", Arial, sans-serif'
         ctx.fillStyle = '#4a5568'
         y = wrapText(ctx, teacher.value.personal_advantage, padding + 15, y, contentWidth - 15, 45, 3) // 行高从40增加到45
-        y += 50 // 板块底部间距，从30增加到50
+        y += 35 // 板块底部间距，从50减少到35
       }
       
       // === 教学经历 ===
@@ -1525,16 +1552,16 @@ const generateResumePoster = async () => {
           if (exp.description) {
             ctx.fillStyle = '#4a5568'
             y = wrapText(ctx, exp.description, padding + 30, y, contentWidth - 45, 40, 2) // 行高从36增加到40
-            y += 35 // 从25增加到35
+            y += 10 // 从35减少到10
           }
         })
       }
       
       // === 底部装饰 ===
-      y += 40 // 底部留白
+      y += 10 // 底部留白，从40减少到10
       
       // 根据实际内容高度调整画布
-      const actualHeight = y + 60 // 加上底部边距
+      const actualHeight = y + 40 // 加上底部边距，从60减少到40
       const finalHeight = Math.max(actualHeight, 800) // 最小高度800px
       
       // 如果实际高度与初始高度不同，需要重新绘制

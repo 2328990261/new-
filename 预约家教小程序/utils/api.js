@@ -31,6 +31,15 @@ export const wechatLogin = {
 		})
 	},
 	
+	// 使用 openid 自动登录（无需手机号授权）
+	loginWithOpenid(data) {
+		return request({
+			url: '/api/wechat/login-openid',
+			method: 'POST',
+			data: data
+		})
+	},
+	
 	// 生成小程序码（无数量限制）
 	generateQRCode(page, scene, options = {}) {
 		return request({
@@ -54,6 +63,15 @@ export const userApi = {
 		return request({
 			url: '/api/user/info',
 			method: 'GET'
+		})
+	},
+	
+	// 保存用户位置信息
+	saveLocation(data) {
+		return request({
+			url: '/api/user_location.php',
+			method: 'POST',
+			data: data
 		})
 	}
 }
@@ -175,6 +193,15 @@ export const teacherRegisterApi = {
 			url: '/api/teacher-register/status',
 			method: 'GET',
 			data: params
+		})
+	},
+	
+	// 提交教师注册信息
+	submit(data) {
+		return request({
+			url: '/api/teacher-register/submit',
+			method: 'POST',
+			data
 		})
 	}
 }
@@ -365,6 +392,17 @@ export const subscribeMessageApi = {
 	getTemplateId() {
 		return request({
 			url: '/api/subscribe-message/template-id',
+			method: 'GET'
+		})
+	}
+}
+
+// Banner横幅API
+export const bannerApi = {
+	// 获取启用的横幅列表
+	getBannerList() {
+		return request({
+			url: '/api/site-banners',
 			method: 'GET'
 		})
 	}

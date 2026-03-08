@@ -64,7 +64,7 @@
     </view>
     
     <!-- 教师详情 -->
-    <scroll-view v-else-if="teacher" scroll-y class="detail-scroll" :style="{marginTop: (statusBarHeight + 44) + 'px'}">
+    <view v-else-if="teacher" class="detail-content" :style="{paddingTop: (statusBarHeight + 44) + 'px'}">
       <!-- 教学风采 - 放在最顶部，无标题 -->
       <scroll-view 
         v-if="teacher.teaching_photos && teacher.teaching_photos.length > 0"
@@ -130,17 +130,26 @@
         </view>
       </view>
       
-      <!-- 认证信息卡片 -->
+      <!-- 认证信息卡片 - 只显示已认证的 -->
       <view class="cert-card" v-if="teacher.real_name_verified || teacher.education_verified || teacher.teacher_verified">
-        <text :class="teacher.real_name_verified ? 'cert-badge-white' : 'cert-badge-gray'">
-          <text class="cert-icon">{{ teacher.real_name_verified ? '✓' : '✗' }}</text> 实名{{ teacher.real_name_verified ? '认证' : '未认证' }}
-        </text>
-        <text :class="teacher.education_verified ? 'cert-badge-white' : 'cert-badge-gray'">
-          <text class="cert-icon">{{ teacher.education_verified ? '✓' : '✗' }}</text> 学历{{ teacher.education_verified ? '认证' : '未认证' }}
-        </text>
-        <text :class="teacher.teacher_verified ? 'cert-badge-white' : 'cert-badge-gray'">
-          <text class="cert-icon">{{ teacher.teacher_verified ? '✓' : '✗' }}</text> 教师资格{{ teacher.teacher_verified ? '认证' : '未认证' }}
-        </text>
+        <view v-if="teacher.real_name_verified" class="cert-badge-verified">
+          <view class="cert-icon-box">
+            <text class="cert-icon">✓</text>
+          </view>
+          <text class="cert-text">实名认证</text>
+        </view>
+        <view v-if="teacher.education_verified" class="cert-badge-verified">
+          <view class="cert-icon-box">
+            <text class="cert-icon">✓</text>
+          </view>
+          <text class="cert-text">学历认证</text>
+        </view>
+        <view v-if="teacher.teacher_verified" class="cert-badge-verified">
+          <view class="cert-icon-box">
+            <text class="cert-icon">✓</text>
+          </view>
+          <text class="cert-text">教师资格认证</text>
+        </view>
       </view>
       
       <!-- 基本信息 -->
@@ -151,7 +160,7 @@
         </view>
         <view class="section-content">
           <view class="info-row" v-if="teacher.birth_date">
-            <text class="info-label">出生年月：</text>
+            <text class="info-label">出生：</text>
             <text class="info-value">{{ teacher.birth_date }}</text>
           </view>
           <view class="info-row">
@@ -270,7 +279,7 @@
       
       <!-- 底部占位 -->
       <view class="bottom-placeholder"></view>
-    </scroll-view>
+    </view>
     
     <!-- 底部操作栏 -->
     <view class="bottom-bar" v-if="teacher">
@@ -320,8 +329,33 @@ export default {
       menus: ['shareAppMessage', 'shareTimeline']
     })
     
+    // 处理普通链接参数
     if (options.id) {
       this.teacherId = parseInt(options.id)
+    }
+    // 处理小程序码扫码进入的scene参数
+    else if (options.scene) {
+      try {
+        // scene参数是URL编码的，需要解码
+        const scene = decodeURIComponent(options.scene)
+        // 解析scene参数，格式为 id=123
+        const params = {}
+        scene.split('&').forEach(item => {
+          const [key, value] = item.split('=')
+          if (key && value) {
+            params[key] = value
+          }
+        })
+        if (params.id) {
+          this.teacherId = parseInt(params.id)
+        }
+      } catch (e) {
+        console.error('解析scene参数失败:', e)
+      }
+    }
+    
+    // 如果成功获取到teacherId，加载详情
+    if (this.teacherId) {
       this.loadTeacherDetail()
       this.checkFavoriteStatus()
     } else {
@@ -1218,6 +1252,13 @@ export default {
 </script>
 
 <style scoped>
+/* 隐藏所有滚动条 */
+::-webkit-scrollbar {
+  display: none;
+  width: 0;
+  height: 0;
+}
+
 .teacher-detail-container {
   min-height: 100vh;
   background: #f5f7fa;
@@ -1422,8 +1463,7 @@ export default {
   color: #999;
 }
 
-.detail-scroll {
-  height: 100vh;
+.detail-content {
   padding: 20rpx;
   box-sizing: border-box;
 }
@@ -1529,24 +1569,35 @@ export default {
 }
 
 .top-badge {
-  padding: 4rpx 12rpx;
-  background: linear-gradient(135deg, rgba(255, 107, 107, 0.9) 0%, rgba(255, 82, 82, 0.9) 100%);
-  backdrop-filter: blur(10rpx);
+  padding: 8rpx 16rpx 8rpx 12rpx;
+  background: linear-gradient(135deg, #FFD700 0%, #FFA500 100%);
+  color: #fff;
+  font-size: 22rpx;
   border-radius: 12rpx;
+  font-weight: 700;
+  box-shadow: 0 4rpx 12rpx rgba(255, 165, 0, 0.4);
   display: flex;
   align-items: center;
-  gap: 4rpx;
-  box-shadow: 0 2rpx 8rpx rgba(255, 107, 107, 0.4);
-  border: 1rpx solid rgba(255, 255, 255, 0.3);
+  gap: 6rpx;
+  letter-spacing: 0.5rpx;
+  backdrop-filter: blur(8rpx);
 }
 
 .badge-icon {
-  font-size: 20rpx;
+  font-size: 24rpx;
   color: #fff;
+  line-height: 1;
+  filter: drop-shadow(0 1rpx 2rpx rgba(0, 0, 0, 0.2));
 }
 
 .badge-text {
-  font-size: 20rpx;
+  font-size: 22rpx;
+  color: #fff;
+  font-weight: 700;
+  letter-spacing: 0.5rpx;
+  text-shadow: 0 1rpx 2rpx rgba(0, 0, 0, 0.1);
+  line-height: 1;
+}
   color: #fff;
   font-weight: 500;
 }
@@ -1613,6 +1664,44 @@ export default {
   flex-wrap: wrap;
   padding: 0 40rpx;
   margin-bottom: 20rpx;
+}
+
+.cert-badge-verified {
+  display: inline-flex;
+  align-items: center;
+  gap: 8rpx;
+  padding: 8rpx 16rpx;
+  background: linear-gradient(135deg, #E8F8F2 0%, #D4F1EA 100%);
+  border-radius: 20rpx;
+  border: 1rpx solid rgba(82, 201, 166, 0.3);
+  box-shadow: 0 2rpx 8rpx rgba(82, 201, 166, 0.08);
+  transition: all 0.3s ease;
+}
+
+.cert-badge-verified .cert-icon-box {
+  width: 28rpx;
+  height: 28rpx;
+  background: linear-gradient(135deg, #52C9A6 0%, #3BA888 100%);
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.cert-badge-verified .cert-icon {
+  font-size: 18rpx;
+  color: #fff;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.cert-badge-verified .cert-text {
+  font-size: 24rpx;
+  color: #52C9A6;
+  font-weight: 600;
+  letter-spacing: 0.5rpx;
+  line-height: 1;
 }
 
 .cert-badge-white {
@@ -1844,6 +1933,13 @@ export default {
   padding: 20rpx 20rpx 24rpx 20rpx;
   background: linear-gradient(180deg, #f8f9fa 0%, #ffffff 100%);
   margin-bottom: 32rpx;
+  overflow-x: auto;
+  overflow-y: hidden;
+  -webkit-overflow-scrolling: touch;
+}
+
+.photos-scroll-top::-webkit-scrollbar {
+  display: none;
 }
 
 .photos-container-top {

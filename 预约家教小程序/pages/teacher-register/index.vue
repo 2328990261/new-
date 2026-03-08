@@ -1,4 +1,4 @@
-﻿<template>
+<template>
 	<view class="container">
 		<!-- 顶部步骤提示区域 - 置顶 -->
 		<view class="header-sticky">
@@ -256,7 +256,7 @@
 					<view v-for="(exp, index) in formData.experiences" :key="index" class="experience-item">
 						<view class="experience-header">
 							<text class="experience-title">经历 {{ index + 1 }}</text>
-							<text class="delete-btn" @click="deleteExperience(index)">删除</text>
+							<text class="delete-experience-text" @click="deleteExperience(index)">删除</text>
 						</view>
 						
 						<view class="form-item">
@@ -432,10 +432,14 @@
 							<view class="cert-photo-item">
 								<view class="cert-label">正面</view>
 								<view class="cert-upload" @click="chooseCertImage('id_card_front')">
-									<image v-if="formData.id_card_front" :src="formData.id_card_front" class="cert-preview" mode="aspectFill" @click.stop="previewCertImage(formData.id_card_front)" />
+									<image v-if="formData.id_card_front" :src="formData.id_card_front" class="cert-preview" mode="aspectFill" />
 									<view v-else class="cert-placeholder">
 										<image class="cert-type-icon" src="/static/register/身份证正面.png" mode="aspectFit"></image>
 										<text class="upload-text-small">上传正面</text>
+									</view>
+									<!-- 删除按钮 -->
+									<view v-if="formData.id_card_front" class="delete-btn" @click.stop="deleteCertImage('id_card_front')">
+										<text class="delete-icon">✕</text>
 									</view>
 								</view>
 							</view>
@@ -443,10 +447,14 @@
 							<view class="cert-photo-item">
 								<view class="cert-label">反面</view>
 								<view class="cert-upload" @click="chooseCertImage('id_card_back')">
-									<image v-if="formData.id_card_back" :src="formData.id_card_back" class="cert-preview" mode="aspectFill" @click.stop="previewCertImage(formData.id_card_back)" />
+									<image v-if="formData.id_card_back" :src="formData.id_card_back" class="cert-preview" mode="aspectFill" />
 									<view v-else class="cert-placeholder">
 										<image class="cert-type-icon" src="/static/register/身份证反面.png" mode="aspectFit"></image>
 										<text class="upload-text-small">上传反面</text>
+									</view>
+									<!-- 删除按钮 -->
+									<view v-if="formData.id_card_back" class="delete-btn" @click.stop="deleteCertImage('id_card_back')">
+										<text class="delete-icon">✕</text>
 									</view>
 								</view>
 							</view>
@@ -463,10 +471,14 @@
 						</view>
 						
 						<view class="cert-upload-single" @click="chooseCertImage('education_certificate')">
-							<image v-if="formData.education_certificate" :src="formData.education_certificate" class="cert-preview" mode="aspectFill" @click.stop="previewCertImage(formData.education_certificate)" />
+							<image v-if="formData.education_certificate" :src="formData.education_certificate" class="cert-preview" mode="aspectFill" />
 							<view v-else class="cert-placeholder cert-placeholder-large">
 								<image class="cert-type-icon cert-type-icon-large" src="/static/register/资质证明-copy.png" mode="aspectFit"></image>
 								<text class="upload-text-large">上传学历证明</text>
+							</view>
+							<!-- 删除按钮 -->
+							<view v-if="formData.education_certificate" class="delete-btn" @click.stop="deleteCertImage('education_certificate')">
+								<text class="delete-icon">✕</text>
 							</view>
 						</view>
 					</view>
@@ -481,10 +493,14 @@
 						</view>
 						
 						<view class="cert-upload-single" @click="chooseCertImage('teacher_certificate')">
-							<image v-if="formData.teacher_certificate" :src="formData.teacher_certificate" class="cert-preview" mode="aspectFill" @click.stop="previewCertImage(formData.teacher_certificate)" />
+							<image v-if="formData.teacher_certificate" :src="formData.teacher_certificate" class="cert-preview" mode="aspectFill" />
 							<view v-else class="cert-placeholder cert-placeholder-large">
 								<image class="cert-type-icon cert-type-icon-large" src="/static/register/zhengshu.png" mode="aspectFit"></image>
 								<text class="upload-text-large">上传教师资格证</text>
+							</view>
+							<!-- 删除按钮 -->
+							<view v-if="formData.teacher_certificate" class="delete-btn" @click.stop="deleteCertImage('teacher_certificate')">
+								<text class="delete-icon">✕</text>
 							</view>
 						</view>
 					</view>
@@ -571,9 +587,9 @@
 
 		<!-- 底部按钮 -->
 		<view class="bottom-actions">
-			<button v-if="currentStep > 1 && !fromPreview" class="btn btn-secondary" @click="prevStep">上一步</button>
+			<button v-if="currentStep > 1" class="btn btn-secondary" @click="prevStep">上一步</button>
 			<button 
-				v-if="currentStep < totalSteps && !fromPreview"
+				v-if="currentStep < totalSteps"
 				class="btn btn-primary" 
 				:class="{ 'btn-full': currentStep === 1, 'btn-disabled': !canProceed }"
 				@click="handleNextStep"
@@ -581,19 +597,11 @@
 				下一步
 			</button>
 			<button 
-				v-else-if="!fromPreview"
+				v-else
 				class="btn btn-primary" 
 				@click="previewResume"
 			>
 				预览简历
-			</button>
-			<!-- 从简历预览页面跳转过来时显示保存并返回 -->
-			<button 
-				v-if="fromPreview"
-				class="btn btn-primary btn-full" 
-				@click="saveAndReturn"
-			>
-				保存并返回
 			</button>
 		</view>
 	</view>
@@ -807,6 +815,9 @@ export default {
 		}
 	},
 	async onLoad(options) {
+		// 显示加载状态
+		uni.showLoading({ title: '加载中...' })
+		
 		// 处理编辑模式
 		if (options.mode === 'edit' && options.teacher_id) {
 			this.isEditMode = true
@@ -828,9 +839,12 @@ export default {
 			if (options.fromPreview === 'true') {
 				this.fromPreview = true
 			}
+			
+			uni.hideLoading()
 		} else {
 			// 非编辑模式，先检查是否已经注册过
 			await this.checkRegistrationStatus()
+			uni.hideLoading()
 		}
 		
 		this.loadAdvantageTags()
@@ -848,18 +862,69 @@ export default {
 	},
 	methods: {
 		// 预览简历
-		previewResume() {
-			const data = encodeURIComponent(JSON.stringify(this.formData))
-			let url = `/pages/teacher-resume-preview/index?data=${data}`
+		async previewResume() {
+			console.log('[注册页面] 点击预览简历按钮')
+			console.log('[注册页面] isEditMode:', this.isEditMode)
+			console.log('[注册页面] teacherId:', this.teacherId)
+			console.log('[注册页面] fromPreview:', this.fromPreview)
+			console.log('[注册页面] 当前表单数据:', JSON.stringify(this.formData).substring(0, 200))
 			
-			// 如果是编辑模式，传递 teacher_id
+			// 如果是编辑模式，先保存到数据库再预览
 			if (this.isEditMode && this.teacherId) {
-				url += `&teacher_id=${this.teacherId}`
+				console.log('[注册页面] 编辑模式，先保存到数据库')
+				uni.showLoading({ title: '保存中...' })
+				
+				try {
+					// 准备更新数据
+					const updateData = {
+						...this.formData,
+						id: this.teacherId
+					}
+					
+					console.log('[注册页面] 调用update API，数据:', JSON.stringify(updateData).substring(0, 300))
+					
+					// 调用更新API保存
+					const res = await teacherRegisterApi.update(updateData)
+					uni.hideLoading()
+					
+					console.log('[注册页面] update API响应:', res)
+					
+					if (res.success) {
+						// 保存成功，跳转到预览页面（从数据库加载）
+						const url = `/pages/teacher-resume-preview/index?teacher_id=${this.teacherId}`
+						console.log('[注册页面] 保存成功，跳转到预览页面:', url)
+						console.log('[注册页面] 使用', this.fromPreview ? 'redirectTo' : 'navigateTo')
+						
+						// 如果是从预览页面来的，使用redirectTo替换
+						if (this.fromPreview) {
+							uni.redirectTo({ url })
+						} else {
+							uni.navigateTo({ url })
+						}
+					} else {
+						console.error('[注册页面] 保存失败:', res.error)
+						uni.showToast({
+							title: res.error || '保存失败',
+							icon: 'none'
+						})
+					}
+				} catch (err) {
+					uni.hideLoading()
+					console.error('[注册页面] 保存异常:', err)
+					uni.showToast({
+						title: '保存失败，请重试',
+						icon: 'none'
+					})
+				}
+				return
 			}
 			
-			uni.navigateTo({
-				url: url
-			})
+			// 非编辑模式，使用URL传递数据
+			console.log('[注册页面] 非编辑模式，使用URL传递数据')
+			const data = encodeURIComponent(JSON.stringify(this.formData))
+			const url = `/pages/teacher-resume-preview/index?data=${data}`
+			console.log('[注册页面] URL长度:', url.length)
+			uni.navigateTo({ url })
 		},
 		
 		// 保存并返回（从简历预览页面跳转过来时使用）
@@ -1039,13 +1104,20 @@ export default {
 							uni.redirectTo({ url })
 							return
 						} else if (res.data.review_status === 'rejected') {
-							// 被驳回：跳转到简历预览页面（只读模式），显示驳回原因
-							const reason = res.data.reject_reason ? encodeURIComponent(res.data.reject_reason) : ''
-							let url = `/pages/teacher-resume-preview/index?teacher_id=${res.data.teacher_id}&readonly=true&status=rejected`
-							if (reason) {
-								url += `&reason=${reason}`
-							}
-							uni.redirectTo({ url })
+							// 被驳回：留在当前页面，允许编辑并重新提交
+							this.isRejected = true
+							this.rejectReason = res.data.reject_reason || '审核未通过，请修改后重新提交'
+							
+							// 加载教师数据到表单
+							await this.loadTeacherData(res.data.teacher_id)
+							
+							// 显示提示信息
+							uni.showModal({
+								title: '审核未通过',
+								content: this.rejectReason,
+								showCancel: false,
+								confirmText: '修改简历'
+							})
 							return
 						}
 						
@@ -1427,6 +1499,24 @@ export default {
 				success: (res) => {
 					if (res.confirm) {
 						this.formData.teaching_photos.splice(index, 1)
+					}
+				}
+			})
+		},
+		
+		// 删除认证材料图片
+		deleteCertImage(type) {
+			uni.showModal({
+				title: '确认删除',
+				content: '确定要删除这张图片吗？',
+				success: (res) => {
+					if (res.confirm) {
+						this.formData[type] = ''
+						uni.showToast({
+							title: '已删除',
+							icon: 'success',
+							duration: 1500
+						})
 					}
 				}
 			})
@@ -2216,17 +2306,22 @@ export default {
 					// 清除本地存储
 					uni.removeStorageSync('teacher_register_progress')
 					
-					const title = this.isEditMode ? '更新成功' : '提交成功'
-					const content = this.isEditMode ? '您的信息已更新！' : '提交成功，等待审核'
+					const title = this.isEditMode ? '更新成功' : '注册成功'
+					const content = this.isEditMode ? '您的信息已更新！' : '您的信息已提交，可以开始接单了！'
 					
 					uni.showModal({
 						title: title,
 						content: content,
 						showCancel: false,
 						success: () => {
-							// 跳转到家教信息首页
-							uni.reLaunch({
-								url: '/pages/tutor-list/index'
+							// 返回到个人中心
+							uni.navigateBack({
+								delta: 2,
+								fail: () => {
+									uni.reLaunch({
+										url: '/pages/profile/index'
+									})
+								}
 							})
 						}
 					})
@@ -2302,6 +2397,24 @@ export default {
 			}
 			
 			return label
+		}
+	},
+
+	// 分享给好友/群聊
+	onShareAppMessage() {
+		return {
+			title: '成为优秀教师，开启家教之旅！',
+			path: '/pages/teacher-register/index',
+			imageUrl: '/static/share-teacher.png'
+		}
+	},
+
+	// 分享到朋友圈
+	onShareTimeline() {
+		return {
+			title: '成为优秀教师，开启家教之旅！',
+			query: '',
+			imageUrl: '/static/share-teacher.png'
 		}
 	}
 }
@@ -2853,10 +2966,15 @@ export default {
 	color: #303133;
 }
 
-.delete-btn {
+.delete-experience-text {
 	font-size: 26rpx;
 	color: #f56c6c;
-	padding: 8rpx 16rpx;
+	padding: 4rpx 12rpx;
+	transition: opacity 0.3s;
+}
+
+.delete-experience-text:active {
+	opacity: 0.6;
 }
 
 .date-range {
@@ -3067,6 +3185,29 @@ export default {
 	left: 0;
 	width: 100%;
 	height: 100%;
+}
+
+/* 删除按钮 - 右上角圆形 X（与教学风采一致） */
+.delete-btn {
+	position: absolute;
+	top: 8rpx;
+	right: 8rpx;
+	width: 48rpx;
+	height: 48rpx;
+	min-width: 48rpx;
+	min-height: 48rpx;
+	background: rgba(0, 0, 0, 0.6);
+	border-radius: 50%;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	z-index: 10;
+}
+
+.delete-btn .delete-icon {
+	color: #fff;
+	font-size: 36rpx;
+	line-height: 1;
 }
 
 .cert-placeholder {
@@ -3539,4 +3680,5 @@ export default {
 	font-size: 28rpx;
 }
 </style>
+
 

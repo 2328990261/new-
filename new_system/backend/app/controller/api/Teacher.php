@@ -129,9 +129,23 @@ class Teacher extends BaseController
                     $item['avatar'] = '';
                 }
                 
-                // 处理科目名称
-                if (!empty($item['subject_names'])) {
-                    $item['subjects'] = explode(',', $item['subject_names']);
+                // 处理科目名称 - 优先从授课信息表获取
+                $teachingInfo = Db::name('teacher_teaching_info')->where('teacher_id', $item['id'])->find();
+                if ($teachingInfo && !empty($teachingInfo['subjects'])) {
+                    // 授课信息表中的科目是JSON格式，包含完整对象
+                    $subjects = json_decode($teachingInfo['subjects'], true);
+                    if (is_array($subjects)) {
+                        // 提取科目名称
+                        $item['subjects'] = array_map(function($subject) {
+                            // 如果是对象，提取name字段；如果是字符串，直接使用
+                            return is_array($subject) ? ($subject['name'] ?? $subject) : $subject;
+                        }, $subjects);
+                    } else {
+                        $item['subjects'] = [];
+                    }
+                } elseif (!empty($item['subject_names'])) {
+                    // 如果授课信息表没有，使用教师表中的科目
+                    $item['subjects'] = array_filter(array_map('trim', explode(',', $item['subject_names'])));
                 } else {
                     $item['subjects'] = [];
                 }

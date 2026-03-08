@@ -1,1 +1,0 @@
-import{r}from"./index-l_shHl8z.js";import"./vendor-D15_ytVY.js";function o(o){return r({url:"/api/wechat/share-config",method:"get",params:{url:o||window.location.href.split("#")[0]},__silentError:!0})}export{o as getWechatShareConfig};

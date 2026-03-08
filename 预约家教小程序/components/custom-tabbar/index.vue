@@ -4,7 +4,7 @@
 		<template v-if="userRole === 'parent'">
 			<view 
 				v-for="(item, index) in parentTabs" 
-				:key="index"
+				:key="'parent-' + index"
 				class="tabbar-item"
 				:class="{ active: currentPath === item.path }"
 				@click="switchTab(item.path)"
@@ -23,7 +23,7 @@
 		<template v-else-if="userRole === 'teacher'">
 			<view 
 				v-for="(item, index) in teacherTabs" 
-				:key="index"
+				:key="'teacher-' + index"
 				class="tabbar-item"
 				:class="{ active: currentPath === item.path }"
 				@click="switchTab(item.path)"
@@ -53,26 +53,27 @@ export default {
 		return {
 			userRole: 'teacher', // 默认为老师端
 			safeAreaBottom: 0,
+			switching: false, // 防止快速点击
 			parentTabs: [
 				{ 
 					path: '/pages/teacher-library/index', 
 					text: '老师', 
-					icon: '👨‍🏫'  // 教师emoji
+					icon: '👨‍🏫'
 				},
 				{ 
-					path: '/pages/ai-booking/index', 
+					path: '/pages/step-booking/index', 
 					text: '请家教', 
-					icon: '✏️'  // 编辑emoji
+					icon: '✏️'
 				},
 				{ 
 					path: '/pages/my-demands/index', 
 					text: '我的预约', 
-					icon: '📅'  // 日历emoji
+					icon: '📅'
 				},
 				{ 
 					path: '/pages/profile/index', 
 					text: '我的', 
-					icon: '👤'  // 用户emoji
+					icon: '👤'
 				}
 			],
 			teacherTabs: [
@@ -137,48 +138,48 @@ export default {
 		},
 		
 		switchTab(path) {
-			if (this.currentPath === path) {
+			if (this.currentPath === path || this.switching) {
 				return
 			}
 			
+			// 设置切换状态，防止快速点击
+			this.switching = true
+			
 			// 获取当前页面栈
 			const pages = getCurrentPages()
+			const currentPage = pages[pages.length - 1]
+			const currentRoute = '/' + currentPage.route
 			
-			// 检查目标页面是否在页面栈中
-			let targetPageIndex = -1
-			for (let i = 0; i < pages.length; i++) {
-				const pagePath = '/' + pages[i].route
-				if (pagePath === path) {
-					targetPageIndex = i
-					break
-				}
-			}
+			// 如果是 tabBar 页面之间的切换，使用 redirectTo
+			const tabBarPages = this.userRole === 'parent' 
+				? this.parentTabs.map(t => t.path)
+				: this.teacherTabs.map(t => t.path)
 			
-			if (targetPageIndex !== -1 && targetPageIndex < pages.length - 1) {
-				// 如果目标页面在栈中且不是当前页面，返回到该页面
-				const delta = pages.length - 1 - targetPageIndex
-				uni.navigateBack({
-					delta: delta
-				})
-			} else if (targetPageIndex === -1) {
-				// 如果目标页面不在栈中，使用 navigateTo 跳转
-				uni.navigateTo({
+			const isFromTabBar = tabBarPages.includes(currentRoute)
+			const isToTabBar = tabBarPages.includes(path)
+			
+			if (isFromTabBar && isToTabBar) {
+				// tabBar 页面之间切换，使用 redirectTo 避免页面栈堆积
+				uni.redirectTo({
 					url: path,
-					fail: (err) => {
-						console.error('navigateTo 失败:', err)
-						// 如果页面栈已满（超过10层），使用 redirectTo
-						if (pages.length >= 10) {
-							uni.redirectTo({
-								url: path,
-								fail: (err2) => {
-									console.error('redirectTo 失败:', err2)
-								}
-							})
-						}
+					complete: () => {
+						// 延迟重置切换状态
+						setTimeout(() => {
+							this.switching = false
+						}, 300)
+					}
+				})
+			} else {
+				// 从非 tabBar 页面跳转到 tabBar 页面，使用 reLaunch 清空页面栈
+				uni.reLaunch({
+					url: path,
+					complete: () => {
+						setTimeout(() => {
+							this.switching = false
+						}, 300)
 					}
 				})
 			}
-			// 如果 targetPageIndex === pages.length - 1，说明已经在目标页面，不做任何操作
 		}
 	}
 }

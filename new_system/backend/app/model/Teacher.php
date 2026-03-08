@@ -24,7 +24,7 @@ class Teacher extends Model
         'email'                 => 'string',
         'hometown'              => 'string',
         'teaching_years'        => 'int',
-        'birth_date'            => 'string',
+        'birth_year'            => 'int',
         'location_province'     => 'string',
         'location_city'         => 'string',
         'location_district'     => 'string',

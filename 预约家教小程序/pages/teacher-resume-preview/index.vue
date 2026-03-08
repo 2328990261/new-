@@ -1,251 +1,167 @@
-<template>
-	<view class="resume-page">
-		<!-- 顶部个人信息卡片 -->
-		<view class="header-card">
-			<view class="header-bg">
-				<view class="bg-pattern"></view>
+﻿<template>
+	<view class="page">
+		<!-- 加载状态 -->
+		<view v-if="loading" class="loading-container">
+			<text class="loading-text">加载中...</text>
+		</view>
+		
+		<!-- 错误状态 -->
+		<view v-else-if="loadError" class="error-container">
+			<text class="error-icon">⚠️</text>
+			<text class="error-text">{{ loadError }}</text>
+			<button class="retry-btn" @click="retryLoad">重试</button>
+		</view>
+		
+		<!-- 正常内容 -->
+		<view v-else class="main-content">
+			<scroll-view class="content" scroll-y>
+			<!-- 审核状态提示 -->
+			<view v-if="reviewStatus" class="status-tip" :class="reviewStatus">
+				<text v-if="reviewStatus === 'pending'">⏳ 简历等待审核，可联系客服催促审核。</text>
+				<text v-else-if="reviewStatus === 'approved'">🎉 恭喜您简历已通过审核，请开始您的教学之旅。</text>
+				<text v-else>✕ 未通过</text>
 			</view>
-			<view class="header-content">
-				<view class="avatar-wrapper">
+
+			<!-- 个人信息 -->
+			<view class="info-card">
+				<view class="info-header">
 					<image v-if="resumeData.avatar" :src="resumeData.avatar" class="avatar" mode="aspectFill" />
-					<view v-else class="avatar-placeholder">
-						<text class="iconfont">&#xe60d;</text>
-					</view>
-					<!-- 认证徽章 -->
-					<view class="cert-badge-mini pending">
-						<text class="iconfont">&#xe61f;</text>
+					<view v-else class="avatar-empty">👤</view>
+					
+					<view class="info-basic">
+						<view class="name-row">
+							<text class="name">{{ resumeData.name || '未填写' }}</text>
+							<text v-if="resumeData.gender" class="gender-icon" :class="resumeData.gender === '男' ? 'male' : 'female'">
+								{{ resumeData.gender === '男' ? '♂' : '♀' }}
+							</text>
+						</view>
 					</view>
 				</view>
 				
-				<view class="basic-info">
-					<view class="name-row">
-						<text class="name">{{ resumeData.name || '未填写' }}</text>
-						<view class="gender-badge" :class="resumeData.gender === '男' ? 'male' : 'female'">
-							<text class="iconfont">{{ resumeData.gender === '男' ? '&#xe623;' : '&#xe622;' }}</text>
-							<text>{{ resumeData.gender || '-' }}</text>
-						</view>
-					</view>
-					
-					<!-- 教育背景摘要 -->
-					<view class="edu-summary">
-						<text class="iconfont edu-icon">&#xe60b;</text>
-						<view class="edu-info">
-							<text class="edu-school">{{ resumeData.school || '未填写学校' }}</text>
-							<text class="edu-detail">{{ resumeData.major || '未填写专业' }} · {{ getTeacherTypeLabel() }}</text>
-						</view>
-					</view>
+				<!-- 学校和专业 | 年龄 -->
+				<view class="info-row">
+					<text class="info-text">{{ resumeData.school || '未填写学校' }}</text>
+					<text class="separator">·</text>
+					<text class="info-text">{{ resumeData.major || '未填写专业' }}</text>
+					<text v-if="getAge()" class="age-divider">|</text>
+					<text v-if="getAge()" class="info-text">{{ getAge() }}岁</text>
+				</view>
+				
+				<!-- 教师类型、年级、籍贯 -->
+				<view class="info-row">
+					<text class="info-label">{{ getTeacherTypeLabel() }}</text>
+					<text v-if="resumeData.teaching_years" class="separator">·</text>
+					<text v-if="resumeData.teaching_years" class="info-label">{{ resumeData.teaching_years }}年教龄</text>
+					<text v-if="resumeData.hometown" class="separator">·</text>
+					<text v-if="resumeData.hometown" class="info-label">籍贯: {{ resumeData.hometown }}</text>
+				</view>
+				
+				<!-- 所在城市 -->
+				<view v-if="resumeData.location_city || resumeData.location_district" class="info-row">
+					<text class="location-icon">📍</text>
+					<text class="info-label">{{ getLocationText() }}</text>
 				</view>
 			</view>
-			
-			<!-- 返回按钮 -->
-			<view class="back-btn" @click="goBack">
-				<text class="iconfont">&#xe60a;</text>
-			</view>
-		</view>
 
-		<scroll-view class="resume-content" scroll-y>
-			<!-- 审核状态提示 -->
-			<view v-if="reviewStatus" class="status-tip" :class="'status-' + reviewStatus">
-				<view class="status-icon">
-					<text class="iconfont" v-if="reviewStatus === 'pending'">&#xe61f;</text>
-					<text class="iconfont" v-else-if="reviewStatus === 'approved'">&#xe617;</text>
-					<text class="iconfont" v-else-if="reviewStatus === 'rejected'">&#xe619;</text>
+			<!-- 个人介绍 -->
+			<view class="card" v-if="resumeData.self_intro" @click="jumpToStep(4)">
+				<view class="card-title">
+					<text>个人介绍</text>
 				</view>
-				<view class="status-content">
-					<text class="status-title" v-if="reviewStatus === 'pending'">审核中</text>
-					<text class="status-title" v-else-if="reviewStatus === 'approved'">审核通过</text>
-					<text class="status-title" v-else-if="reviewStatus === 'rejected'">审核未通过</text>
-					<text class="status-desc" v-if="reviewStatus === 'pending'">您的资料正在审核中，请耐心等待</text>
-					<text class="status-desc" v-else-if="reviewStatus === 'approved'">恭喜您，您的资料已通过审核</text>
-					<text class="status-desc" v-else-if="reviewStatus === 'rejected'">您的资料未通过审核，请修改后重新提交</text>
-				</view>
+				
+				<text class="intro-text">{{ resumeData.self_intro }}</text>
 			</view>
-			
-			<!-- 编辑提示 -->
-			<view v-if="teacherId && !readonly" class="edit-tip">
-				<text class="iconfont">&#xe618;</text>
-				<text>点击下方模块可快速跳转编辑</text>
-			</view>
-			
-			<!-- 教学经历 - 时间轴 -->
-			<view 
-				class="section-card" 
-				:class="{ 'clickable': teacherId && !readonly }"
-				v-if="resumeData.experiences && resumeData.experiences.length > 0"
-				@click="jumpToStep(3)"
-			>
-				<view class="section-header">
-					<view class="section-icon-wrapper experience">
-						<text class="iconfont">&#xe60c;</text>
-					</view>
-					<text class="section-title">教学经历</text>
-					<view class="section-badge">{{ resumeData.experiences.length }}</view>
-					<text v-if="teacherId && !readonly" class="edit-icon">&#xe616;</text>
+
+			<!-- 教学经历 -->
+			<view class="card" v-if="resumeData.experiences && resumeData.experiences.length > 0" @click="jumpToStep(3)">
+				<view class="card-title">
+					<text>教学经历</text>
+					<text class="count">{{ resumeData.experiences.length }}</text>
 				</view>
-				<view class="timeline-container">
-					<view 
-						v-for="(exp, index) in resumeData.experiences" 
-						:key="index"
-						class="timeline-item"
-						:class="{ 'last-item': index === resumeData.experiences.length - 1 }"
-					>
-						<view class="timeline-dot">
-							<view class="dot-inner"></view>
+				
+				<view class="exp-list">
+					<view v-for="(exp, idx) in resumeData.experiences" :key="idx" class="exp-item">
+						<view class="exp-header">
+							<text class="exp-title">{{ exp.subject || '未填写' }}<text v-if="exp.location"> | {{ exp.location }}</text></text>
+							<text class="exp-time">{{ formatDateRange(exp.start_date, exp.end_date) }}</text>
 						</view>
-						<view class="timeline-line" v-if="index !== resumeData.experiences.length - 1"></view>
-						<view class="timeline-content">
-							<view class="exp-header">
-								<text class="exp-subject">{{ exp.subject || '未填写科目' }}</text>
-								<view class="exp-date">
-									<text class="iconfont">&#xe60e;</text>
-									<text>{{ formatDateRange(exp.start_date, exp.end_date) }}</text>
-								</view>
-							</view>
-							<view class="exp-location" v-if="exp.location">
-								<text class="iconfont">&#xe610;</text>
-								<text>{{ exp.location }}</text>
-							</view>
-							<text class="exp-desc" v-if="exp.description">{{ exp.description }}</text>
-						</view>
+						<text v-if="exp.description" class="exp-desc">{{ exp.description }}</text>
 					</view>
-				</view>
-			</view>
-			
-			<!-- 无教学经历提示 -->
-			<view 
-				class="section-card empty-section" 
-				:class="{ 'clickable': teacherId && !readonly }"
-				v-else
-				@click="jumpToStep(3)"
-			>
-				<view class="section-header">
-					<view class="section-icon-wrapper experience">
-						<text class="iconfont">&#xe60c;</text>
-					</view>
-					<text class="section-title">教学经历</text>
-					<text v-if="teacherId && !readonly" class="edit-icon">&#xe616;</text>
-				</view>
-				<view class="empty-tip">
-					<text class="iconfont empty-icon">&#xe611;</text>
-					<text class="empty-text">暂无教学经历</text>
 				</view>
 			</view>
 
 			<!-- 个人优势 -->
-			<view 
-				class="section-card"
-				:class="{ 'clickable': teacherId && !readonly }"
-				@click="jumpToStep(4)"
-			>
-				<view class="section-header">
-					<view class="section-icon-wrapper advantage">
-						<text class="iconfont">&#xe612;</text>
-					</view>
-					<text class="section-title">个人优势</text>
-					<text v-if="teacherId && !readonly" class="edit-icon">&#xe616;</text>
+			<view class="card" @click="jumpToStep(4)">
+				<view class="card-title">
+					<text>个人优势</text>
 				</view>
-				<view class="section-content">
-					<text class="advantage-text">{{ resumeData.personal_advantage || '未填写' }}</text>
-					
-					<view class="tags-container" v-if="resumeData.advantage_tags && resumeData.advantage_tags.length > 0">
-						<view 
-							v-for="(tag, index) in resumeData.advantage_tags" 
-							:key="index"
-							class="advantage-tag"
-						>
-							<text class="iconfont">&#xe613;</text>
-							<text>{{ tag }}</text>
-						</view>
-					</view>
+				
+				<text class="adv-text">{{ resumeData.personal_advantage || '未填写' }}</text>
+				
+				<view v-if="resumeData.advantage_tags && resumeData.advantage_tags.length > 0" class="tags">
+					<text v-for="(tag, idx) in resumeData.advantage_tags" :key="idx" class="tag">{{ tag }}</text>
 				</view>
 			</view>
 
 			<!-- 教学风采 -->
-			<view 
-				class="section-card" 
-				:class="{ 'clickable': teacherId && !readonly }"
-				v-if="resumeData.teaching_photos && resumeData.teaching_photos.length > 0"
-				@click="jumpToStep(6)"
-			>
-				<view class="section-header">
-					<view class="section-icon-wrapper photo">
-						<text class="iconfont">&#xe614;</text>
-					</view>
-					<text class="section-title">教学风采</text>
-					<view class="section-badge">{{ resumeData.teaching_photos.length }}</view>
-					<text v-if="teacherId && !readonly" class="edit-icon">&#xe616;</text>
+			<view class="card" @click="jumpToStep(6)">
+				<view class="card-title">
+					<text>教学风采</text>
+					<text v-if="resumeData.teaching_photos && resumeData.teaching_photos.length > 0" class="count">{{ resumeData.teaching_photos.length }}</text>
 				</view>
-				<view class="photos-grid">
-					<view 
-						v-for="(photo, index) in resumeData.teaching_photos" 
-						:key="index"
-						class="photo-wrapper"
-						@click="previewPhoto(index)"
-					>
-						<image :src="photo" class="photo-item" mode="aspectFill" />
-						<view class="photo-mask">
-							<text class="iconfont">&#xe615;</text>
-						</view>
-					</view>
+				
+				<view v-if="resumeData.teaching_photos && resumeData.teaching_photos.length > 0" class="photos">
+					<image 
+						v-for="(photo, idx) in resumeData.teaching_photos" 
+						:key="idx"
+						:src="photo" 
+						class="photo" 
+						mode="aspectFill"
+						@click.stop="previewPhoto(idx)"
+					/>
+				</view>
+				
+				<view v-else class="empty-photos">
+					<text class="empty-icon">📷</text>
+					<text class="empty-text">暂无教学风采照片</text>
 				</view>
 			</view>
-			
-			<!-- 底部占位 -->
-			<view class="bottom-placeholder"></view>
+
+			<view class="bottom-space"></view>
 		</scroll-view>
+		</view>
 
 		<!-- 底部按钮 -->
-		<view class="bottom-bar" v-if="!readonly || reviewStatus === 'rejected'">
-			<button class="btn btn-secondary" @click="goBack">
-				<text class="iconfont">&#xe616;</text>
-				<text>返回修改</text>
-			</button>
-			<button v-if="!teacherId" class="btn btn-primary" @click="showSubmitConfirm">
-				<text class="iconfont">&#xe617;</text>
-				<text>提交注册</text>
-			</button>
-			<button v-else class="btn btn-primary" @click="goToEdit">
-				<text class="iconfont">&#xe616;</text>
-				<text>编辑资料</text>
-			</button>
+		<view class="footer" v-if="!readonly || reviewStatus === 'rejected'">
+			<button class="btn-outline" @click="goToEdit">修改简历</button>
+			<button v-if="!teacherId" class="btn-primary" @click="showSubmitConfirm">提交</button>
+			<button v-else class="btn-primary" @click="showSubmitConfirm">重新提交</button>
 		</view>
 		
-		<!-- 只读模式的底部按钮 -->
-		<view class="bottom-bar" v-else-if="readonly">
-			<button class="btn btn-primary btn-full" @click="goBack">
-				<text class="iconfont">&#xe616;</text>
-				<text>返回</text>
-			</button>
+		<view class="footer" v-else-if="readonly">
+			<button class="btn-outline" @click="goToEdit">修改简历</button>
+			<button class="btn-primary" @click="goBack">返回</button>
 		</view>
-		
+
 		<!-- 提交确认弹窗 -->
-		<view class="modal-mask" v-if="showConfirmDialog" @click="showConfirmDialog = false">
-			<view class="confirm-modal" @click.stop>
-				<view class="modal-icon">
-					<text class="iconfont">&#xe618;</text>
+		<view v-if="showConfirmDialog" class="modal" @click="showConfirmDialog = false">
+			<view class="modal-box" @click.stop>
+				<text class="modal-title">确认提交</text>
+				<text class="modal-text">请确认信息准确无误，提交后将进入审核流程</text>
+				
+				<view class="agreement">
+					<checkbox-group @change="onAgreementChange">
+						<label class="agreement-label">
+							<checkbox value="agree" :checked="agreed" color="#52C9A6" />
+							<text>我已阅读并同意</text>
+							<text class="link" @click.stop="viewAgreement">《教师入驻协议》</text>
+						</label>
+					</checkbox-group>
 				</view>
-				<view class="modal-header">
-					<text class="modal-title">确认提交</text>
-				</view>
-				<view class="modal-body">
-					<text class="modal-text">请确认您的信息准确无误，提交后将进入审核流程。</text>
-					
-					<view class="agreement-box">
-						<checkbox-group @change="onAgreementChange">
-							<label class="agreement-label">
-								<checkbox value="agree" :checked="agreed" color="#52C9A6" />
-								<text>我已阅读并同意</text>
-								<text class="link" @click.stop="viewAgreement">《教师入驻协议》</text>
-							</label>
-						</checkbox-group>
-					</view>
-				</view>
-				<view class="modal-footer">
-					<button class="modal-btn cancel-btn" @click="showConfirmDialog = false">取消</button>
-					<button class="modal-btn confirm-btn" :disabled="!agreed" @click="confirmSubmit">
-						<text class="iconfont">&#xe617;</text>
-						<text>确认提交</text>
-					</button>
+				
+				<view class="modal-btns">
+					<button class="modal-btn" @click="showConfirmDialog = false">取消</button>
+					<button class="modal-btn primary" :disabled="!agreed" @click="confirmSubmit">确认</button>
 				</view>
 			</view>
 		</view>
@@ -258,6 +174,8 @@ import { teacherRegisterApi } from '@/utils/api.js'
 export default {
 	data() {
 		return {
+			loading: false,
+			loadError: '',
 			resumeData: {
 				name: '',
 				gender: '',
@@ -270,6 +188,13 @@ export default {
 				teacher_type: '',
 				grade_level: '',
 				education_level: '',
+				teaching_years: '',
+				hometown: '',
+				birth_date: '',
+				location_city: '',
+				location_district: '',
+				location_address: '',
+				self_intro: '',
 				experiences: [],
 				personal_advantage: '',
 				advantage_tags: [],
@@ -277,9 +202,9 @@ export default {
 			},
 			showConfirmDialog: false,
 			agreed: false,
-			readonly: false, // 是否只读模式
-			reviewStatus: '', // 审核状态：pending, approved, rejected
-			teacherId: null, // 教师ID
+			readonly: false,
+			reviewStatus: '',
+			teacherId: null,
 			teacherTypes: [
 				{ value: 'undergraduate', label: '在读本科生' },
 				{ value: 'graduate_student', label: '在读研究生' },
@@ -317,42 +242,61 @@ export default {
 			]
 		}
 	},
-	async onLoad(options) {
-		// 保存参数
+	onLoad(options) {
+		console.log('简历预览页面参数:', options)
+		
 		this.readonly = options.readonly === 'true'
 		this.reviewStatus = options.status || ''
 		this.teacherId = options.teacher_id || null
 		
-		// 如果有 teacher_id，从后端加载教师数据
-		if (options.teacher_id) {
-			await this.loadTeacherData(options.teacher_id)
-		}
-		// 从上一页接收数据（从注册页面跳转过来时使用）
+		// 优先使用URL传递的data参数（最新的编辑数据）
 		if (options.data) {
 			try {
 				const data = JSON.parse(decodeURIComponent(options.data))
-				// 合并数据，优先使用传递过来的数据
 				this.resumeData = { ...this.resumeData, ...data }
+				console.log('加载的简历数据(来自URL):', this.resumeData)
+				return // 使用URL数据后直接返回，不再从其他地方加载
 			} catch (e) {
-				console.error('解析数据失败', e)
+				console.error('解析URL数据失败', e)
 			}
+		}
+		
+		// 其次从注册页面传递的storage数据加载
+		if (options.from === 'register') {
+			try {
+				const data = uni.getStorageSync('preview_resume_data')
+				if (data) {
+					this.resumeData = { ...this.resumeData, ...data }
+					console.log('加载的简历数据(来自注册页面):', this.resumeData)
+					console.log('教学风采照片数量:', this.resumeData.teaching_photos?.length || 0)
+					// 清除存储的数据
+					uni.removeStorageSync('preview_resume_data')
+					return // 直接返回,不再从后端加载
+				}
+			} catch (e) {
+				console.error('读取storage数据失败', e)
+			}
+		}
+		
+		// 最后，如果有 teacher_id，从后端加载教师数据
+		if (options.teacher_id) {
+			this.loadTeacherData(options.teacher_id)
+		} else {
+			console.warn('没有提供teacher_id或data参数')
 		}
 	},
 	methods: {
-		// 加载教师数据
 		async loadTeacherData(teacherId) {
-			uni.showLoading({
-				title: '加载中...'
-			})
+			console.log('开始加载教师数据, teacherId:', teacherId)
+			this.loading = true
+			this.loadError = ''
 			
 			try {
 				const res = await teacherRegisterApi.getTeacherDetail(teacherId)
-				uni.hideLoading()
+				console.log('教师数据响应:', res)
 				
 				if (res.success && res.data) {
 					const teacher = res.data
-					
-					// 填充简历数据
 					this.resumeData = {
 						name: teacher.name || '',
 						gender: teacher.gender || '',
@@ -365,70 +309,76 @@ export default {
 						teacher_type: teacher.teacher_type || '',
 						grade_level: teacher.grade_level || '',
 						education_level: teacher.education_level || '',
+						teaching_years: teacher.teaching_years || '',
+						hometown: teacher.hometown || '',
+						birth_date: teacher.birth_date || '',
+						location_city: teacher.location_city || '',
+						location_district: teacher.location_district || '',
+						location_address: teacher.location_address || '',
+						self_intro: teacher.self_intro || '',
 						experiences: teacher.experiences || [],
 						personal_advantage: teacher.personal_advantage || '',
 						advantage_tags: teacher.advantage_tags || [],
 						teaching_photos: teacher.teaching_photos || []
 					}
+					console.log('简历数据已加载:', this.resumeData)
 				} else {
-					uni.showToast({
-						title: res.error || '加载失败',
-						icon: 'none'
-					})
+					console.error('加载失败:', res.error)
+					this.loadError = res.error || '加载失败'
 				}
 			} catch (err) {
-				uni.hideLoading()
 				console.error('加载教师数据失败', err)
-				uni.showToast({
-					title: '加载失败',
-					icon: 'none'
-				})
+				this.loadError = '网络错误，请稍后重试'
+			} finally {
+				this.loading = false
 			}
 		},
 		
-		// 返回
+		retryLoad() {
+			if (this.teacherId) {
+				this.loadTeacherData(this.teacherId)
+			}
+		},
+		
 		goBack() {
-			uni.navigateBack()
+			const pages = getCurrentPages()
+			if (pages.length > 1) {
+				// 有上一页,可以返回
+				uni.navigateBack()
+			} else {
+				// 没有上一页,跳转到首页
+				uni.reLaunch({
+					url: '/pages/tutor-list/index'
+				})
+			}
 		},
 		
-		// 跳转到编辑页面
 		goToEdit() {
+			console.log('[预览页面] 点击修改简历按钮')
+			console.log('[预览页面] teacherId:', this.teacherId)
+			console.log('[预览页面] 当前简历数据:', JSON.stringify(this.resumeData).substring(0, 200))
+			
+			// 如果没有teacherId，跳转到注册页面新建
 			if (!this.teacherId) {
-				uni.showToast({
-					title: '无法获取教师ID',
-					icon: 'none'
+				console.log('[预览页面] 没有teacherId，跳转到新建页面')
+				uni.navigateTo({
+					url: '/pages/teacher-register/index'
 				})
 				return
 			}
-			
-			uni.redirectTo({
-				url: `/pages/teacher-register/index?mode=edit&teacher_id=${this.teacherId}&fromPreview=true`
-			})
+			// 有teacherId，跳转到编辑模式，并标记来自预览页面
+			const url = `/pages/teacher-register/index?mode=edit&teacher_id=${this.teacherId}&step=1&fromPreview=true`
+			console.log('[预览页面] 跳转到编辑页面:', url)
+			uni.navigateTo({ url })
 		},
 		
-		// 跳转到指定步骤
 		jumpToStep(step) {
-			// 只读模式不允许跳转
-			if (this.readonly) {
-				return
-			}
-			
-			// 没有教师ID不允许跳转
-			if (!this.teacherId) {
-				uni.showToast({
-					title: '无法获取教师ID',
-					icon: 'none'
-				})
-				return
-			}
-			
-			// 跳转到教师注册页面的指定步骤
+			if (this.readonly || !this.teacherId) return
 			uni.redirectTo({
 				url: `/pages/teacher-register/index?mode=edit&teacher_id=${this.teacherId}&step=${step}&fromPreview=true`
 			})
 		},
 		
-		// 获取教师类型标签
 		getTeacherTypeLabel() {
 			const type = this.teacherTypes.find(t => t.value === this.resumeData.teacher_type)
 			let label = type ? type.label : ''
@@ -450,7 +400,38 @@ export default {
 			return label || '-'
 		},
 		
-		// 格式化日期范围
+		getLocationText() {
+			const parts = []
+			if (this.resumeData.location_city) {
+				parts.push(this.resumeData.location_city)
+			}
+			if (this.resumeData.location_district) {
+				parts.push(this.resumeData.location_district)
+			}
+			return parts.join(' · ') || '未填写'
+		},
+		
+		getAge() {
+			if (!this.resumeData.birth_date) return ''
+			
+			try {
+				const birthDate = new Date(this.resumeData.birth_date + '-01') // 添加日期部分
+				const today = new Date()
+				let age = today.getFullYear() - birthDate.getFullYear()
+				const monthDiff = today.getMonth() - birthDate.getMonth()
+				
+				// 如果还没到生日月份,年龄减1
+				if (monthDiff < 0) {
+					age--
+				}
+				
+				return age > 0 ? age : ''
+			} catch (e) {
+				console.error('计算年龄失败', e)
+				return ''
+			}
+		},
+		
 		formatDateRange(start, end) {
 			if (!start && !end) return '时间未填写'
 			if (!start) return `至 ${end}`
@@ -458,7 +439,6 @@ export default {
 			return `${start} - ${end}`
 		},
 		
-		// 预览照片
 		previewPhoto(index) {
 			uni.previewImage({
 				urls: this.resumeData.teaching_photos,
@@ -466,637 +446,389 @@ export default {
 			})
 		},
 		
-		// 显示提交确认对话框
 		showSubmitConfirm() {
 			this.showConfirmDialog = true
 		},
 		
-		// 协议变更
 		onAgreementChange(e) {
 			this.agreed = e.detail.value.includes('agree')
 		},
 		
-		// 查看协议
 		viewAgreement() {
 			uni.navigateTo({
 				url: '/pages/agreement/index?type=teacher'
 			})
 		},
 		
-		// 确认提交
 		confirmSubmit() {
 			if (!this.agreed) {
-				uni.showToast({
-					title: '请先阅读并同意协议',
-					icon: 'none'
-				})
+				uni.showToast({ title: '请先阅读并同意协议', icon: 'none' })
 				return
 			}
 			
 			this.showConfirmDialog = false
 			
-			// 获取上一页的页面实例
-			const pages = getCurrentPages()
-			const prevPage = pages[pages.length - 2]
-			
-			if (prevPage) {
-				// 直接调用上一页的提交方法
-				if (typeof prevPage.submitRegistration === 'function') {
-					prevPage.submitRegistration()
-				} else if (typeof prevPage.$vm?.submitRegistration === 'function') {
-					prevPage.$vm.submitRegistration()
-				}
+			// 如果有teacherId，说明是编辑模式，直接提交
+			if (this.teacherId) {
+				this.submitTeacherInfo()
+			} else {
+				// 没有teacherId，触发上一页的提交方法（从注册页面跳转过来的情况）
+				uni.$emit('confirmSubmitFromPreview')
 			}
+		},
+		
+		async submitTeacherInfo() {
+			console.log('[预览页面] 点击提交按钮')
+			console.log('[预览页面] teacherId:', this.teacherId)
+			console.log('[预览页面] 当前简历数据:', JSON.stringify(this.resumeData).substring(0, 300))
 			
-			// 返回上一页
-			setTimeout(() => {
-				uni.navigateBack()
-			}, 100)
+			uni.showLoading({ title: '提交中...' })
+			
+			try {
+				// 准备提交数据 - 使用resumeData中的数据
+				const submitData = {
+					id: this.teacherId, // 编辑模式需要传id
+					name: this.resumeData.name,
+					gender: this.resumeData.gender,
+					phone: this.resumeData.phone,
+					wechat_id: this.resumeData.wechat_id,
+					email: this.resumeData.email,
+					avatar: this.resumeData.avatar,
+					hometown: this.resumeData.hometown,
+					teaching_years: this.resumeData.teaching_years,
+					birth_date: this.resumeData.birth_date,
+					location_province: this.resumeData.location_province,
+					location_city: this.resumeData.location_city,
+					location_district: this.resumeData.location_district,
+					location_address: this.resumeData.location_address,
+					location_longitude: this.resumeData.location_longitude,
+					location_latitude: this.resumeData.location_latitude,
+					school: this.resumeData.school,
+					major: this.resumeData.major,
+					teacher_type: this.resumeData.teacher_type,
+					grade_level: this.resumeData.grade_level,
+					education_level: this.resumeData.education_level,
+					experiences: this.resumeData.experiences,
+					self_intro: this.resumeData.self_intro,
+					personal_advantage: this.resumeData.personal_advantage,
+					advantage_tags: this.resumeData.advantage_tags,
+					id_card_front: this.resumeData.id_card_front,
+					id_card_back: this.resumeData.id_card_back,
+					education_certificate: this.resumeData.education_certificate,
+					teacher_certificate: this.resumeData.teacher_certificate,
+					teaching_photos: this.resumeData.teaching_photos
+				}
+				
+				console.log('[预览页面] 提交数据:', JSON.stringify(submitData).substring(0, 300))
+				// 根据是否有teacherId选择API
+// 编辑模式（有teacherId）：使用update API
+// 新建模式（无teacherId）：使用submit API
+const apiName = this.teacherId ? 'update' : 'submit'
+console.log('[预览页面] 使用API:', apiName)
+
+const res = this.teacherId 
+? await teacherRegisterApi.update(submitData)
+: await teacherRegisterApi.submit(submitData)
+				
+				uni.hideLoading()
+				
+				console.log('[预览页面] 提交响应:', res)
+				
+				if (res.success) {
+					uni.showToast({
+						title: '提交成功，等待审核',
+						icon: 'success',
+						duration: 2000
+					})
+					
+					// 提交成功后跳转到首页
+					setTimeout(() => {
+						uni.reLaunch({
+							url: '/pages/tutor-list/index'
+						})
+					}, 2000)
+				} else {
+					console.error('[预览页面] 提交失败:', res.error)
+					uni.showToast({
+						title: res.error || '提交失败',
+						icon: 'none'
+					})
+				}
+			} catch (err) {
+				uni.hideLoading()
+				console.error('[预览页面] 提交异常:', err)
+				uni.showToast({
+					title: '提交失败，请重试',
+					icon: 'none'
+				})
+			}
 		}
 	}
 }
 </script>
 
 <style scoped>
-.resume-page {
+.page {
 	min-height: 100vh;
-	background: #f5f7fa;
+	background: #f8f9fa;
+}
+
+/* 加载和错误状态 */
+.loading-container, .error-container {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	justify-content: center;
+	min-height: 100vh;
+	padding: 40rpx;
+}
+
+.loading-text {
+	font-size: 28rpx;
+	color: #909399;
+}
+
+.error-icon {
+	font-size: 80rpx;
+	margin-bottom: 20rpx;
+}
+
+.error-text {
+	font-size: 28rpx;
+	color: #606266;
+	margin-bottom: 32rpx;
+	text-align: center;
+}
+
+.retry-btn {
+	padding: 16rpx 48rpx;
+	background: #52C9A6;
+	color: #fff;
+	border-radius: 8rpx;
+	font-size: 28rpx;
+	border: none;
+}
+
+/* 内容区 */
+.main-content {
+	flex: 1;
 	display: flex;
 	flex-direction: column;
 }
 
-/* 顶部个人信息卡片 */
-.header-card {
-	position: relative;
-	padding-top: calc(88rpx + env(safe-area-inset-top));
-	margin-bottom: -60rpx;
+.content {
+	min-height: 100vh;
+	padding-bottom: calc(120rpx + env(safe-area-inset-bottom));
 }
 
-.header-bg {
-	position: absolute;
-	top: 0;
-	left: 0;
-	right: 0;
-	height: 480rpx;
-	background: linear-gradient(135deg, #52C9A6 0%, #3BA888 50%, #2D8B6F 100%);
-	border-radius: 0 0 40rpx 40rpx;
+/* 审核状态 */
+.status-tip {
+	margin: 16rpx 24rpx;
+	padding: 20rpx;
+	border-radius: 12rpx;
+	font-size: 26rpx;
+	line-height: 1.6;
 }
 
-.header-content {
-	position: relative;
-	padding: 40rpx 32rpx 80rpx;
+.status-tip.pending {
+	background: #fff9e6;
+	color: #e6a23c;
+	text-align: center;
+}
+
+.status-tip.approved {
+	background: linear-gradient(135deg, #e8f8f3 0%, #f0fdf9 100%);
+	color: #52C9A6;
+	text-align: center;
+	font-weight: 500;
+	padding: 24rpx;
+}
+
+.status-tip.rejected {
+	background: #ffe6e6;
+	color: #f56c6c;
+	text-align: center;
+}
+
+/* 个人信息卡片 */
+.info-card {
+	margin: 16rpx 24rpx 24rpx;
+	padding: 32rpx;
+	background: #fff;
+	border-radius: 16rpx;
+	box-shadow: 0 2rpx 12rpx rgba(0,0,0,0.04);
+}
+
+.info-header {
 	display: flex;
-	gap: 32rpx;
-	align-items: flex-start;
+	align-items: center;
+	gap: 24rpx;
+	margin-bottom: 24rpx;
 }
 
-.avatar-wrapper {
+.avatar, .avatar-empty {
+	width: 100rpx;
+	height: 100rpx;
+	border-radius: 12rpx;
 	flex-shrink: 0;
-	width: 160rpx;
-	height: 160rpx;
-	border-radius: 50%;
-	overflow: hidden;
-	border: 6rpx solid rgba(255, 255, 255, 0.3);
-	box-shadow: 0 8rpx 24rpx rgba(0, 0, 0, 0.15);
 }
 
-.avatar {
-	width: 100%;
-	height: 100%;
-}
-
-.avatar-placeholder {
-	width: 100%;
-	height: 100%;
-	background: rgba(255, 255, 255, 0.2);
+.avatar-empty {
+	background: #f5f7fa;
 	display: flex;
 	align-items: center;
 	justify-content: center;
-	color: #fff;
-	font-size: 24rpx;
+	font-size: 48rpx;
+	color: #c0c4cc;
 }
 
-.basic-info {
+.info-basic {
 	flex: 1;
-	padding-top: 8rpx;
 }
 
 .name-row {
 	display: flex;
 	align-items: center;
-	gap: 16rpx;
-	margin-bottom: 20rpx;
+	gap: 12rpx;
 }
 
 .name {
-	font-size: 44rpx;
-	font-weight: 700;
-	color: #fff;
-	text-shadow: 0 2rpx 8rpx rgba(0, 0, 0, 0.1);
-}
-
-.gender-badge {
-	padding: 6rpx 16rpx;
-	border-radius: 20rpx;
-	font-size: 24rpx;
-	font-weight: 500;
-	background: rgba(255, 255, 255, 0.25);
-	color: #fff;
-}
-
-.gender-badge.male {
-	background: rgba(66, 153, 225, 0.3);
-}
-
-.gender-badge.female {
-	background: rgba(237, 100, 166, 0.3);
-}
-
-/* 认证状态 */
-.cert-badge {
-	display: inline-flex;
-	align-items: center;
-	gap: 8rpx;
-	padding: 10rpx 20rpx;
-	border-radius: 24rpx;
-	font-size: 24rpx;
-	margin-bottom: 24rpx;
-	background: rgba(255, 255, 255, 0.25);
-	backdrop-filter: blur(10rpx);
-}
-
-.cert-icon {
-	width: 24rpx;
-	height: 24rpx;
-	border: 3rpx solid #fff;
-	border-radius: 50%;
-	border-top-color: transparent;
-	animation: spin 1s linear infinite;
-}
-
-@keyframes spin {
-	to { transform: rotate(360deg); }
-}
-
-.cert-text {
-	color: #fff;
-	font-weight: 500;
-}
-
-/* 教育背景摘要 */
-.edu-summary {
-	display: flex;
-	align-items: center;
-	gap: 16rpx;
-	padding: 20rpx;
-	background: rgba(255, 255, 255, 0.2);
-	backdrop-filter: blur(10rpx);
-	border-radius: 16rpx;
-	border: 1rpx solid rgba(255, 255, 255, 0.3);
-}
-
-.edu-icon-wrapper {
-	width: 56rpx;
-	height: 56rpx;
-	background: rgba(255, 255, 255, 0.3);
-	border-radius: 12rpx;
-	display: flex;
-	align-items: center;
-	justify-content: center;
-	flex-shrink: 0;
-}
-
-.edu-icon {
-	width: 32rpx;
-	height: 32rpx;
-	position: relative;
-}
-
-.edu-icon::before {
-	content: '';
-	position: absolute;
-	top: 50%;
-	left: 50%;
-	transform: translate(-50%, -50%);
-	width: 24rpx;
-	height: 24rpx;
-	border: 3rpx solid #fff;
-	border-radius: 4rpx;
-}
-
-.edu-icon::after {
-	content: '';
-	position: absolute;
-	top: 20%;
-	left: 50%;
-	transform: translateX(-50%);
-	width: 0;
-	height: 0;
-	border-left: 8rpx solid transparent;
-	border-right: 8rpx solid transparent;
-	border-bottom: 8rpx solid #fff;
-}
-
-.edu-info {
-	flex: 1;
-	display: flex;
-	flex-direction: column;
-	gap: 6rpx;
-}
-
-.edu-school {
-	font-size: 28rpx;
+	font-size: 40rpx;
 	font-weight: 600;
-	color: #fff;
-	line-height: 1.4;
+	color: #303133;
 }
 
-.edu-detail {
+.gender-icon {
+	width: 44rpx;
+	height: 44rpx;
+	border-radius: 50%;
+	display: flex;
+	align-items: center;
+	justify-content: center;
 	font-size: 24rpx;
-	color: rgba(255, 255, 255, 0.85);
-	line-height: 1.4;
+	font-weight: bold;
 }
 
-/* 返回按钮 */
-.back-btn {
-	position: absolute;
-	top: calc(20rpx + env(safe-area-inset-top));
-	left: 32rpx;
-	width: 64rpx;
-	height: 64rpx;
-	background: rgba(255, 255, 255, 0.25);
-	backdrop-filter: blur(10rpx);
-	border-radius: 50%;
+.gender-icon.male {
+	background: #e3f2fd;
+	color: #2196f3;
+}
+
+.gender-icon.female {
+	background: #fce4ec;
+	color: #e91e63;
+}
+
+.info-row {
 	display: flex;
 	align-items: center;
-	justify-content: center;
-	z-index: 10;
+	flex-wrap: wrap;
+	margin-bottom: 12rpx;
+	line-height: 1.6;
 }
 
-.back-icon {
-	width: 24rpx;
-	height: 24rpx;
-	border-left: 4rpx solid #fff;
-	border-bottom: 4rpx solid #fff;
-	transform: rotate(45deg);
-	margin-left: 6rpx;
+.info-row:last-child {
+	margin-bottom: 0;
 }
 
-/* 内容区域 */
-.resume-content {
-	flex: 1;
-	padding: 0 32rpx;
-}
-
-/* 编辑提示 */
-.edit-tip {
-	display: flex;
-	align-items: center;
-	justify-content: center;
-	gap: 12rpx;
-	padding: 20rpx;
-	margin-bottom: 24rpx;
-	background: linear-gradient(135deg, #e8f8f3 0%, #d4f1e8 100%);
-	border-radius: 16rpx;
-	font-size: 26rpx;
-	color: #3BA888;
-	border: 1rpx solid rgba(82, 201, 166, 0.2);
-}
-
-.edit-tip .iconfont {
+.info-text {
 	font-size: 28rpx;
+	color: #606266;
 }
 
-/* 审核状态提示 */
-.status-tip {
-	display: flex;
-	align-items: center;
-	gap: 24rpx;
-	padding: 24rpx;
-	margin-bottom: 24rpx;
-	border-radius: 20rpx;
+.info-label {
+	font-size: 26rpx;
+	color: #909399;
+}
+
+.separator {
+	margin: 0 8rpx;
+	font-size: 24rpx;
+	color: #dcdfe6;
+}
+
+.age-divider {
+	margin: 0 12rpx;
+	font-size: 24rpx;
+	color: #dcdfe6;
+}
+
+.location-icon {
+	font-size: 24rpx;
+	margin-right: 4rpx;
+}
+
+/* 通用卡片 */
+.card {
+	margin: 0 24rpx 16rpx;
+	padding: 28rpx;
 	background: #fff;
-	box-shadow: 0 4rpx 12rpx rgba(0, 0, 0, 0.05);
+	border-radius: 16rpx;
+	box-shadow: 0 2rpx 12rpx rgba(0,0,0,0.04);
 }
 
-.status-tip.status-pending {
-	background: linear-gradient(135deg, #fff9e6 0%, #fff 100%);
-	border: 1rpx solid #ffd666;
-}
-
-.status-tip.status-approved {
-	background: linear-gradient(135deg, #e8f8f3 0%, #fff 100%);
-	border: 1rpx solid #52C9A6;
-}
-
-.status-tip.status-rejected {
-	background: linear-gradient(135deg, #ffe6e6 0%, #fff 100%);
-	border: 1rpx solid #ff6b6b;
-}
-
-.status-icon {
-	width: 64rpx;
-	height: 64rpx;
-	border-radius: 50%;
+.card-title {
 	display: flex;
 	align-items: center;
-	justify-content: center;
-	font-size: 32rpx;
-	flex-shrink: 0;
-}
-
-.status-pending .status-icon {
-	background: #ffd666;
-	color: #fff;
-}
-
-.status-approved .status-icon {
-	background: #52C9A6;
-	color: #fff;
-}
-
-.status-rejected .status-icon {
-	background: #ff6b6b;
-	color: #fff;
-}
-
-.status-content {
-	flex: 1;
-	display: flex;
-	flex-direction: column;
-	gap: 8rpx;
-}
-
-.status-title {
+	justify-content: space-between;
+	margin-bottom: 20rpx;
 	font-size: 30rpx;
 	font-weight: 600;
 	color: #303133;
 }
 
-.status-desc {
-	font-size: 24rpx;
+.count {
+	padding: 4rpx 12rpx;
+	background: #f5f7fa;
+	border-radius: 8rpx;
+	font-size: 22rpx;
 	color: #909399;
-	line-height: 1.5;
+	font-weight: normal;
 }
 
-.bottom-placeholder {
-	height: calc(120rpx + env(safe-area-inset-bottom));
-}
-
-/* 区块卡片 */
-.section-card {
-	background: #fff;
-	border-radius: 20rpx;
-	padding: 32rpx;
-	margin-bottom: 24rpx;
-	box-shadow: 0 4rpx 12rpx rgba(0, 0, 0, 0.05);
-	transition: all 0.3s;
-	position: relative;
-}
-
-/* 可点击的卡片 */
-.section-card.clickable {
-	cursor: pointer;
-}
-
-.section-card.clickable:active {
-	transform: scale(0.98);
-	box-shadow: 0 2rpx 8rpx rgba(0, 0, 0, 0.08);
-}
-
-.section-card.empty-section {
-	background: linear-gradient(135deg, #f8f9fa 0%, #fff 100%);
-}
-
-.section-header {
-	display: flex;
-	align-items: center;
-	gap: 16rpx;
-	margin-bottom: 28rpx;
-	position: relative;
-}
-
-/* 编辑图标 */
-.edit-icon {
-	margin-left: auto;
-	font-size: 32rpx;
-	color: #52C9A6;
-	font-family: 'iconfont';
-}
-
-.section-icon {
-	width: 48rpx;
-	height: 48rpx;
-	border-radius: 12rpx;
-	position: relative;
-	flex-shrink: 0;
-}
-
-/* 教学经历图标 */
-.experience-icon {
-	background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
-}
-
-.experience-icon::before {
-	content: '';
-	position: absolute;
-	top: 50%;
-	left: 50%;
-	transform: translate(-50%, -50%);
-	width: 20rpx;
-	height: 20rpx;
-	border: 3rpx solid #fff;
-	border-radius: 50%;
-}
-
-.experience-icon::after {
-	content: '';
-	position: absolute;
-	top: 50%;
-	left: 50%;
-	transform: translate(-50%, -50%);
-	width: 8rpx;
-	height: 8rpx;
-	background: #fff;
-	border-radius: 50%;
-}
-
-/* 个人优势图标 */
-.advantage-icon {
-	background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
-}
-
-.advantage-icon::before {
-	content: '';
-	position: absolute;
-	top: 50%;
-	left: 50%;
-	transform: translate(-50%, -50%);
-	width: 0;
-	height: 0;
-	border-left: 10rpx solid transparent;
-	border-right: 10rpx solid transparent;
-	border-bottom: 18rpx solid #fff;
-}
-
-.advantage-icon::after {
-	content: '';
-	position: absolute;
-	top: 60%;
-	left: 50%;
-	transform: translate(-50%, -50%);
-	width: 20rpx;
-	height: 2rpx;
-	background: #fff;
-}
-
-/* 教学风采图标 */
-.photo-icon {
-	background: linear-gradient(135deg, #fa709a 0%, #fee140 100%);
-}
-
-.photo-icon::before {
-	content: '';
-	position: absolute;
-	top: 50%;
-	left: 50%;
-	transform: translate(-50%, -50%);
-	width: 24rpx;
-	height: 20rpx;
-	border: 3rpx solid #fff;
-	border-radius: 4rpx;
-}
-
-.photo-icon::after {
-	content: '';
-	position: absolute;
-	top: 35%;
-	right: 30%;
-	width: 8rpx;
-	height: 8rpx;
-	border-radius: 50%;
-	background: #fff;
-}
-
-.section-title {
-	font-size: 32rpx;
-	font-weight: 700;
-	color: #303133;
-	letter-spacing: 0.5rpx;
-}
-
-.section-content {
+/* 个人介绍 */
+.intro-text {
+	display: block;
+	font-size: 28rpx;
 	color: #606266;
 	line-height: 1.8;
+	text-align: justify;
 }
 
-/* 时间轴 */
-.timeline-container {
-	position: relative;
+/* 教学经历 */
+.exp-list {
+	display: flex;
+	flex-direction: column;
+	gap: 20rpx;
 }
 
-.timeline-item {
-	position: relative;
-	padding-left: 60rpx;
-	padding-bottom: 40rpx;
-}
-
-.timeline-item.last-item {
-	padding-bottom: 0;
-}
-
-.timeline-dot {
-	position: absolute;
-	left: 0;
-	top: 8rpx;
-	width: 24rpx;
-	height: 24rpx;
-	background: linear-gradient(135deg, #52C9A6, #3BA888);
-	border: 4rpx solid #e8f8f3;
-	border-radius: 50%;
-	z-index: 2;
-	box-shadow: 0 2rpx 8rpx rgba(82, 201, 166, 0.3);
-}
-
-.timeline-line {
-	position: absolute;
-	left: 11rpx;
-	top: 32rpx;
-	bottom: 0;
-	width: 2rpx;
-	background: linear-gradient(180deg, #e4e7ed 0%, transparent 100%);
-	z-index: 1;
-}
-
-.timeline-content {
-	background: linear-gradient(135deg, #f8f9fa 0%, #fff 100%);
-	border-radius: 16rpx;
-	padding: 24rpx;
-	border: 1rpx solid #ebeef5;
+.exp-item {
+	padding: 20rpx;
+	background: #fafbfc;
+	border-radius: 12rpx;
 }
 
 .exp-header {
 	display: flex;
 	justify-content: space-between;
 	align-items: flex-start;
-	margin-bottom: 16rpx;
+	margin-bottom: 12rpx;
 	gap: 16rpx;
 }
 
-.exp-subject {
-	font-size: 30rpx;
+.exp-title {
+	flex: 1;
+	font-size: 28rpx;
 	font-weight: 600;
 	color: #303133;
-	flex: 1;
+	line-height: 1.4;
 }
 
-.exp-date {
+.exp-time {
+	flex-shrink: 0;
 	font-size: 24rpx;
 	color: #909399;
-	flex-shrink: 0;
-	padding: 4rpx 12rpx;
-	background: rgba(144, 147, 153, 0.1);
-	border-radius: 12rpx;
-}
-
-.exp-location {
-	display: flex;
-	align-items: center;
-	gap: 8rpx;
-	font-size: 26rpx;
-	color: #606266;
-	margin-bottom: 12rpx;
-}
-
-.location-icon {
-	width: 20rpx;
-	height: 20rpx;
-	position: relative;
-	flex-shrink: 0;
-}
-
-.location-icon::before {
-	content: '';
-	position: absolute;
-	top: 0;
-	left: 50%;
-	transform: translateX(-50%);
-	width: 12rpx;
-	height: 16rpx;
-	border: 2rpx solid #909399;
-	border-radius: 12rpx 12rpx 0 0;
-}
-
-.location-icon::after {
-	content: '';
-	position: absolute;
-	top: 4rpx;
-	left: 50%;
-	transform: translateX(-50%);
-	width: 6rpx;
-	height: 6rpx;
-	background: #909399;
-	border-radius: 50%;
+	line-height: 1.4;
 }
 
 .exp-desc {
@@ -1106,239 +838,148 @@ export default {
 	line-height: 1.6;
 }
 
-/* 空状态 */
-.empty-tip {
-	text-align: center;
-	padding: 60rpx 0;
-	color: #909399;
-	font-size: 26rpx;
-	display: flex;
-	flex-direction: column;
-	align-items: center;
-	gap: 16rpx;
-}
-
-.empty-icon {
-	width: 80rpx;
-	height: 80rpx;
-	border: 4rpx dashed #dcdfe6;
-	border-radius: 50%;
-	position: relative;
-}
-
-.empty-icon::before {
-	content: '';
-	position: absolute;
-	top: 50%;
-	left: 50%;
-	transform: translate(-50%, -50%);
-	width: 4rpx;
-	height: 24rpx;
-	background: #dcdfe6;
-}
-
-.empty-icon::after {
-	content: '';
-	position: absolute;
-	top: 50%;
-	left: 50%;
-	transform: translate(-50%, -50%);
-	width: 24rpx;
-	height: 4rpx;
-	background: #dcdfe6;
-}
-
 /* 个人优势 */
-.advantage-text {
+.adv-text {
 	display: block;
 	font-size: 28rpx;
 	color: #606266;
 	line-height: 1.8;
-	margin-bottom: 24rpx;
+	margin-bottom: 16rpx;
 }
 
-.tags-container {
+.tags {
 	display: flex;
 	flex-wrap: wrap;
-	gap: 16rpx;
+	gap: 12rpx;
 }
 
-.advantage-tag {
-	padding: 12rpx 24rpx;
-	background: linear-gradient(135deg, #e8f8f3 0%, #d4f1e8 100%);
-	color: #3BA888;
-	border-radius: 24rpx;
+.tag {
+	padding: 10rpx 20rpx;
+	background: #f5f7fa;
+	border-radius: 8rpx;
 	font-size: 26rpx;
-	font-weight: 500;
-	border: 1rpx solid rgba(82, 201, 166, 0.2);
+	color: #606266;
 }
 
 /* 教学风采 */
-.photos-grid {
+.photos {
 	display: grid;
 	grid-template-columns: repeat(3, 1fr);
-	gap: 16rpx;
+	gap: 12rpx;
 }
 
-.photo-item {
+.photo {
 	width: 100%;
-	height: 200rpx;
-	border-radius: 12rpx;
-	border: 1rpx solid #ebeef5;
+	height: 180rpx;
+	border-radius: 8rpx;
+}
+
+.empty-photos {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	justify-content: center;
+	padding: 60rpx 0;
+}
+
+.empty-icon {
+	font-size: 64rpx;
+	margin-bottom: 16rpx;
+	opacity: 0.3;
+}
+
+.empty-text {
+	font-size: 26rpx;
+	color: #909399;
+}
+
+.bottom-space {
+	height: 40rpx;
 }
 
 /* 底部按钮 */
-.bottom-bar {
+.footer {
 	position: fixed;
 	bottom: 0;
 	left: 0;
 	right: 0;
-	padding: 24rpx 32rpx;
-	padding-bottom: calc(24rpx + env(safe-area-inset-bottom));
+	padding: 16rpx 24rpx;
+	padding-bottom: calc(16rpx + env(safe-area-inset-bottom));
 	background: #fff;
-	border-top: 1rpx solid #ebeef5;
+	border-top: 1rpx solid #eee;
 	display: flex;
-	gap: 24rpx;
-	z-index: 100;
-	box-shadow: 0 -4rpx 12rpx rgba(0, 0, 0, 0.05);
+	gap: 16rpx;
+	z-index: 999;
 }
 
-.btn {
+.btn-outline, .btn-primary {
 	flex: 1;
 	height: 88rpx;
-	border-radius: 16rpx;
+	border-radius: 12rpx;
 	font-size: 28rpx;
-	font-weight: 600;
+	border: none;
 	display: flex;
 	align-items: center;
 	justify-content: center;
-	gap: 12rpx;
-	border: none;
-	transition: all 0.3s;
 }
 
-.btn:active {
-	transform: scale(0.98);
-}
-
-.btn-secondary {
+.btn-outline {
 	background: #f5f7fa;
 	color: #606266;
 }
 
 .btn-primary {
-	background: linear-gradient(135deg, #52C9A6 0%, #3BA888 100%);
+	background: #52C9A6;
 	color: #fff;
-	box-shadow: 0 8rpx 24rpx rgba(82, 201, 166, 0.3);
 }
 
 .btn-full {
-	flex: 1;
 	width: 100%;
 }
 
-/* 按钮图标 */
-.btn-icon {
-	width: 28rpx;
-	height: 28rpx;
-	position: relative;
-}
-
-.edit-icon::before {
-	content: '';
-	position: absolute;
-	top: 50%;
-	left: 0;
-	transform: translateY(-50%) rotate(-45deg);
-	width: 16rpx;
-	height: 16rpx;
-	border: 3rpx solid currentColor;
-	border-top: none;
-	border-right: none;
-}
-
-.edit-icon::after {
-	content: '';
-	position: absolute;
-	top: 20%;
-	right: 0;
-	width: 12rpx;
-	height: 3rpx;
-	background: currentColor;
-	transform: rotate(-45deg);
-}
-
-.check-icon::before {
-	content: '';
-	position: absolute;
-	bottom: 30%;
-	left: 20%;
-	width: 8rpx;
-	height: 3rpx;
-	background: currentColor;
-	transform: rotate(-45deg);
-}
-
-.check-icon::after {
-	content: '';
-	position: absolute;
-	bottom: 30%;
-	left: 30%;
-	width: 16rpx;
-	height: 3rpx;
-	background: currentColor;
-	transform: rotate(45deg);
-}
-
-/* 提交确认弹窗 */
-.modal-mask {
+/* 弹窗 */
+.modal {
 	position: fixed;
 	top: 0;
 	left: 0;
 	right: 0;
 	bottom: 0;
-	background: rgba(0, 0, 0, 0.5);
+	background: rgba(0,0,0,0.5);
 	display: flex;
 	align-items: center;
 	justify-content: center;
-	z-index: 1000;
+	z-index: 9999;
 }
 
-.confirm-modal {
+.modal-box {
 	width: 600rpx;
-	background: #fff;
-	border-radius: 24rpx;
-	overflow: hidden;
-}
-
-.modal-header {
 	padding: 32rpx;
-	text-align: center;
-	border-bottom: 1rpx solid #ebeef5;
+	background: #fff;
+	border-radius: 16rpx;
 }
 
 .modal-title {
+	display: block;
 	font-size: 32rpx;
 	font-weight: 600;
 	color: #303133;
-}
-
-.modal-body {
-	padding: 32rpx;
+	text-align: center;
+	margin-bottom: 16rpx;
 }
 
 .modal-text {
 	display: block;
-	font-size: 28rpx;
+	font-size: 26rpx;
 	color: #606266;
 	line-height: 1.6;
 	margin-bottom: 24rpx;
 }
 
-.agreement-box {
+.agreement {
+	padding: 20rpx;
 	background: #f5f7fa;
 	border-radius: 12rpx;
-	padding: 20rpx;
+	margin-bottom: 24rpx;
 }
 
 .agreement-label {
@@ -1346,7 +987,6 @@ export default {
 	align-items: center;
 	font-size: 26rpx;
 	color: #606266;
-	line-height: 1.6;
 }
 
 .agreement-label checkbox {
@@ -1359,33 +999,31 @@ export default {
 	margin-left: 4rpx;
 }
 
-.modal-footer {
+.modal-btns {
 	display: flex;
-	border-top: 1rpx solid #ebeef5;
+	align-items: center;
+	gap: 16rpx;
 }
 
 .modal-btn {
 	flex: 1;
-	height: 96rpx;
+	height: 80rpx;
+	border-radius: 12rpx;
 	font-size: 28rpx;
-	font-weight: 600;
 	border: none;
-	background: none;
+	background: #f5f7fa;
+	color: #606266;
 	display: flex;
 	align-items: center;
 	justify-content: center;
 }
 
-.cancel-btn {
-	color: #606266;
-	border-right: 1rpx solid #ebeef5;
+.modal-btn.primary {
+	background: #52C9A6;
+	color: #fff;
 }
 
-.confirm-btn {
-	color: #52C9A6;
-}
-
-.confirm-btn:disabled {
-	color: #c0c4cc;
+.modal-btn:disabled {
+	opacity: 0.5;
 }
 </style>

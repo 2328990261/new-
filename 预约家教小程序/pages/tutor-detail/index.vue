@@ -28,6 +28,51 @@
 			</view>
 		</view>
 
+		<!-- 相关推荐 -->
+		<view class="recommend-section" v-if="recommendList.length > 0">
+			<view class="recommend-header">
+				<view class="header-line"></view>
+				<text class="header-title">相关推荐</text>
+				<view class="header-line"></view>
+			</view>
+			
+			<view class="recommend-list">
+				<view 
+					class="recommend-item" 
+					v-for="item in recommendList" 
+					:key="item.id"
+					@click="viewRecommend(item)"
+				>
+					<!-- 标题行 -->
+					<view class="recommend-title-row">
+						<view class="recommend-tags">
+							<text class="recommend-tag grade-tag">{{ item.grade }}</text>
+							<text class="recommend-tag subject-tag">{{ item.subject_name || item.subject?.name }}</text>
+						</view>
+						<text class="recommend-salary">{{ extractSalary(item.salary, item) }}</text>
+					</view>
+					
+					<!-- 位置信息 -->
+					<view class="recommend-location">
+						<text class="location-icon">📍</text>
+						<text class="location-text">
+							{{ item.city_name || item.city?.name }}
+							<text v-if="item.district_name || item.district?.name">·{{ item.district_name || item.district?.name }}</text>
+						</text>
+					</view>
+					
+					<!-- 描述 -->
+					<view class="recommend-desc">{{ item.content }}</view>
+					
+					<!-- 底部信息 -->
+					<view class="recommend-footer">
+						<text class="recommend-time">{{ formatTime(item.create_time) }}</text>
+						<view class="recommend-arrow">→</view>
+					</view>
+				</view>
+			</view>
+		</view>
+
 		<!-- 底部操作栏 -->
 		<view class="action-bar">
 			<view class="action-btn secondary" @click="handleCollect">
@@ -192,14 +237,45 @@ export default {
 			qrcodeImage: '',
 			canvasWidth: 750,
 			canvasHeight: 1200, // 初始高度，会根据内容动态调整
-			pixelRatio: 3
+			pixelRatio: 3,
+			recommendList: [] // 相关推荐列表
 		}
 	},
 	onLoad(options) {
+		// 处理普通链接参数
 		if (options.id) {
 			this.tutorId = options.id
+		}
+		// 处理小程序码扫码进入的scene参数
+		else if (options.scene) {
+			try {
+				// scene参数是URL编码的，需要解码
+				const scene = decodeURIComponent(options.scene)
+				// 解析scene参数，格式为 id=123
+				const params = {}
+				scene.split('&').forEach(item => {
+					const [key, value] = item.split('=')
+					if (key && value) {
+						params[key] = value
+					}
+				})
+				if (params.id) {
+					this.tutorId = params.id
+				}
+			} catch (e) {
+				console.error('解析scene参数失败:', e)
+			}
+		}
+		
+		// 如果成功获取到tutorId，加载详情
+		if (this.tutorId) {
 			this.loadTutorDetail()
 			this.checkCollectStatus()
+		} else {
+			uni.showToast({
+				title: '参数错误',
+				icon: 'none'
+			})
 		}
 	},
 	// 分享给好友 - 使用生成的海报作为分享图
@@ -234,6 +310,8 @@ export default {
 				const data = response?.data
 				if (data && (data.success || data.code === 200)) {
 					this.tutorInfo = data.data || {}
+					// 加载详情成功后，加载相关推荐
+					this.loadRecommendList()
 				} else {
 					uni.showToast({ title: data?.error || data?.msg || '加载失败', icon: 'none' })
 				}
@@ -241,6 +319,62 @@ export default {
 				uni.hideLoading()
 				uni.showToast({ title: '网络错误', icon: 'none' })
 			}
+		},
+		
+		// 加载相关推荐列表
+		async loadRecommendList() {
+			try {
+				// 根据当前家教信息的城市和科目推荐
+				const params = {
+					page: 1,
+					page_size: 5,
+					exclude_id: this.tutorId // 排除当前家教
+				}
+				
+				// 优先按城市和科目推荐
+				if (this.tutorInfo.city_id) {
+					params.city_id = this.tutorInfo.city_id
+				}
+				if (this.tutorInfo.subject_id) {
+					params.subject_id = this.tutorInfo.subject_id
+				}
+				
+				const res = await uni.request({
+					url: envConfig.API_BASE_URL + '/api/tutors/list',
+					method: 'GET',
+					data: params
+				})
+				
+				const response = res[1] || res
+				const data = response?.data
+				const isOk = data && (data.code === 200 || data.success === true)
+				
+				if (isOk) {
+					const list = data.data?.list || data.data || []
+					this.recommendList = list.slice(0, 5) // 最多显示5条
+				}
+			} catch (error) {
+				console.error('加载推荐列表失败:', error)
+				// 静默处理错误
+			}
+		},
+		
+		// 查看推荐的家教详情
+		viewRecommend(item) {
+			uni.navigateTo({
+				url: `/pages/tutor-detail/index?id=${item.id}`
+			})
+		},
+		
+		// 提取薪资信息
+		extractSalary(salary, tutor) {
+			if (!salary) {
+				return tutor.budget_min && tutor.budget_max 
+					? `${tutor.budget_min}-${tutor.budget_max}元/次` 
+					: '面议'
+			}
+			const match = salary.match(/(\d+)/)
+			return match ? `${match[1]}元/次` : salary
 		},
 
 		getTeacherGenderFromContent(content) {
@@ -1630,6 +1764,136 @@ export default {
 	font-size: 24rpx;
 	color: #94A3B8;
 	font-weight: 500;
+}
+
+/* 相关推荐 */
+.recommend-section {
+	margin: 24rpx;
+	margin-bottom: 180rpx;
+	background: #fff;
+	border-radius: 16rpx;
+	padding: 32rpx 24rpx;
+	box-shadow: 0 2rpx 12rpx rgba(0, 0, 0, 0.04);
+}
+
+.recommend-header {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	margin-bottom: 32rpx;
+	gap: 16rpx;
+}
+
+.header-line {
+	flex: 1;
+	height: 1rpx;
+	background: linear-gradient(90deg, transparent, #E5E7EB, transparent);
+}
+
+.header-title {
+	font-size: 32rpx;
+	font-weight: 600;
+	color: #303133;
+}
+
+.recommend-list {
+	display: flex;
+	flex-direction: column;
+	gap: 20rpx;
+}
+
+.recommend-item {
+	padding: 24rpx;
+	background: #F5F7FA;
+	border-radius: 12rpx;
+	transition: all 0.3s;
+}
+
+.recommend-item:active {
+	background: #E8EBF0;
+	transform: scale(0.98);
+}
+
+.recommend-title-row {
+	display: flex;
+	justify-content: space-between;
+	align-items: center;
+	margin-bottom: 16rpx;
+}
+
+.recommend-tags {
+	display: flex;
+	gap: 12rpx;
+	flex: 1;
+}
+
+.recommend-tag {
+	padding: 8rpx 16rpx;
+	border-radius: 8rpx;
+	font-size: 24rpx;
+	font-weight: 500;
+}
+
+.grade-tag {
+	background: linear-gradient(135deg, #FFE5E5, #FFD6D6);
+	color: #FF6B6B;
+}
+
+.subject-tag {
+	background: linear-gradient(135deg, #E3F2FD, #BBDEFB);
+	color: #2196F3;
+}
+
+.recommend-salary {
+	font-size: 28rpx;
+	font-weight: 700;
+	color: #FF6B35;
+	white-space: nowrap;
+}
+
+.recommend-location {
+	display: flex;
+	align-items: center;
+	gap: 8rpx;
+	margin-bottom: 12rpx;
+}
+
+.location-icon {
+	font-size: 24rpx;
+}
+
+.location-text {
+	font-size: 24rpx;
+	color: #52C9A6;
+}
+
+.recommend-desc {
+	font-size: 26rpx;
+	color: #606266;
+	line-height: 1.6;
+	margin-bottom: 16rpx;
+	display: -webkit-box;
+	-webkit-box-orient: vertical;
+	-webkit-line-clamp: 2;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+.recommend-footer {
+	display: flex;
+	justify-content: space-between;
+	align-items: center;
+}
+
+.recommend-time {
+	font-size: 22rpx;
+	color: #C0C4CC;
+}
+
+.recommend-arrow {
+	font-size: 28rpx;
+	color: #52C9A6;
+	font-weight: bold;
 }
 
 .action-bar {

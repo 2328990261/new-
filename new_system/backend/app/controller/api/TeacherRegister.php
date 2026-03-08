@@ -305,13 +305,11 @@ class TeacherRegister extends BaseController
                 }
             }
             
-            // 如果是驳回状态，更新后重新设置为待审核
-            if ($teacher->review_status === 'rejected') {
-                $updateData['review_status'] = 'pending';
-                $updateData['review_note'] = null;
-                $updateData['review_time'] = null;
-                $updateData['reviewer_id'] = null;
-            }
+            // 更新后重新设置为待审核（无论之前是什么状态）
+            $updateData['review_status'] = 'pending';
+            $updateData['review_note'] = null;
+            $updateData['review_time'] = null;
+            $updateData['reviewer_id'] = null;
             
             // 更新教师记录
             $teacher->save($updateData);

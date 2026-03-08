@@ -5,7 +5,19 @@
 			"style": {
 				"navigationBarTitleText": "生源信息",
 				"navigationStyle": "custom",
-				"enablePullDownRefresh": true
+				"enablePullDownRefresh": true,
+				"backgroundColor": "#F5F7FA",
+				"backgroundColorTop": "#FFFFFF",
+				"backgroundColorBottom": "#F5F7FA"
+			}
+		},
+		{
+			"path": "pages/tutor-search-result/index",
+			"style": {
+				"navigationBarTitleText": "搜索结果",
+				"navigationStyle": "custom",
+				"enablePullDownRefresh": true,
+				"backgroundColor": "#F5F7FA"
 			}
 		},
 		{
@@ -13,14 +25,31 @@
 			"style": {
 				"navigationBarTitleText": "小萌AI",
 				"navigationStyle": "custom",
-				"enablePullDownRefresh": false
+				"enablePullDownRefresh": false,
+				"backgroundColor": "#F5F7FA",
+				"backgroundColorTop": "#FFFFFF",
+				"backgroundColorBottom": "#F5F7FA"
+			}
+		},
+		{
+			"path": "pages/step-booking/index",
+			"style": {
+				"navigationBarTitleText": "预约家教",
+				"navigationBarBackgroundColor": "#ffffff",
+				"navigationBarTextStyle": "black",
+				"backgroundColor": "#F5F7FA",
+				"backgroundColorTop": "#FFFFFF",
+				"backgroundColorBottom": "#F5F7FA"
 			}
 		},
 		{
 			"path": "pages/booking-form/index",
 			"style": {
 				"navigationBarTitleText": "预约家教",
-				"navigationStyle": "custom"
+				"navigationStyle": "custom",
+				"backgroundColor": "#F5F7FA",
+				"backgroundColorTop": "#FFFFFF",
+				"backgroundColorBottom": "#F5F7FA"
 			}
 		},
 		{
@@ -35,7 +64,10 @@
 			"path": "pages/teacher-library/index",
 			"style": {
 				"navigationStyle": "custom",
-				"enablePullDownRefresh": true
+				"enablePullDownRefresh": true,
+				"backgroundColor": "#F5F7FA",
+				"backgroundColorTop": "#FFFFFF",
+				"backgroundColorBottom": "#F5F7FA"
 			}
 		},
 
@@ -60,7 +92,10 @@
 			"style": {
 				"navigationBarTitleText": "预约管理",
 				"navigationStyle": "custom",
-				"enablePullDownRefresh": true
+				"enablePullDownRefresh": true,
+				"backgroundColor": "#F5F7FA",
+				"backgroundColorTop": "#FFFFFF",
+				"backgroundColorBottom": "#F5F7FA"
 			}
 		},
 		{
@@ -149,14 +184,20 @@
 			"style": {
 				"navigationBarTitleText": "我的投递",
 				"navigationStyle": "custom",
-				"enablePullDownRefresh": true
+				"enablePullDownRefresh": true,
+				"backgroundColor": "#F5F7FA",
+				"backgroundColorTop": "#FFFFFF",
+				"backgroundColorBottom": "#F5F7FA"
 			}
 		},
 		{
 			"path": "pages/my-favorites/index",
 			"style": {
 				"navigationStyle": "custom",
-				"enablePullDownRefresh": true
+				"enablePullDownRefresh": true,
+				"backgroundColor": "#F5F7FA",
+				"backgroundColorTop": "#FFFFFF",
+				"backgroundColorBottom": "#F5F7FA"
 			}
 		},
 		{
@@ -172,7 +213,9 @@
 			"path": "pages/profile/index",
 			"style": {
 				"navigationStyle": "custom",
-				"backgroundColor": "#7FDFB8"
+				"backgroundColor": "#7FDFB8",
+				"backgroundColorTop": "#7FDFB8",
+				"backgroundColorBottom": "#F5F7FA"
 			}
 		},
 		{

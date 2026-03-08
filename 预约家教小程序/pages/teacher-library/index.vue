@@ -158,8 +158,8 @@
               <view class="name-verify-group">
                 <text class="teacher-name">{{ teacher.name }}</text>
                 <view class="teacher-verify-inline" v-if="teacher.is_verified">
-                  <text class="iconfont icon-verify"></text>
-                  <text class="verify-text">认证</text>
+                  <text class="verify-icon">✓</text>
+                  <text class="verify-text">已认证</text>
                 </view>
               </view>
               <view class="teacher-meta">
@@ -183,15 +183,15 @@
             
             <!-- 第三行：授课科目标签 -->
             <view class="teacher-subjects" v-if="teacher.subjects && teacher.subjects.length > 0">
-              <text class="subjects-label">授课科目：</text>
               <view class="subjects-list">
                 <text 
-                  v-for="(subject, subIndex) in teacher.subjects" 
+                  v-for="(subject, subIndex) in teacher.subjects.slice(0, 4)" 
                   :key="subIndex"
                   class="subject-tag"
                 >
                   {{ subject }}
                 </text>
+                <text v-if="teacher.subjects.length > 4" class="subject-more">+{{ teacher.subjects.length - 4 }}</text>
               </view>
             </view>
             
@@ -204,6 +204,11 @@
               >
                 {{ tag }}
               </text>
+            </view>
+            
+            <!-- 第五行：个人优势介绍 -->
+            <view class="personal-advantage" v-if="teacher.personal_advantage">
+              <text class="advantage-text">{{ teacher.personal_advantage }}</text>
             </view>
             
             <!-- 距离显示 - 右下角 -->
@@ -714,6 +719,24 @@ export default {
         url: '/pages/ai-booking/index'
       })
     }
+  },
+  
+  // 分享给好友/群聊
+  onShareAppMessage() {
+    return {
+      title: '优质教员库，找到适合你的好老师！',
+      path: '/pages/teacher-library/index',
+      imageUrl: '/static/share-teacher.png'
+    }
+  },
+  
+  // 分享到朋友圈
+  onShareTimeline() {
+    return {
+      title: '优质教员库，找到适合你的好老师！',
+      query: '',
+      imageUrl: '/static/share-teacher.png'
+    }
   }
 }
 </script>
@@ -723,7 +746,7 @@ export default {
   display: flex;
   flex-direction: column;
   min-height: 100vh;
-  background: linear-gradient(180deg, #7FDFB8 0%, #E8F8F2 30%, #F5F9FF 100%);
+  background: linear-gradient(180deg, #3BA888 0%, #C5EBE0 35%, #F5F9FF 100%);
   position: relative;
 }
 
@@ -860,27 +883,37 @@ export default {
   justify-content: center;
   padding: 12rpx 12rpx;
   font-size: 26rpx;
-  color: #fff;
-  background-color: rgba(255, 255, 255, 0.2);
+  color: #52C9A6 !important;
+  background-color: rgba(255, 255, 255, 0.9);
   backdrop-filter: blur(8rpx);
   border-radius: 30rpx;
   white-space: nowrap;
   gap: 8rpx;
   box-shadow: 0 2rpx 10rpx rgba(0, 0, 0, 0.1);
-  border: 1rpx solid rgba(255, 255, 255, 0.3);
+  border: 1rpx solid rgba(82, 201, 166, 0.3);
   transition: all 0.3s ease;
+  font-weight: 500;
+}
+
+.filter-item text {
+  color: #52C9A6 !important;
 }
 
 .filter-item.active {
-  background: rgba(255, 255, 255, 0.95);
-  color: #52C9A6;
-  border-color: transparent;
-  box-shadow: 0 4rpx 12rpx rgba(0, 0, 0, 0.15);
-  font-weight: 500;
+  background: rgba(82, 201, 166, 0.15);
+  color: #52C9A6 !important;
+  border-color: #52C9A6;
+  box-shadow: 0 4rpx 12rpx rgba(82, 201, 166, 0.25);
+  font-weight: 600;
+}
+
+.filter-item.active text {
+  color: #52C9A6 !important;
 }
 
 .filter-arrow {
   font-size: 20rpx;
+  color: #52C9A6 !important;
   transition: transform 0.3s ease;
 }
 
@@ -906,8 +939,9 @@ export default {
 }
 
 .filter-panel {
-  background-color: #fff;
-  border-top: 1rpx solid #f0f0f0;
+  background: linear-gradient(180deg, #ffffff 0%, #f8fdfb 100%);
+  border-top: 2rpx solid rgba(82, 201, 166, 0.2);
+  box-shadow: 0 4rpx 20rpx rgba(82, 201, 166, 0.1);
   animation: slideDown 0.3s ease;
 }
 
@@ -923,26 +957,32 @@ export default {
 }
 
 .filter-panel-content {
-  padding: 20rpx 30rpx;
+  padding: 24rpx 30rpx;
 }
 
 .filter-option {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 24rpx 20rpx;
+  padding: 28rpx 24rpx;
   font-size: 28rpx;
   color: #333;
-  border-bottom: 1rpx solid #f5f5f5;
+  background: #fff;
+  border-radius: 12rpx;
+  margin-bottom: 12rpx;
+  border: 2rpx solid transparent;
+  transition: all 0.3s ease;
 }
 
 .filter-option:last-child {
-  border-bottom: none;
+  margin-bottom: 0;
 }
 
 .filter-option.selected {
   color: #52C9A6;
-  font-weight: 500;
+  font-weight: 600;
+  background: rgba(82, 201, 166, 0.08);
+  border-color: #52C9A6;
 }
 
 .check-icon {
@@ -967,19 +1007,24 @@ export default {
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 20rpx 16rpx;
+  padding: 24rpx 16rpx;
   font-size: 26rpx;
   color: #666;
-  background-color: #f5f5f5;
-  border-radius: 12rpx;
+  background-color: #f8f9fa;
+  border: 2rpx solid #e9ecef;
+  border-radius: 16rpx;
   text-align: center;
   transition: all 0.3s ease;
+  font-weight: 500;
 }
 
 .subject-option.selected {
   color: #fff;
   background: linear-gradient(135deg, #52C9A6 0%, #3BA888 100%);
-  font-weight: 500;
+  border-color: transparent;
+  font-weight: 600;
+  box-shadow: 0 4rpx 12rpx rgba(82, 201, 166, 0.3);
+  transform: scale(1.02);
 }
 
 .subject-option .check-icon {
@@ -993,27 +1038,39 @@ export default {
 .subject-actions {
   display: flex;
   gap: 20rpx;
-  padding-top: 20rpx;
-  border-top: 1rpx solid #f0f0f0;
+  padding-top: 24rpx;
+  border-top: 2rpx solid rgba(82, 201, 166, 0.15);
 }
 
 .action-btn {
   flex: 1;
-  padding: 24rpx;
+  padding: 26rpx;
   font-size: 28rpx;
   text-align: center;
-  border-radius: 12rpx;
-  font-weight: 500;
+  border-radius: 16rpx;
+  font-weight: 600;
+  transition: all 0.3s ease;
 }
 
 .clear-btn {
   color: #666;
-  background-color: #f5f5f5;
+  background: #f5f5f5;
+  border: 2rpx solid #e0e0e0;
+}
+
+.clear-btn:active {
+  background: #e8e8e8;
 }
 
 .confirm-btn {
   color: #fff;
   background: linear-gradient(135deg, #52C9A6 0%, #3BA888 100%);
+  box-shadow: 0 4rpx 12rpx rgba(82, 201, 166, 0.3);
+}
+
+.confirm-btn:active {
+  box-shadow: 0 2rpx 8rpx rgba(82, 201, 166, 0.4);
+  transform: translateY(2rpx);
 }
 
 .teacher-list {
@@ -1083,31 +1140,35 @@ export default {
   opacity: 0.8;
 }
 
-/* 精选标签 - 左上角红色渐变带星星图标 */
+/* 精选标签 - 左上角高级渐变设计 */
 .teacher-top-badge {
   position: absolute;
-  top: 12rpx;
-  left: 12rpx;
-  padding: 6rpx 12rpx;
-  background: linear-gradient(135deg, #FF6B6B 0%, #EE5A52 100%);
+  top: 0;
+  left: 0;
+  padding: 8rpx 16rpx 8rpx 12rpx;
+  background: linear-gradient(135deg, #FFD700 0%, #FFA500 100%);
   color: #fff;
-  font-size: 20rpx;
-  border-radius: 12rpx;
-  font-weight: 600;
-  box-shadow: 0 2rpx 8rpx rgba(255, 107, 107, 0.5);
+  font-size: 22rpx;
+  border-radius: 12rpx 0 12rpx 0;
+  font-weight: 700;
+  box-shadow: 0 4rpx 12rpx rgba(255, 165, 0, 0.4);
   display: flex;
   align-items: center;
-  gap: 4rpx;
+  gap: 6rpx;
+  letter-spacing: 0.5rpx;
+  backdrop-filter: blur(8rpx);
 }
 
 .teacher-top-badge .badge-icon {
-  font-size: 20rpx;
+  font-size: 24rpx;
   line-height: 1;
+  filter: drop-shadow(0 1rpx 2rpx rgba(0, 0, 0, 0.2));
 }
 
 .teacher-top-badge .badge-text {
-  font-size: 20rpx;
+  font-size: 22rpx;
   line-height: 1;
+  text-shadow: 0 1rpx 2rpx rgba(0, 0, 0, 0.1);
 }
 
 /* 教师类型标签 - 左下角绿色 */
@@ -1145,21 +1206,26 @@ export default {
 .teacher-verify-inline {
   display: flex;
   align-items: center;
-  padding: 4rpx 8rpx;
-  background: #FFF7ED;
-  border-radius: 8rpx;
-  gap: 4rpx;
+  padding: 6rpx 12rpx;
+  background: linear-gradient(135deg, #FFF5E6 0%, #FFE8CC 100%);
+  border-radius: 12rpx;
+  gap: 6rpx;
+  border: 1rpx solid rgba(255, 149, 0, 0.2);
+  box-shadow: 0 2rpx 8rpx rgba(255, 149, 0, 0.08);
 }
 
-.teacher-verify-inline .iconfont {
-  font-size: 18rpx;
+.teacher-verify-inline .verify-icon {
+  font-size: 20rpx;
   color: #FF9500;
+  font-weight: 700;
+  line-height: 1;
 }
 
 .teacher-verify-inline .verify-text {
-  font-size: 18rpx;
+  font-size: 22rpx;
   color: #FF9500;
-  font-weight: 500;
+  font-weight: 600;
+  letter-spacing: 0.5rpx;
 }
 
 .teacher-meta {
@@ -1215,19 +1281,19 @@ export default {
   right: 16rpx;
   display: flex;
   align-items: center;
-  gap: 4rpx;
+  gap: 6rpx;
   padding: 8rpx 16rpx;
   background: linear-gradient(135deg, #e8f8f4 0%, #d4f1ea 100%);
   border-radius: 20rpx;
   box-shadow: 0 2rpx 8rpx rgba(82, 201, 166, 0.15);
 }
 
-.distance-icon {
+.distance-badge .distance-icon {
   font-size: 24rpx;
   line-height: 1;
 }
 
-.distance-value {
+.distance-badge .distance-value {
   font-size: 24rpx;
   color: #52C9A6;
   font-weight: 600;
@@ -1249,6 +1315,26 @@ export default {
   font-size: 22rpx;
   font-weight: 500;
   border: 1rpx solid #ffd699;
+}
+
+/* 个人优势介绍 */
+.personal-advantage {
+  margin-bottom: 12rpx;
+  padding: 12rpx 16rpx;
+  background: linear-gradient(135deg, #f8fcff 0%, #f0f9f5 100%);
+  border-radius: 12rpx;
+  border-left: 4rpx solid #52C9A6;
+}
+
+.advantage-text {
+  font-size: 24rpx;
+  color: #666;
+  line-height: 1.6;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .teacher-details {
@@ -1282,29 +1368,36 @@ export default {
 .teacher-subjects {
   display: flex;
   align-items: flex-start;
-  margin-bottom: 16rpx;
-}
-
-.subjects-label {
-  font-size: 24rpx;
-  color: #999;
-  margin-right: 12rpx;
-  line-height: 1.4;
+  margin-bottom: 12rpx;
 }
 
 .subjects-list {
   display: flex;
   flex-wrap: wrap;
-  gap: 8rpx;
+  gap: 10rpx;
+  align-items: center;
 }
 
 .subject-tag {
-  padding: 6rpx 12rpx;
-  background: #f0f9f5;
+  padding: 8rpx 14rpx;
+  background: linear-gradient(135deg, #F0F9F5 0%, #E8F5F1 100%);
   color: #52C9A6;
-  border-radius: 12rpx;
+  border-radius: 14rpx;
+  font-size: 24rpx;
+  font-weight: 600;
+  border: 1rpx solid rgba(82, 201, 166, 0.2);
+  box-shadow: 0 2rpx 6rpx rgba(82, 201, 166, 0.08);
+  letter-spacing: 0.5rpx;
+}
+
+.subject-more {
+  padding: 8rpx 12rpx;
+  background: linear-gradient(135deg, #F5F5F5 0%, #ECECEC 100%);
+  color: #999;
+  border-radius: 14rpx;
   font-size: 22rpx;
-  font-weight: 500;
+  font-weight: 600;
+  border: 1rpx solid rgba(0, 0, 0, 0.05);
 }
 
 .teacher-price {

@@ -289,6 +289,7 @@ export default {
 			const openid = userInfo.openid || ''
 			const phone = userInfo.phone || ''
 			
+			// 获取教师注册状态
 			uni.request({
 				url: envConfig.API_BASE_URL + '/api/teacher-register/status',
 				method: 'GET',
@@ -300,12 +301,47 @@ export default {
 					if (res.data.success) {
 						const data = res.data.data
 						this.authStatus.resume = data.registered && data.review_status === 'approved'
-						this.authStatus.teaching = data.registered && data.review_status === 'approved'
 						this.authStatus.identity = !!userInfo.phone
+						
+						// 如果已注册，检查授课信息是否完善
+						if (data.registered && data.teacher_id) {
+							this.checkTeachingInfo(data.teacher_id)
+						} else {
+							this.authStatus.teaching = false
+						}
 					}
 				},
 				fail: (err) => {
 					console.error('获取认证状态失败', err)
+				}
+			})
+		},
+		
+		// 检查授课信息是否完善
+		checkTeachingInfo(teacherId) {
+			const userInfo = uni.getStorageSync('userInfo')
+			uni.request({
+				url: envConfig.API_BASE_URL + '/api/teaching-info/get',
+				method: 'GET',
+				data: {
+					openid: userInfo.openid || '',
+					phone: userInfo.phone || ''
+				},
+				success: (res) => {
+					if (res.data.success && res.data.data) {
+						const info = res.data.data
+						// 检查关键字段是否已填写
+						const hasBasicInfo = !!(info.districts && info.districts.length > 0 && 
+							info.grades && info.grades.length > 0 && 
+							info.subjects && info.subjects.length > 0)
+						this.authStatus.teaching = hasBasicInfo
+					} else {
+						this.authStatus.teaching = false
+					}
+				},
+				fail: (err) => {
+					console.error('获取授课信息失败', err)
+					this.authStatus.teaching = false
 				}
 			})
 		},

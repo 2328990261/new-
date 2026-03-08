@@ -1,4 +1,4 @@
-<template>
+﻿<template>
 	<view class="tutor-list-container">
 		<!-- 自定义导航栏 -->
 		<view class="nav-bar" :style="{paddingTop: statusBarHeight + 'px'}">
@@ -11,60 +11,13 @@
 			</view>
 		</view>
 		
-		<!-- 顶部区域：白色背景 -->
-		<view class="header-section" :style="{marginTop: (statusBarHeight + 44) + 'px'}">
-			<!-- 搜索栏 -->
-			<view class="search-bar">
-				<view class="search-input-box" @click="showSearchDialog = true">
-					<image class="search-icon-img" src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyNCIgaGVpZ2h0PSIyNCIgdmlld0JveD0iMCAwIDI0IDI0IiBmaWxsPSJub25lIiBzdHJva2U9IiM5MDkzOTkiIHN0cm9rZS13aWR0aD0iMiIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIiBzdHJva2UtbGluZWpvaW49InJvdW5kIj48Y2lyY2xlIGN4PSIxMSIgY3k9IjExIiByPSI4Ij48L2NpcmNsZT48bGluZSB4MT0iMjEiIHkxPSIyMSIgeDI9IjE2LjY1IiB5Mj0iMTYuNjUiPjwvbGluZT48L3N2Zz4=" mode="aspectFit"></image>
-					<text class="search-placeholder">{{ searchKeyword || '搜索科目、年级、城市...' }}</text>
-				</view>
-				<view class="filter-btn" @click="handleReset" v-if="hasActiveFilter">
-					<text class="filter-btn-text">重置</text>
-				</view>
-			</view>
-
-			<!-- 类型 Tab 栏 -->
-			<view class="type-tabs">
-				<view 
-					class="type-tab-item" 
-					:class="{ active: filters.teacher_type === '' }"
-					@click="handleTypeChange('')"
-				>全部</view>
-				<view 
-					class="type-tab-item" 
-					:class="{ active: filters.teacher_type === 'student' }"
-					@click="handleTypeChange('student')"
-				>大学生</view>
-				<view 
-					class="type-tab-item" 
-					:class="{ active: filters.teacher_type === 'professional' }"
-					@click="handleTypeChange('professional')"
-				>专职老师</view>
-				<view 
-					class="type-tab-item" 
-					:class="{ active: filters.teacher_type === 'online' }"
-					@click="handleTypeChange('online')"
-				>线上</view>
-			</view>
-		</view>
-
-		<view class="list-hint">
-			<view class="list-hint-pill">
-				<view class="list-hint-dot"></view>
-				<text class="list-hint-text">长按支持单选/多选复制家教信息</text>
-			</view>
-		</view>
-
-		<!-- 统计条：极简风格 -->
-		<view class="stats-bar">
-			<text class="stats-text">为您找到 {{ total }} 条相关信息</text>
-		</view>
-
-		<!-- 家教列表 -->
+		<!-- 主内容区域 - 使用scroll-view实现滚动 -->
 		<scroll-view 
-			class="tutor-list" 
+			class="main-scroll" 
+			:style="{marginTop: (statusBarHeight + 44) + 'px'}"
 			scroll-y
+			:scroll-top="scrollTop"
+			@scroll="handleScroll"
 			:lower-threshold="100"
 			@scrolltolower="loadMore"
 			:refresher-enabled="true"
@@ -75,6 +28,93 @@
 			@refresherrestore="onRefresherRestore"
 			@refresherabort="onRefresherAbort"
 		>
+			<!-- Banner横幅轮播 -->
+			<view v-if="bannerList && bannerList.length > 0" class="banner-section">
+				<swiper 
+					class="banner-swiper" 
+					:indicator-dots="bannerList.length > 1" 
+					:autoplay="true" 
+					:interval="5000" 
+					:duration="500"
+					indicator-color="rgba(255, 255, 255, 0.5)"
+					indicator-active-color="#52C9A6"
+				>
+					<swiper-item v-for="(banner, index) in bannerList" :key="banner.id || index">
+						<view 
+							class="banner-item" 
+							:class="{ 'banner-clickable': banner.link_url }"
+							@click="handleBannerClick(banner)"
+						>
+							<image 
+								v-if="banner.image_url" 
+								:src="banner.image_url" 
+								:alt="banner.title || '横幅图片'"
+								class="banner-image"
+								mode="aspectFill"
+							/>
+							<view v-if="banner.title || banner.description" class="banner-overlay">
+								<text v-if="banner.title" class="banner-title">{{ banner.title }}</text>
+								<text v-if="banner.description" class="banner-description">{{ banner.description }}</text>
+							</view>
+						</view>
+					</swiper-item>
+				</swiper>
+			</view>
+			
+			<!-- 吸顶占位区域（当搜索栏吸顶时显示） -->
+			<view v-if="isSearchBarFixed && bannerList.length > 0" class="search-placeholder"></view>
+			
+			<!-- 搜索和筛选区域 -->
+			<view class="filter-section" :class="{ 'fixed-top': isSearchBarFixed }" :style="fixedTopStyle">
+				<!-- 搜索栏 -->
+				<view class="search-bar">
+					<view class="search-input-box" @click="showSearchDialog = true">
+						<image class="search-icon-img" src="data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjAiIGhlaWdodD0iMjAiIHZpZXdCb3g9IjAgMCAyMCAyMCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPGNpcmNsZSBjeD0iOSIgY3k9IjkiIHI9IjYiIHN0cm9rZT0iIzk5OTk5OSIgc3Ryb2tlLXdpZHRoPSIxLjUiLz4KPGxpbmUgeDE9IjEzLjUiIHkxPSIxMy41IiB4Mj0iMTciIHkyPSIxNyIgc3Ryb2tlPSIjOTk5OTk5IiBzdHJva2Utd2lkdGg9IjEuNSIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIi8+Cjwvc3ZnPg==" mode="aspectFit"></image>
+						<text class="search-placeholder">{{ searchKeyword || '搜索科目、年级、城市...' }}</text>
+					</view>
+					<view class="filter-btn" @click="handleReset" v-if="hasActiveFilter">
+						<text class="filter-btn-text">重置</text>
+					</view>
+				</view>
+
+				<!-- 类型 Tab 栏 -->
+				<view class="type-tabs">
+					<view 
+						class="type-tab-item" 
+						:class="{ active: filters.teacher_type === '' }"
+						@click="handleTypeChange('')"
+					>全部</view>
+					<view 
+						class="type-tab-item" 
+						:class="{ active: filters.teacher_type === 'student' }"
+						@click="handleTypeChange('student')"
+					>大学生</view>
+					<view 
+						class="type-tab-item" 
+						:class="{ active: filters.teacher_type === 'professional' }"
+						@click="handleTypeChange('professional')"
+					>专职老师</view>
+					<view 
+						class="type-tab-item" 
+						:class="{ active: filters.teacher_type === 'online' }"
+						@click="handleTypeChange('online')"
+					>线上</view>
+				</view>
+			</view>
+
+			<view class="list-hint">
+				<view class="list-hint-pill">
+					<view class="list-hint-dot"></view>
+					<text class="list-hint-text">长按支持单选/多选复制家教信息</text>
+				</view>
+			</view>
+
+			<!-- 统计条：极简风格 -->
+			<view class="stats-bar">
+				<text class="stats-text">为您找到 {{ total }} 条相关信息</text>
+			</view>
+
+			<!-- 家教列表 -->
 			<view class="list-content" :class="{ 'select-mode-padding': isSelectMode }">
 				<view 
 					class="tutor-item" 
@@ -164,7 +204,7 @@
 		</scroll-view>
 
 		<!-- 搜索弹窗 -->
-		<view class="popup-mask" v-if="showSearchDialog" @click="showSearchDialog = false">
+		<view class="popup-mask search-mask" v-if="showSearchDialog" @click="showSearchDialog = false">
 			<view class="popup-content search-popup" @click.stop>
 				<view class="popup-header">
 					<text class="popup-title">搜索家教信息</text>
@@ -377,7 +417,7 @@
 		</view>
 
 		<!-- 底部工具栏 -->
-		<view class="bottom-toolbar" v-if="!isSelectMode">
+		<view class="bottom-toolbar" v-if="!isSelectMode && !isTeacherRegistered">
 			<view class="toolbar-btn register-teacher-btn" @click="goToTeacherRegister">
 				<image class="toolbar-icon" src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyNCIgaGVpZ2h0PSIyNCIgdmlld0JveD0iMCAwIDI0IDI0IiBmaWxsPSJub25lIiBzdHJva2U9IiNmZmZmZmYiIHN0cm9rZS13aWR0aD0iMiIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIiBzdHJva2UtbGluZWpvaW49InJvdW5kIj48cGF0aCBkPSJNMTYgMjF2LTJhNCA0IDAgMCAwLTQtNEg1YTQgNCAwIDAgMC00IDR2MiI+PC9wYXRoPjxjaXJjbGUgY3g9IjguNSIgY3k9IjciIHI9IjQiPjwvY2lyY2xlPjxsaW5lIHgxPSIyMCIgeTE9IjgiIHgyPSIyMCIgeTI9IjE0Ij48L2xpbmU+PGxpbmUgeDE9IjIzIiB5MT0iMTEiIHgyPSIxNyIgeTI9IjExIj48L2xpbmU+PC9zdmc+" mode="aspectFit"></image>
 				<text class="toolbar-text">注册成为老师</text>
@@ -405,7 +445,7 @@
 <script>
 import envConfig from '@/config/env.js'
 import shareMixin from '@/mixins/share.js'
-import { teacherRegisterApi } from '@/utils/api.js'
+import { teacherRegisterApi, bannerApi } from '@/utils/api.js'
 import CustomTabbar from '@/components/custom-tabbar/index.vue'
 
 export default {
@@ -417,6 +457,14 @@ export default {
 		return {
 			// 状态栏高度
 			statusBarHeight: 0,
+			
+			// Banner横幅
+			bannerList: [],
+			
+			// 滚动相关
+			scrollTop: 0,
+			isSearchBarFixed: false,
+			bannerHeight: 320, // banner高度（rpx）
 			
 			// 搜索相关
 			searchKeyword: '',
@@ -466,8 +514,11 @@ export default {
 			selectedTutors: [],
 			
 			// 分享菜单
-			shareMenuVisible: false
-		}
+			shareMenuVisible: false,
+		
+		// 教师注册状态
+		isTeacherRegistered: false
+	}
 	},
 	computed: {
 		selectedCityName() {
@@ -505,6 +556,14 @@ export default {
 			}
 			const province = this.provinces.find(p => p.name === this.selectedProvince)
 			return province ? province.cities : []
+		},
+		// 吸顶时的样式
+		fixedTopStyle() {
+			if (!this.isSearchBarFixed) return {}
+			return {
+				top: (this.statusBarHeight + 44) + 'px',
+				zIndex: 100
+			}
 		}
 	},
 	onLoad() {
@@ -512,11 +571,84 @@ export default {
 		const systemInfo = uni.getSystemInfoSync()
 		this.statusBarHeight = systemInfo.statusBarHeight || 0
 		
+		this.loadBannerList()
 		this.loadCities()
 		this.loadSubjects()
 		this.loadTutorList()
+		this.checkTeacherRegistration()
 	},
 	methods: {
+		// 加载Banner横幅列表
+		async loadBannerList() {
+			try {
+				console.log('开始加载Banner横幅...')
+				const res = await bannerApi.getBannerList()
+				console.log('Banner API响应:', JSON.stringify(res))
+				
+				// 兼容不同的返回格式
+				const isSuccess = res.success === true || res.code === 200
+				const data = res.data || []
+				
+				if (isSuccess && data.length > 0) {
+					// 只显示状态为启用(1)的横幅
+					let banners = data.filter(banner => banner.status === 1)
+					
+					// 处理图片URL，如果是相对路径则拼接完整URL
+					banners = banners.map(banner => {
+						if (banner.image_url && !banner.image_url.startsWith('http')) {
+							banner.image_url = envConfig.API_BASE_URL + banner.image_url
+						}
+						console.log('Banner图片URL:', banner.image_url)
+						return banner
+					})
+					
+					this.bannerList = banners
+					console.log('最终Banner列表:', this.bannerList)
+					console.log('Banner数量:', this.bannerList.length)
+				} else {
+					console.log('Banner API返回失败或无数据:', res)
+				}
+			} catch (error) {
+				console.error('加载横幅失败:', error)
+				// 静默处理错误，不影响页面其他功能
+			}
+		},
+		
+		// Banner点击处理
+		handleBannerClick(banner) {
+			if (!banner.link_url) return
+			
+			// 判断是否是小程序内部页面
+			if (banner.link_url.startsWith('/pages/')) {
+				// 小程序内部页面跳转
+				uni.navigateTo({
+					url: banner.link_url,
+					fail: () => {
+						uni.switchTab({
+							url: banner.link_url
+						})
+					}
+				})
+			} else if (banner.link_url.startsWith('http://') || banner.link_url.startsWith('https://')) {
+				// 外部链接，使用web-view打开
+				uni.navigateTo({
+					url: `/pages/webview/index?url=${encodeURIComponent(banner.link_url)}`
+				})
+			}
+		},
+		
+		// 滚动监听
+		handleScroll(e) {
+			const scrollTop = e.detail.scrollTop
+			// 将rpx转换为px：banner高度320rpx
+			const bannerHeightPx = uni.upx2px(this.bannerHeight)
+			
+			// 当滚动超过banner高度时，搜索栏吸顶
+			if (this.bannerList.length > 0) {
+				this.isSearchBarFixed = scrollTop > bannerHeightPx
+			}
+		},
+		
 		// 显示分享菜单
 		showShareMenu() {
 			this.shareMenuVisible = true
@@ -826,13 +958,23 @@ export default {
 		
 		// 搜索
 		handleSearch() {
-			this.searchKeyword = this.searchInput.trim()
+			const keyword = this.searchInput.trim()
 				.replace(/[,，、]/g, ' ')
 				.split(/\s+/)
 				.filter(k => k.length > 0)
 				.join(' ')
+			
+			if (!keyword) {
+				uni.showToast({ title: '请输入搜索关键词', icon: 'none' })
+				return
+			}
+			
 			this.showSearchDialog = false
-			this.resetAndReload()
+			
+			// 跳转到搜索结果页面
+			uni.navigateTo({
+				url: `/pages/tutor-search-result/index?keyword=${encodeURIComponent(keyword)}`
+			})
 		},
 		
 		// 重置筛选
@@ -1184,25 +1326,79 @@ ${dispatcher ? `派单员：${dispatcher.nickname || dispatcher.username}${dispa
 			}
 		},
 		
-		// 跳转到教师注册页面
+		// 检查教师注册状态
+async checkTeacherRegistration() {
+try {
+const userInfo = uni.getStorageSync('userInfo')
+if (!userInfo || !userInfo.openid) {
+this.isTeacherRegistered = false
+return
+}
+
+const res = await teacherRegisterApi.getRegistrationStatus({
+openid: userInfo.openid,
+phone: userInfo.phone || ''
+})
+
+if (res.success && res.data) {
+// 如果已注册（无论审核状态），都隐藏注册按钮
+this.isTeacherRegistered = res.data.registered || false
+}
+} catch (err) {
+console.error('检查教师注册状态失败', err)
+this.isTeacherRegistered = false
+}
+},
+
+// 跳转到教师注册页面
 		goToTeacherRegister() {
+			// 检查登录状态
+			const userInfo = uni.getStorageSync('userInfo')
+			if (!userInfo || !userInfo.openid) {
+				uni.showToast({
+					title: '请先登录',
+					icon: 'none',
+					duration: 2000
+				})
+				setTimeout(() => {
+					uni.navigateTo({
+						url: '/pages/login/index'
+					})
+				}, 2000)
+				return
+			}
+			
+			// 已登录，跳转到注册页面
 			uni.navigateTo({
 				url: '/pages/teacher-register/index'
 			})
 		}
 	},
 	// 分享给好友/群聊
+	// 分享给好友/群聊
 	onShareAppMessage() {
+		// 获取当前日期
+		const now = new Date()
+		const month = now.getMonth() + 1
+		const day = now.getDate()
+		const dateStr = `${month}月${day}日`
+		
 		return {
-			title: '发现优质家教信息，快来看看！',
+			title: `${dateStr} | 全国家教信息，优质高薪`,
 			path: '/pages/tutor-list/index',
 			imageUrl: '/static/share-tutor.png'
 		}
 	},
 	// 分享到朋友圈
 	onShareTimeline() {
+		// 获取当前日期
+		const now = new Date()
+		const month = now.getMonth() + 1
+		const day = now.getDate()
+		const dateStr = `${month}月${day}日`
+		
 		return {
-			title: '发现优质家教信息，快来看看！',
+			title: `${dateStr} | 全国家教信息，优质高薪`,
 			query: '',
 			imageUrl: '/static/share-tutor.png'
 		}
@@ -1216,6 +1412,13 @@ ${dispatcher ? `派单员：${dispatcher.nickname || dispatcher.username}${dispa
 	display: flex;
 	flex-direction: column;
 	background: linear-gradient(180deg, #7FDFB8 0%, #E8F8F2 30%, #F5F9FF 100%);
+	overflow: hidden;
+}
+
+/* 主滚动区域 */
+.main-scroll {
+	flex: 1;
+	height: 100%;
 }
 
 /* 自定义导航栏 */
@@ -1269,6 +1472,80 @@ ${dispatcher ? `派单员：${dispatcher.nickname || dispatcher.username}${dispa
 	background: #fff;
 	z-index: 10;
 	box-shadow: 0 2rpx 12rpx rgba(0, 0, 0, 0.02);
+}
+
+/* Banner横幅区域 */
+.banner-section {
+	width: 100%;
+	overflow: hidden;
+	background: #fff;
+}
+
+.banner-swiper {
+	width: 100%;
+	height: 320rpx;
+}
+
+.banner-item {
+	width: 100%;
+	height: 100%;
+	position: relative;
+	overflow: hidden;
+}
+
+.banner-clickable {
+	cursor: pointer;
+}
+
+.banner-image {
+	width: 100%;
+	height: 100%;
+	display: block;
+}
+
+.banner-overlay {
+	position: absolute;
+	bottom: 0;
+	left: 0;
+	right: 0;
+	padding: 30rpx;
+	background: linear-gradient(to top, rgba(0, 0, 0, 0.6), transparent);
+	color: #fff;
+}
+
+.banner-title {
+	display: block;
+	font-size: 32rpx;
+	font-weight: 600;
+	margin-bottom: 8rpx;
+	line-height: 1.4;
+}
+
+.banner-description {
+	display: block;
+	font-size: 24rpx;
+	opacity: 0.9;
+	line-height: 1.5;
+}
+
+/* 搜索和筛选区域 */
+.filter-section {
+	background: #fff;
+	z-index: 10;
+	transition: all 0.3s ease;
+}
+
+.filter-section.fixed-top {
+	position: fixed;
+	left: 0;
+	right: 0;
+	box-shadow: 0 2rpx 12rpx rgba(0, 0, 0, 0.08);
+}
+
+/* 吸顶占位 */
+.search-placeholder {
+	height: 200rpx;
+	background: transparent;
 }
 
 /* 搜索栏 */
@@ -1681,6 +1958,12 @@ ${dispatcher ? `派单员：${dispatcher.nickname || dispatcher.username}${dispa
 	z-index: 1000;
 }
 
+/* 搜索弹窗遮罩 - 居中显示 */
+.search-mask {
+	align-items: center;
+	justify-content: center;
+}
+
 .popup-content {
 	width: 100%;
 	background: #fff;
@@ -1694,7 +1977,6 @@ ${dispatcher ? `派单员：${dispatcher.nickname || dispatcher.username}${dispa
 .search-popup {
 	width: 90%;
 	max-width: 600rpx;
-	margin: 0 auto;
 	border-radius: 32rpx;
 	max-height: 60vh;
 	animation: scaleIn 0.3s cubic-bezier(0.25, 0.46, 0.45, 0.94);
@@ -1709,12 +1991,6 @@ ${dispatcher ? `派单员：${dispatcher.nickname || dispatcher.username}${dispa
 		opacity: 1;
 		transform: scale(1);
 	}
-}
-
-/* 搜索弹窗的遮罩层 - 居中对齐 */
-.popup-mask:has(.search-popup) {
-	align-items: center;
-	justify-content: center;
 }
 
 .popup-header {
