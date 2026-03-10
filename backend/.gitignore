@@ -1,0 +1,52 @@
+# IDE
+/.idea
+/.vscode
+
+# Dependencies
+/vendor
+/node_modules
+
+# Environment
+.env
+.env.*
+!.env.example
+
+# Logs
+*.log
+/runtime/log/*
+
+# Runtime files
+/runtime/*
+!/runtime/.gitkeep
+
+# Uploads
+/public/uploads/*
+!/public/uploads/.gitkeep
+
+# phpMyAdmin (本地开发工具，不应上传到生产环境)
+/public/phpMyAdmin*/
+
+# Session files
+/runtime/session/*
+
+# Cache
+/runtime/cache/*
+/runtime/temp/*
+
+# Database
+*.sql
+*.sqlite
+
+# OS
+.DS_Store
+Thumbs.db
+*.swp
+*~
+
+# Backup files
+*.bak
+*.old
+*.tmp
+
+# Compiled files
+*.compiled

@@ -1,0 +1,291 @@
+<?php
+namespace app\controller\admin;
+
+use app\BaseController;
+use app\model\ResumeApplication as ApplicationModel;
+use think\facade\Db;
+use think\facade\Log;
+
+/**
+ * 简历投递管理控制器
+ */
+class ResumeApplication extends BaseController
+{
+    /**
+     * 获取投递列表
+     */
+    public function index()
+    {
+        try {
+            $page = $this->request->param('page', 1);
+            $pageSize = $this->request->param('page_size', 20);
+            $status = $this->request->param('status', '');
+            $teacherName = $this->request->param('teacher_name', '');
+            $tutorTitle = $this->request->param('tutor_title', '');
+            $startTime = $this->request->param('start_time', '');
+            $endTime = $this->request->param('end_time', '');
+            
+            // 构建查询
+            $query = Db::name('resume_application')->alias('ra')
+                ->leftJoin('teachers t', 'ra.teacher_id = t.id')
+                ->leftJoin('tutor_orders_new o', 'ra.tutor_id = o.id')
+                ->leftJoin('admin a', 'ra.reviewer_id = a.id')
+                ->leftJoin('cities c', 'o.city_id = c.id')
+                ->leftJoin('districts d', 'o.district_id = d.id')
+                ->leftJoin('subjects s', 'o.subject_id = s.id')
+                ->field('ra.*, t.name as teacher_name, t.phone as teacher_phone, 
+                        t.education as teacher_education, t.school as teacher_school,
+                        t.subject_names as teacher_subjects,
+                        o.content as tutor_title, o.grade as tutor_grade, 
+                        o.salary as tutor_salary, s.name as tutor_subject,
+                        c.name as tutor_city, d.name as tutor_district,
+                        a.nickname as reviewer_name');
+            
+            // 状态筛选
+            if ($status) {
+                $query->where('ra.status', $status);
+            }
+            
+            // 教师姓名筛选
+            if ($teacherName) {
+                $query->where('t.name', 'like', "%{$teacherName}%");
+            }
+            
+            // 家教标题筛选
+            if ($tutorTitle) {
+                $query->where('o.content', 'like', "%{$tutorTitle}%");
+            }
+            
+            // 时间范围筛选
+            if ($startTime && $endTime) {
+                $query->whereBetweenTime('ra.apply_time', $startTime, $endTime);
+            }
+            
+            // 按状态优先级排序：pending(待审核) > approved(已通过) > rejected(已拒绝)
+            // 使用 FIELD 函数自定义排序顺序，然后按投递时间降序
+            $list = $query->orderRaw("FIELD(ra.status, 'pending', 'approved', 'rejected')")
+                ->order('ra.apply_time', 'desc')
+                ->paginate([
+                    'list_rows' => $pageSize,
+                    'page' => $page
+                ]);
+            
+            return json([
+                'code' => 200,
+                'message' => '获取成功',
+                'data' => [
+                    'list' => $list->items(),
+                    'total' => $list->total()
+                ]
+            ]);
+        } catch (\Exception $e) {
+            Log::error('获取投递列表失败: ' . $e->getMessage());
+            return json([
+                'code' => 500,
+                'message' => '获取失败：' . $e->getMessage()
+            ]);
+        }
+    }
+    
+    /**
+     * 获取投递详情
+     */
+    public function read($id)
+    {
+        try {
+            $application = Db::name('resume_application')->alias('ra')
+                ->leftJoin('teachers t', 'ra.teacher_id = t.id')
+                ->leftJoin('tutor_orders_new o', 'ra.tutor_id = o.id')
+                ->leftJoin('admin a', 'ra.reviewer_id = a.id')
+                ->leftJoin('cities c', 'o.city_id = c.id')
+                ->leftJoin('districts d', 'o.district_id = d.id')
+                ->leftJoin('subjects s', 'o.subject_id = s.id')
+                ->field('ra.*, t.name as teacher_name, t.phone as teacher_phone, 
+                        t.education as teacher_education, t.school as teacher_school,
+                        t.subject_names as teacher_subjects,
+                        o.content as tutor_title, o.grade as tutor_grade, 
+                        o.salary as tutor_salary, s.name as tutor_subject,
+                        c.name as tutor_city, d.name as tutor_district,
+                        a.nickname as reviewer_name')
+                ->where('ra.id', $id)
+                ->find();
+            
+            if (!$application) {
+                return json([
+                    'code' => 404,
+                    'message' => '投递记录不存在'
+                ]);
+            }
+            
+            return json([
+                'code' => 200,
+                'message' => '获取成功',
+                'data' => $application
+            ]);
+        } catch (\Exception $e) {
+            Log::error('获取投递详情失败: ' . $e->getMessage());
+            return json([
+                'code' => 500,
+                'message' => '获取失败：' . $e->getMessage()
+            ]);
+        }
+    }
+    
+    /**
+     * 审核投递（通过/拒绝）
+     */
+    public function review()
+    {
+        try {
+            $id = $this->request->param('id');
+            $status = $this->request->param('status'); // approved 或 rejected
+            $remark = $this->request->param('remark', '');
+            
+            if (!in_array($status, ['approved', 'rejected'])) {
+                return json([
+                    'code' => 400,
+                    'message' => '状态参数错误'
+                ]);
+            }
+            
+            $application = ApplicationModel::find($id);
+            if (!$application) {
+                return json([
+                    'code' => 404,
+                    'message' => '投递记录不存在'
+                ]);
+            }
+            
+            // 获取当前登录管理员ID
+            $adminId = $this->request->adminId ?? null;
+            
+            // 更新状态
+            $application->status = $status;
+            $application->admin_remark = $remark;
+            $application->review_time = date('Y-m-d H:i:s');
+            $application->reviewer_id = $adminId;
+            $application->save();
+            
+            $statusText = $status === 'approved' ? '通过' : '拒绝';
+            
+            return json([
+                'code' => 200,
+                'message' => "审核{$statusText}成功"
+            ]);
+        } catch (\Exception $e) {
+            Log::error('审核投递失败: ' . $e->getMessage());
+            return json([
+                'code' => 500,
+                'message' => '审核失败：' . $e->getMessage()
+            ]);
+        }
+    }
+    
+    /**
+     * 批量审核
+     */
+    public function batchReview()
+    {
+        try {
+            $ids = $this->request->param('ids', []);
+            $status = $this->request->param('status');
+            $remark = $this->request->param('remark', '');
+            
+            if (empty($ids) || !is_array($ids)) {
+                return json([
+                    'code' => 400,
+                    'message' => '请选择要审核的记录'
+                ]);
+            }
+            
+            if (!in_array($status, ['approved', 'rejected'])) {
+                return json([
+                    'code' => 400,
+                    'message' => '状态参数错误'
+                ]);
+            }
+            
+            // 获取当前登录管理员ID
+            $adminId = $this->request->adminId ?? null;
+            
+            ApplicationModel::whereIn('id', $ids)->update([
+                'status' => $status,
+                'admin_remark' => $remark,
+                'review_time' => date('Y-m-d H:i:s'),
+                'reviewer_id' => $adminId
+            ]);
+            
+            $statusText = $status === 'approved' ? '通过' : '拒绝';
+            
+            return json([
+                'code' => 200,
+                'message' => "批量审核{$statusText}成功"
+            ]);
+        } catch (\Exception $e) {
+            Log::error('批量审核失败: ' . $e->getMessage());
+            return json([
+                'code' => 500,
+                'message' => '批量审核失败：' . $e->getMessage()
+            ]);
+        }
+    }
+    
+    /**
+     * 获取统计数据
+     */
+    public function statistics()
+    {
+        try {
+            $total = ApplicationModel::count();
+            $pending = ApplicationModel::where('status', 'pending')->count();
+            $approved = ApplicationModel::where('status', 'approved')->count();
+            $rejected = ApplicationModel::where('status', 'rejected')->count();
+            
+            return json([
+                'code' => 200,
+                'message' => '获取成功',
+                'data' => [
+                    'total' => $total,
+                    'pending' => $pending,
+                    'approved' => $approved,
+                    'rejected' => $rejected
+                ]
+            ]);
+        } catch (\Exception $e) {
+            Log::error('获取统计数据失败: ' . $e->getMessage());
+            return json([
+                'code' => 500,
+                'message' => '获取失败：' . $e->getMessage()
+            ]);
+        }
+    }
+    
+    /**
+     * 删除投递记录
+     */
+    public function delete($id)
+    {
+        try {
+            $application = ApplicationModel::find($id);
+            if (!$application) {
+                return json([
+                    'code' => 404,
+                    'message' => '投递记录不存在'
+                ]);
+            }
+            
+            $application->delete();
+            
+            return json([
+                'code' => 200,
+                'message' => '删除成功'
+            ]);
+        } catch (\Exception $e) {
+            Log::error('删除投递记录失败: ' . $e->getMessage());
+            return json([
+                'code' => 500,
+                'message' => '删除失败：' . $e->getMessage()
+            ]);
+        }
+    }
+}
