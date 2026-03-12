@@ -1,4 +1,4 @@
-﻿<template>
+<template>
   <el-container class="admin-layout">
     <!-- 移动端：使用 Drawer 组件 -->
     <el-drawer
@@ -35,6 +35,10 @@
             <el-icon><DocumentCopy /></el-icon>
             <template #title>线索管理</template>
           </el-menu-item>
+          <el-menu-item index="/teachers">
+            <el-icon><UserFilled /></el-icon>
+            <template #title>教师管理</template>
+          </el-menu-item>
           <el-menu-item index="/admin">
             <el-icon><User /></el-icon>
             <template #title>管理员</template>
@@ -58,10 +62,6 @@
           <el-menu-item index="/email-logs">
             <el-icon><Message /></el-icon>
             <template #title>邮箱日志</template>
-          </el-menu-item>
-          <el-menu-item index="/teachers">
-            <el-icon><UserFilled /></el-icon>
-            <template #title>教师管理</template>
           </el-menu-item>
           <el-menu-item index="/payment">
             <el-icon><Wallet /></el-icon>
@@ -116,6 +116,10 @@
           <el-icon><DocumentCopy /></el-icon>
           <template #title>线索管理</template>
         </el-menu-item>
+        <el-menu-item index="/teachers">
+          <el-icon><UserFilled /></el-icon>
+          <template #title>教师管理</template>
+        </el-menu-item>
         <el-menu-item index="/admin">
           <el-icon><User /></el-icon>
           <template #title>管理员</template>
@@ -139,10 +143,6 @@
         <el-menu-item index="/email-logs">
           <el-icon><Message /></el-icon>
           <template #title>邮箱日志</template>
-        </el-menu-item>
-        <el-menu-item index="/teachers">
-          <el-icon><UserFilled /></el-icon>
-          <template #title>教师管理</template>
         </el-menu-item>
         <el-menu-item index="/payment">
           <el-icon><Wallet /></el-icon>

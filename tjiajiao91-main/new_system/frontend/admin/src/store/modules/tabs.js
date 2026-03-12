@@ -194,6 +194,10 @@ export const useTabsStore = defineStore('tabs', {
         const id = path.split('/')[2].split('?')[0]
         return `订单${id}`
       }
+      if (path.startsWith('/applications/') && path !== '/applications') {
+        const id = path.split('/')[2].split('?')[0]
+        return `投递详情 #${id}`
+      }
       
       const titleMap = {
         '/leads': '线索管理',

@@ -383,6 +383,16 @@ class Order extends BaseController
                         $districtId = null;
                     }
                 }
+                // 外键约束：city_id 必须存在于 fa_cities 或为 NULL，否则插入 fa_tutor_orders_new 会报错
+                if ($cityId !== null && $cityId !== '') {
+                    $cityId = (int) $cityId;
+                    if ($cityId <= 0 || !\app\model\City::where('id', $cityId)->find()) {
+                        $cityId = null;
+                        $districtId = null;
+                    }
+                } else {
+                    $cityId = null;
+                }
                 
                 // 创建家教信息（手动设置ID）
                 $tutorData = [
@@ -649,6 +659,65 @@ class Order extends BaseController
     }
     
     /**
+     * 删除订单（仅超级管理员和客服组长）
+     * DELETE /api/order/:id/delete
+     */
+    public function delete($id)
+    {
+        try {
+            $admin = $this->getAdminInfo();
+            if (!$admin) {
+                return json(['code' => 401, 'message' => '请先登录']);
+            }
+            
+            // 检查权限：只有超级管理员和客服组长可以删除
+            if (!$this->canDeleteOrder()) {
+                return json(['code' => 403, 'message' => '无权限删除订单']);
+            }
+            
+            // 查找订单
+            $order = ParentOrder::find($id);
+            
+            if (!$order) {
+                return json(['code' => 404, 'message' => '订单不存在']);
+            }
+            
+            // 开启事务
+            Db::startTrans();
+            try {
+                // 如果订单已经转化为家教信息，也需要删除对应的家教信息
+                if ($order->tutor_id) {
+                    $tutorOrder = TutorOrder::find($order->tutor_id);
+                    if ($tutorOrder) {
+                        $tutorOrder->delete();
+                        trace('已删除关联的家教信息，ID: ' . $order->tutor_id, 'info');
+                    }
+                }
+                
+                // 删除预约订单
+                $order->delete();
+                
+                Db::commit();
+                
+                trace('订单删除成功，ID: ' . $id . '，操作员: ' . $admin->nickname, 'info');
+                
+                return json([
+                    'code' => 200,
+                    'message' => '订单删除成功'
+                ]);
+                
+            } catch (\Exception $e) {
+                Db::rollback();
+                throw $e;
+            }
+            
+        } catch (\Exception $e) {
+            trace('删除订单失败: ' . $e->getMessage(), 'error');
+            return json(['code' => 500, 'message' => '删除订单失败：' . $e->getMessage()]);
+        }
+    }
+    
+    /**
      * 构建家教信息内容（不包含隐私信息）
      */
     private function buildTutorContent($order)
@@ -703,6 +772,15 @@ class Order extends BaseController
     {
         $admin = $this->getAdminInfo();
         return $admin && $admin->role === 'super_admin';
+    }
+    
+    /**
+     * 检查是否可以删除订单（超级管理员或客服组长）
+     */
+    private function canDeleteOrder()
+    {
+        $admin = $this->getAdminInfo();
+        return $admin && ($admin->role === 'super_admin' || $admin->role === 'team_leader');
     }
     
     /**

@@ -564,74 +564,146 @@ class Lead extends BaseController
      * 更新线索
      */
     public function update()
-    {
-        if (session_status() === PHP_SESSION_NONE) {
-            session_start();
-        }
-        if (!isset($_SESSION['admin_id'])) {
-            return json(['success' => false, 'error' => '未登录']);
-        }
-        
-        $id = $this->request->param('id');
-        $data = $this->request->put();
-        
-        try {
-            $lead = LeadModel::find($id);
-            
-            if (!$lead) {
-                return json(['success' => false, 'error' => '线索不存在']);
+        {
+            if (session_status() === PHP_SESSION_NONE) {
+                session_start();
             }
-            
-            // 权限检查
-            $adminId = $_SESSION['admin_id'];
-            $adminRole = $_SESSION['admin_role'] ?? 'customer_service';
-            
-            // 超级管理员、分配给自己的线索、未分配的线索（公共池）都可以编辑
-            if ($adminRole !== 'super_admin' && $lead->assigned_admin_id != $adminId && $lead->assigned_admin_id != 0) {
-                return json(['success' => false, 'error' => '无权限编辑此线索']);
+            if (!isset($_SESSION['admin_id'])) {
+                return json(['success' => false, 'error' => '未登录']);
             }
-            
-            // 检查是否重新指派了客服
-            $oldAssignedAdminId = $lead->assigned_admin_id;
-            $newAssignedAdminId = isset($data['assigned_admin_id']) ? $data['assigned_admin_id'] : $oldAssignedAdminId;
-            $isReassigned = ($oldAssignedAdminId != $newAssignedAdminId);
-            
-            // 不允许修改某些字段
-            unset($data['id']);
-            // 允许修改线索编号
-            // unset($data['lead_no']);
-            unset($data['creator_admin_id']);
-            unset($data['create_time']);
-            
-            $lead->save($data);
-            
-            // 如果重新指派了客服，记录跟进日志并发送邮件通知
-            if ($isReassigned && $newAssignedAdminId > 0) {
-                // 记录跟进日志
-                LeadFollowLog::create([
-                    'lead_id' => $id,
-                    'old_status' => $lead->status,
-                    'new_status' => $lead->status,
-                    'remark' => '重新指派客服',
-                    'operator_admin_id' => $adminId
-                ]);
-                
-                // 异步发送邮件通知给新客服
-                $assignedAdmin = Admin::find($newAssignedAdminId);
-                if ($assignedAdmin && !empty($assignedAdmin->email)) {
-                    // 重新加载线索数据，包含关联信息
-                    $leadWithRelations = LeadModel::with(['city', 'district'])->find($id);
-                    // 使用异步方式发送邮件，不阻塞主流程
-                    \app\service\EmailService::sendLeadAssignNotificationAsync($assignedAdmin, $leadWithRelations);
+
+            $id = $this->request->param('id');
+            $data = $this->request->put();
+
+            try {
+                $lead = LeadModel::find($id);
+
+                if (!$lead) {
+                    return json(['success' => false, 'error' => '线索不存在']);
                 }
+
+                // 权限检查
+                $adminId = $_SESSION['admin_id'];
+                $adminRole = $_SESSION['admin_role'] ?? 'customer_service';
+                
+                // === 调试信息开始 ===
+                $debugInfo = [
+                    '当前时间' => date('Y-m-d H:i:s'),
+                    '当前用户ID' => $adminId,
+                    '当前用户角色' => $adminRole,
+                    '线索ID' => $lead->id,
+                    '线索状态' => $lead->status,
+                    '线索分配给' => $lead->assigned_admin_id,
+                ];
+                trace('=== 编辑线索权限检查 ===', 'info');
+                trace(json_encode($debugInfo, JSON_UNESCAPED_UNICODE), 'info');
+                // === 调试信息结束 ===
+
+                // 权限验证逻辑：
+                // 1. 超级管理员可以编辑所有线索
+                // 2. 组长可以编辑团队成员的线索（包括自己、组员、未分配的）
+                // 3. 普通客服可以编辑分配给自己的线索和未分配的线索
+                $hasPermission = false;
+
+                if ($adminRole === 'super_admin') {
+                    // 超级管理员有权限
+                    $hasPermission = true;
+                    trace('权限验证: 超级管理员，允许编辑', 'info');
+                } elseif ($adminRole === 'team_leader') {
+                    // 组长可以编辑：1. 分配给自己的线索  2. 分配给组员的线索  3. 未分配的线索（公共池）
+                    $teamMemberIds = Admin::where('leader_id', $adminId)
+                        ->where('status', '=', 1)
+                        ->column('id');
+                    $teamMemberIds[] = $adminId; // 包含组长自己
+                    
+                    // 确保类型一致：将所有ID转换为整数
+                    $teamMemberIds = array_map('intval', $teamMemberIds);
+                    $leadAssignedId = intval($lead->assigned_admin_id);
+                    
+                    trace('权限验证: 组长，团队成员ID列表（含自己）: ' . json_encode($teamMemberIds), 'info');
+                    trace('权限验证: 线索分配给的客服ID: ' . $leadAssignedId, 'info');
+                    
+                    if ($leadAssignedId == 0) {
+                        // 未分配的线索，组长可编辑
+                        $hasPermission = true;
+                        trace('权限验证: 未分配线索，组长可编辑', 'info');
+                    } elseif (in_array($leadAssignedId, $teamMemberIds)) {
+                        // 分配给团队成员的线索，组长可编辑
+                        $hasPermission = true;
+                        trace('权限验证: 线索分配给团队成员（ID: ' . $leadAssignedId . '），允许编辑', 'info');
+                    } else {
+                        trace('权限验证: 线索分配给其他团队（ID: ' . $leadAssignedId . '），拒绝编辑', 'info');
+                    }
+                } elseif ($lead->assigned_admin_id == $adminId) {
+                    // 普通客服：分配给自己的线索
+                    $hasPermission = true;
+                    trace('权限验证: 分配给自己的线索，允许编辑', 'info');
+                } elseif ($lead->assigned_admin_id == 0) {
+                    // 普通客服：未分配的线索（公共池）
+                    $hasPermission = true;
+                    trace('权限验证: 公共池线索，允许编辑', 'info');
+                }
+
+                if (!$hasPermission) {
+                    trace('权限验证失败: 无权限编辑此线索', 'error');
+                    return json(['success' => false, 'error' => '无权限编辑此线索']);
+                }
+
+                trace('权限验证通过，开始更新线索', 'info');
+
+                // 检查是否重新指派了客服
+                $oldAssignedAdminId = $lead->assigned_admin_id;
+                $newAssignedAdminId = isset($data['assigned_admin_id']) ? $data['assigned_admin_id'] : $oldAssignedAdminId;
+                $isReassigned = ($oldAssignedAdminId != $newAssignedAdminId);
+
+                // 如果是组长重新指派客服，验证新客服是否在组内
+                if ($isReassigned && $adminRole === 'team_leader' && $newAssignedAdminId > 0) {
+                    $teamMemberIds = Admin::where('leader_id', $adminId)
+                        ->where('status', '=', 1)
+                        ->column('id');
+                    $teamMemberIds[] = $adminId; // 包含自己
+
+                    if (!in_array($newAssignedAdminId, $teamMemberIds)) {
+                        return json(['success' => false, 'error' => '只能指派给本组成员']);
+                    }
+                }
+
+                // 不允许修改某些字段
+                unset($data['id']);
+                // 允许修改线索编号
+                // unset($data['lead_no']);
+                unset($data['creator_admin_id']);
+                unset($data['create_time']);
+
+                $lead->save($data);
+
+                // 如果重新指派了客服，记录跟进日志并发送邮件通知
+                if ($isReassigned && $newAssignedAdminId > 0) {
+                    // 记录跟进日志
+                    LeadFollowLog::create([
+                        'lead_id' => $id,
+                        'old_status' => $lead->status,
+                        'new_status' => $lead->status,
+                        'remark' => '重新指派客服',
+                        'operator_admin_id' => $adminId
+                    ]);
+
+                    // 异步发送邮件通知给新客服
+                    $assignedAdmin = Admin::find($newAssignedAdminId);
+                    if ($assignedAdmin && !empty($assignedAdmin->email)) {
+                        // 重新加载线索数据，包含关联信息
+                        $leadWithRelations = LeadModel::with(['city', 'district'])->find($id);
+                        // 使用异步方式发送邮件，不阻塞主流程
+                        \app\service\EmailService::sendLeadAssignNotificationAsync($assignedAdmin, $leadWithRelations);
+                    }
+                }
+
+                return json(['success' => true, 'message' => '更新成功']);
+
+            } catch (\Exception $e) {
+                return json(['success' => false, 'error' => '更新失败：' . $e->getMessage()]);
             }
-            
-            return json(['success' => true, 'message' => '更新成功']);
-            
-        } catch (\Exception $e) {
-            return json(['success' => false, 'error' => '更新失败：' . $e->getMessage()]);
         }
-    }
     
     /**
      * 删除线索
@@ -792,72 +864,88 @@ class Lead extends BaseController
      * 批量分配客服
      */
     public function batchAssign()
-    {
-        if (session_status() === PHP_SESSION_NONE) {
-            session_start();
-        }
-        if (!isset($_SESSION['admin_id'])) {
-            return json(['success' => false, 'error' => '未登录']);
-        }
-        
-        $ids = $this->request->post('ids');
-        $assignedAdminId = $this->request->post('assigned_admin_id');
-        
-        try {
-            // 权限检查：只有超级管理员和组长可以分配
-            $adminRole = $_SESSION['admin_role'] ?? 'customer_service';
-            if (!in_array($adminRole, ['super_admin', 'team_leader'])) {
-                return json(['success' => false, 'error' => '无权限分配线索']);
+        {
+            if (session_status() === PHP_SESSION_NONE) {
+                session_start();
             }
-            
-            if (empty($ids) || !is_array($ids)) {
-                return json(['success' => false, 'error' => '请选择要分配的线索']);
+            if (!isset($_SESSION['admin_id'])) {
+                return json(['success' => false, 'error' => '未登录']);
             }
-            
-            if (empty($assignedAdminId)) {
-                return json(['success' => false, 'error' => '请选择客服']);
-            }
-            
-            // 获取被分配的客服信息
-            $assignedAdmin = Admin::find($assignedAdminId);
-            if (!$assignedAdmin) {
-                return json(['success' => false, 'error' => '客服不存在']);
-            }
-            
-            // 批量更新
-            LeadModel::whereIn('id', $ids)->update(['assigned_admin_id' => $assignedAdminId]);
-            
-            // 记录跟进日志
-            foreach ($ids as $leadId) {
-                $lead = LeadModel::find($leadId);
-                if ($lead) {
-                    LeadFollowLog::create([
-                        'lead_id' => $leadId,
-                        'old_status' => $lead->status,
-                        'new_status' => $lead->status,
-                        'remark' => '分配客服',
-                        'operator_admin_id' => $_SESSION['admin_id']
-                    ]);
+
+            $ids = $this->request->post('ids');
+            $assignedAdminId = $this->request->post('assigned_admin_id');
+
+            try {
+                // 权限检查：只有超级管理员和组长可以分配
+                $adminRole = $_SESSION['admin_role'] ?? 'customer_service';
+                $adminId = $_SESSION['admin_id'];
+
+                if (!in_array($adminRole, ['super_admin', 'team_leader'])) {
+                    return json(['success' => false, 'error' => '无权限分配线索']);
                 }
-            }
-            
-            // 异步发送邮件通知（不阻塞主流程）
-            if (!empty($assignedAdmin->email)) {
-                // 使用异步命令发送邮件
-                foreach ($ids as $leadId) {
-                    $lead = LeadModel::with(['city', 'district'])->find($leadId);
-                    if ($lead) {
-                        \app\service\EmailService::sendLeadAssignNotificationAsync($assignedAdmin, $lead);
+
+                if (empty($ids) || !is_array($ids)) {
+                    return json(['success' => false, 'error' => '请选择要分配的线索']);
+                }
+
+                if (empty($assignedAdminId)) {
+                    return json(['success' => false, 'error' => '请选择客服']);
+                }
+
+                // 获取被分配的客服信息
+                $assignedAdmin = Admin::find($assignedAdminId);
+                if (!$assignedAdmin) {
+                    return json(['success' => false, 'error' => '客服不存在']);
+                }
+
+                // 如果是组长，验证被分配的客服是否属于自己的组
+                if ($adminRole === 'team_leader') {
+                    // 获取组员ID列表（包含自己）
+                    $teamMemberIds = Admin::where('leader_id', $adminId)
+                        ->where('status', '=', 1)
+                        ->column('id');
+                    $teamMemberIds[] = $adminId; // 包含自己
+
+                    // 验证被分配的客服是否在组内
+                    if (!in_array($assignedAdminId, $teamMemberIds)) {
+                        return json(['success' => false, 'error' => '只能分配给本组成员']);
                     }
                 }
+
+                // 批量更新
+                LeadModel::whereIn('id', $ids)->update(['assigned_admin_id' => $assignedAdminId]);
+
+                // 记录跟进日志
+                foreach ($ids as $leadId) {
+                    $lead = LeadModel::find($leadId);
+                    if ($lead) {
+                        LeadFollowLog::create([
+                            'lead_id' => $leadId,
+                            'old_status' => $lead->status,
+                            'new_status' => $lead->status,
+                            'remark' => '分配客服',
+                            'operator_admin_id' => $_SESSION['admin_id']
+                        ]);
+                    }
+                }
+
+                // 异步发送邮件通知（不阻塞主流程）
+                if (!empty($assignedAdmin->email)) {
+                    // 使用异步命令发送邮件
+                    foreach ($ids as $leadId) {
+                        $lead = LeadModel::with(['city', 'district'])->find($leadId);
+                        if ($lead) {
+                            \app\service\EmailService::sendLeadAssignNotificationAsync($assignedAdmin, $lead);
+                        }
+                    }
+                }
+
+                return json(['success' => true, 'message' => '分配成功，邮件通知正在后台发送']);
+
+            } catch (\Exception $e) {
+                return json(['success' => false, 'error' => '分配失败：' . $e->getMessage()]);
             }
-            
-            return json(['success' => true, 'message' => '分配成功，邮件通知正在后台发送']);
-            
-        } catch (\Exception $e) {
-            return json(['success' => false, 'error' => '分配失败：' . $e->getMessage()]);
         }
-    }
     
     /**
      * 批量发送邮件（后台任务）

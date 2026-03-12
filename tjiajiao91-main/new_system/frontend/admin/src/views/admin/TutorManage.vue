@@ -4,6 +4,7 @@
     <TutorManageMobile
       v-if="windowWidth < 768"
       :loading="loading"
+      :loading-more="loading"
       :city-stats="cityStats"
       :total-count="total"
       :cities="filterCities"
@@ -63,7 +64,7 @@
           </div>
           <div class="header-actions">
             <el-radio-group v-model="viewScope" @change="handleViewScopeChange" size="default">
-              <el-radio-button label="mine">我的预约 ({{ myOrderCount }})</el-radio-button>
+              <el-radio-button label="mine">我的订单 ({{ myOrderCount }})</el-radio-button>
               <el-radio-button label="all">全部订单 ({{ allOrderCount }})</el-radio-button>
               <el-radio-button label="channel">渠道订单 ({{ channelOrderCount }})</el-radio-button>
             </el-radio-group>
@@ -1382,10 +1383,10 @@ export default {
 </script>
 
 <script setup>
-import { ref, reactive, onMounted, onUnmounted, computed, nextTick } from 'vue'
+import { ref, reactive, onMounted, onUnmounted, computed, nextTick, watch } from 'vue'
 import { 
   Plus, MagicStick, DocumentCopy, Delete, DocumentDelete, 
-  UploadFilled, Document, ArrowUp, ArrowDown, ArrowRight, Tools, Download, Promotion, InfoFilled, Refresh
+  UploadFilled, Document, ArrowUp, ArrowDown, ArrowRight, Tools, Download, Promotion, InfoFilled, Refresh, Loading
 } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { getTutorList, addTutor, updateTutor, deleteTutor, recognizeTutor, batchCopy, batchDelete, batchRecognizeTutors, checkNeedFix, batchCreateTutor, getCityStats, autoAssignAllOrders } from '@/api/tutor'
@@ -1408,6 +1409,8 @@ const batchActionsLeft = computed(() => {
 })
 
 const loading = ref(false)
+const loadingMore = ref(false) // 底部加载更多时的 loading，避免整页遮罩导致闪烁
+const loadMoreRequestId = ref(0) // 防止请求乱序导致数据错乱
 const tableData = ref([])
 const currentPage = ref(1)
 const pageSize = ref(20)
@@ -1688,9 +1691,43 @@ onMounted(() => {
   window.addEventListener('resize', handleResize)
 })
 
+let loadMoreObserver = null
+const loadMoreSentinelRef = ref(null)
+
+// 桌面端：哨兵进入视口（距底部 300px）时预加载
+function setupLoadMoreObserver() {
+  loadMoreObserver?.disconnect()
+  const el = loadMoreSentinelRef.value
+  if (!el || windowWidth.value < 768) return
+  loadMoreObserver = new IntersectionObserver(
+    (entries) => {
+      if (!entries[0]?.isIntersecting) return
+      if (loading.value || loadingMore.value || tableData.value.length >= total.value) return
+      loadMoreData()
+    },
+    { root: null, rootMargin: '0px 0px 300px 0px', threshold: 0 }
+  )
+  loadMoreObserver.observe(el)
+}
+
+watch(
+  [loadMoreSentinelRef, () => tableData.value.length, () => total.value],
+  () => {
+    if (windowWidth.value < 768) return
+    nextTick(() => {
+      if (loadMoreSentinelRef.value && tableData.value.length > 0 && tableData.value.length < total.value) {
+        setupLoadMoreObserver()
+      }
+    })
+  },
+  { immediate: true }
+)
+
 // 组件卸载时移除监听
 onUnmounted(() => {
   window.removeEventListener('resize', handleResize)
+  loadMoreObserver?.disconnect()
+  loadMoreObserver = null
 })
 
 // 切换高级筛选显示
@@ -1913,9 +1950,6 @@ const loadData = async (keepOldData = false) => {
     return
   }
   
-  // 调试日志：确认viewScope的值
-  console.log('loadData - 当前viewScope:', viewScope.value)
-  
   // 设置 loading 状态
   loading.value = true
   
@@ -2011,6 +2045,59 @@ const loadData = async (keepOldData = false) => {
     total.value = 0
   } finally {
     loading.value = false
+  }
+}
+
+// 构建列表请求参数（与 loadData 一致，供 loadMoreData 复用）
+function buildListParams(page) {
+  const params = { ...searchForm }
+  if (searchForm.status) {
+    if (searchForm.status === 'top') params.is_top = 1
+    else if (searchForm.status === 'normal') params.is_top = 0
+  }
+  delete params.status
+  if (searchForm.gradeLevels?.length) params.grade = searchForm.gradeLevels.join(',')
+  delete params.gradeLevels
+  if (searchForm.subject_ids?.length) params.subject_ids = searchForm.subject_ids.join(',')
+  else delete params.subject_ids
+  if (searchForm.district_ids?.length) params.district_ids = searchForm.district_ids.join(',')
+  else delete params.district_ids
+  if (searchForm.dispatcher_ids?.length) params.dispatcher_ids = searchForm.dispatcher_ids.join(',')
+  else delete params.dispatcher_ids
+  if (searchForm.teacher_types?.length) {
+    params.teacher_types = searchForm.teacher_types.join(',')
+    delete params.teacher_type
+  } else if (searchForm.teacher_type) params.teacher_type = searchForm.teacher_type
+  delete params.teacher_types
+  if (Array.isArray(searchForm.teacher_gender) && searchForm.teacher_gender.length) params.teacher_gender = searchForm.teacher_gender.join(',')
+  else if (searchForm.teacher_gender && typeof searchForm.teacher_gender === 'string') params.teacher_gender = searchForm.teacher_gender
+  else delete params.teacher_gender
+  return {
+    ...params,
+    view_scope: viewScope.value,
+    page,
+    limit: pageSize.value
+  }
+}
+
+// 桌面端无限滚动：加载下一页并追加，避免快速滑动时整页 loading 导致闪烁
+const loadMoreData = async () => {
+  if (windowWidth.value < 768) return
+  if (loading.value || loadingMore.value || tableData.value.length >= total.value) return
+  const nextPage = currentPage.value + 1
+  const reqId = ++loadMoreRequestId.value
+  loadingMore.value = true
+  try {
+    const res = await getTutorList(buildListParams(nextPage))
+    if (reqId !== loadMoreRequestId.value) return
+    tableData.value = [...tableData.value, ...(res.data || [])]
+    total.value = res.total ?? total.value
+    currentPage.value = nextPage
+    updateSelectAllPageStatus()
+  } catch (e) {
+    if (reqId === loadMoreRequestId.value) ElMessage.error('加载更多失败，请重试')
+  } finally {
+    if (reqId === loadMoreRequestId.value) loadingMore.value = false
   }
 }
 

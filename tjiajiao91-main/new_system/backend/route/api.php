@@ -41,12 +41,17 @@ Route::group('api', function () {
     Route::get('order/:id', 'api.Order/detail');
     Route::post('order/:id/approve', 'api.Order/approve');
     Route::post('order/:id/reject', 'api.Order/reject');
+    Route::delete('order/:id/delete', 'api.Order/delete');
     Route::put('order/:id/update', 'api.Order/update');
     
     // 教师相关
     Route::post('teacher-auth/register', 'api.TeacherAuth/register');
     Route::post('teacher-auth/login', 'api.TeacherAuth/login');
     Route::post('teacher-auth/send-code', 'api.TeacherAuth/sendVerificationCode');
+    
+    // 头像上传
+    Route::post('avatar/upload', 'api.AvatarUpload/upload');
+    Route::post('avatar/cleanup-temp', 'api.AvatarUpload/cleanupTemp');
     Route::post('teacher-auth/verify-email', 'api.TeacherAuth/verifyEmail');
     Route::post('teacher-auth/reset-password', 'api.TeacherAuth/resetPassword');
     Route::get('teacher/list', 'api.Teacher/list');
@@ -105,6 +110,7 @@ Route::group('api', function () {
     // 微信小程序登录
     Route::post('wechat/login', 'api.WechatMiniProgram/login');
     Route::post('wechat/login-phone', 'api.WechatMiniProgram/loginWithPhone');
+    Route::post('wechat/update-user-type', 'api.WechatMiniProgram/updateUserType');
     
     // 微信小程序二维码生成
     Route::post('wechat/generate-qrcode', 'api.WechatMiniProgram/generateQRCode');
@@ -153,7 +159,7 @@ Route::group('api', function () {
     Route::get('invitation/ranking', 'api.Invitation/stats'); // 使用stats方法返回排行榜
     Route::post('invitation/register', 'api.Invitation/register');
     Route::get('invitation/my-coupons', 'api.Invitation/myCoupons');
-    Route::post('invitation/claim-coupon', 'api.Invitation/receiveCoupon');
+    Route::post('invitation/receive-coupon', 'api.Invitation/receiveCoupon');
     Route::get('invitation/check-status', 'api.Invitation/checkStatus');
     Route::post('invitation/verify-callback', 'api.Invitation/verifyCallback');
     

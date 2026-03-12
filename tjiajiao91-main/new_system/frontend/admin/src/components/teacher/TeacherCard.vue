@@ -26,7 +26,7 @@
         <div class="teacher-name-group">
           <span class="name-text">{{ teacher.name }}</span>
           <el-tag v-if="teacher.is_top" type="danger" size="small" class="top-tag">置顶</el-tag>
-          <span class="teacher-id">ID: {{ teacher.id }}</span>
+          <span class="teacher-id">ID: T{{ teacher.teacher_no != null && teacher.teacher_no !== '' ? teacher.teacher_no : teacher.id }}</span>
         </div>
         <div class="status-tags">
           <el-tag 

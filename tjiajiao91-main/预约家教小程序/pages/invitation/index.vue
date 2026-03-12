@@ -31,8 +31,8 @@
     <!-- 邀请规则卡片 -->
     <view class="rule-card">
       <view class="rule-title">
-        <text>每邀1人认证后得</text>
-        <text class="highlight">100优惠券</text>
+        <text>每邀1人注册后得</text>
+        <text class="highlight">￥20优惠券</text>
       </view>
       
       <view class="rule-steps">
@@ -40,31 +40,30 @@
           <view class="step-icon step-1">
             <text class="icon-text">📱</text>
           </view>
-          <text class="step-label">邀请好友</text>
+          <text class="step-label">分享给好友</text>
         </view>
         <view class="step-arrow">→</view>
         <view class="step-item">
           <view class="step-icon step-2">
             <text class="icon-text">✓</text>
           </view>
-          <text class="step-label">好友注册并认证</text>
+          <text class="step-label">好友注册账号</text>
         </view>
         <view class="step-arrow">→</view>
         <view class="step-item">
           <view class="step-icon step-3">
             <text class="icon-text">🎁</text>
           </view>
-          <text class="step-label">获得100优惠券</text>
+          <text class="step-label">获得￥20优惠券</text>
         </view>
       </view>
       
-      <button class="invite-btn" @click="handleInvite">
-        <text>立即邀请</text>
+      <button class="invite-btn" open-type="share">
+        <text>立即分享</text>
       </button>
       
       <view class="rule-note">
-        <text>* 必须是新用户，老用户不计入邀请，无法获得奖励</text>
-        <text class="rule-link" @click="showRuleDetail">详细规则 ></text>
+        <text>* 必须是新用户注册，老用户不计入邀请</text>
       </view>
     </view>
 
@@ -76,21 +75,14 @@
           <view class="reward-icon gift-icon">
             <text>🎁</text>
           </view>
-          <text class="reward-label">被单礼包</text>
+          <text class="reward-label">新人礼包</text>
         </view>
         <text class="reward-equal">=</text>
         <view class="reward-item">
-          <view class="reward-icon bone-icon">
-            <text>🦴</text>
+          <view class="reward-icon coupon-icon">
+            <text>🎫</text>
           </view>
-          <text class="reward-label">优惠券200</text>
-        </view>
-        <text class="reward-plus">+</text>
-        <view class="reward-item">
-          <view class="reward-icon heart-icon">
-            <text>❤️</text>
-          </view>
-          <text class="reward-label">心动20次</text>
+          <text class="reward-label">￥20优惠券</text>
         </view>
       </view>
     </view>
@@ -161,48 +153,25 @@
       <view class="card-title">邀请须知</view>
       <view class="notice-content">
         <view class="notice-item">
-          <text class="notice-text">邀请成功奖励：每个被邀请用户完成认证（身份/学历/工作）后，奖励邀请者100优惠券</text>
+          <text class="notice-text">邀请成功奖励：每个被邀请用户完成注册后，邀请者和被邀请者各获得￥20优惠券</text>
         </view>
         <view class="notice-item">
-          <text class="notice-text">对于存在非正常邀请行为的用户，平台将扣除其违规所得，如有疑惑，可以咨询客服。二狗APP保留规则解释权。</text>
+          <text class="notice-text">优惠券有效期30天，请及时使用。小萌家教保留规则解释权。</text>
         </view>
       </view>
     </view>
 
     <!-- 底部logo -->
     <view class="footer-logo">
-      <text>—— 二狗APP ——</text>
+      <text>—— 小萌家教 ——</text>
     </view>
-    </view>
-
-    <!-- 分享弹窗 -->
-    <view class="share-modal" v-if="showShareModal" @click="closeShare">
-      <view class="share-content" @click.stop>
-        <view class="share-header">
-          <text class="share-title">分享邀请</text>
-          <text class="share-close" @click="closeShare">✕</text>
-        </view>
-        
-        <view class="share-code-box">
-          <text class="code-label">我的邀请码</text>
-          <view class="code-display">
-            <text class="code-value">{{ invitationCode }}</text>
-            <button class="copy-code-btn" @click="copyCode">复制</button>
-          </view>
-        </view>
-        
-        <view class="share-actions">
-          <button class="share-btn wechat-btn" open-type="share">
-            <text class="share-icon">💬</text>
-            <text class="share-label">微信好友</text>
-          </button>
-        </view>
-      </view>
     </view>
   </view>
 </template>
 
 <script>
+import envConfig from '@/config/env.js'
+
 export default {
   data() {
     return {
@@ -230,29 +199,18 @@ export default {
     const systemInfo = uni.getSystemInfoSync()
     this.statusBarHeight = systemInfo.statusBarHeight || 0
     
-    // 显示活动暂未开放提示
-    uni.showModal({
-      title: '温馨提示',
-      content: '该活动暂未开放，敬请期待！',
-      showCancel: false,
-      confirmText: '知道了',
-      success: () => {
-        // 用户点击确定后返回上一页
-        setTimeout(() => {
-          uni.navigateBack()
-        }, 300)
-      }
-    })
-    
-    // 暂时注释掉数据加载
-    // this.loadUserInfo()
-    // this.loadInvitationData()
+    this.loadUserInfo()
+    this.loadInvitationData()
   },
   
   onShareAppMessage() {
+    const userInfo = uni.getStorageSync('userInfo') || {}
+    const inviterOpenid = userInfo.openid || ''
+    
     return {
-      title: `邀你一起用91家教，注册即送优惠券！我的邀请码：${this.invitationCode}`,
-      path: `/pages/register-with-invite/index?inviteCode=${this.invitationCode}`
+      title: `邀你一起用小萌家教，注册即送￥20优惠券！`,
+      path: `/pages/login/index?inviter=${inviterOpenid}`,
+      imageUrl: '/static/share-invite.png' // 可以添加分享图片
     }
   },
   
@@ -288,7 +246,7 @@ export default {
         }
         
         const res = await uni.request({
-          url: this.$baseUrl + '/api/invitation/stats',
+          url: envConfig.API_BASE_URL + '/api/invitation/stats',
           method: 'GET',
           data: {
             openid: openid
@@ -336,7 +294,7 @@ export default {
         uni.showLoading({ title: '领取中...' })
         
         const res = await uni.request({
-          url: this.$baseUrl + '/api/invitation/receive-coupon',
+          url: envConfig.API_BASE_URL + '/api/invitation/receive-coupon',
           method: 'POST',
           header: {
             'Content-Type': 'application/json',
@@ -370,34 +328,6 @@ export default {
           icon: 'none'
         })
       }
-    },
-    
-    handleInvite() {
-      this.showShareModal = true
-    },
-    
-    closeShare() {
-      this.showShareModal = false
-    },
-    
-    copyCode() {
-      uni.setClipboardData({
-        data: this.invitationCode,
-        success: () => {
-          uni.showToast({
-            title: '邀请码已复制',
-            icon: 'success'
-          })
-        }
-      })
-    },
-    
-    showRuleDetail() {
-      uni.showModal({
-        title: '邀请规则',
-        content: '1. 每邀请1位新用户注册并完成认证，您可获得100优惠券\n2. 被邀请用户必须是新用户\n3. 被邀请用户需完成身份/学历/工作认证\n4. 奖励将在认证完成后自动发放',
-        showCancel: false
-      })
     }
   }
 }
@@ -843,108 +773,6 @@ export default {
   text {
     font-size: 22rpx;
     color: #999;
-  }
-}
-
-// 分享弹窗
-.share-modal {
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background: rgba(0, 0, 0, 0.5);
-  display: flex;
-  align-items: flex-end;
-  z-index: 1000;
-  
-  .share-content {
-    width: 100%;
-    background: #fff;
-    border-radius: 24rpx 24rpx 0 0;
-    padding: 40rpx 30rpx;
-    padding-bottom: calc(40rpx + env(safe-area-inset-bottom));
-    
-    .share-header {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      margin-bottom: 30rpx;
-      
-      .share-title {
-        font-size: 32rpx;
-        font-weight: bold;
-        color: #333;
-      }
-      
-      .share-close {
-        font-size: 40rpx;
-        color: #999;
-        padding: 0 10rpx;
-      }
-    }
-    
-    .share-code-box {
-      background: #F5F5F5;
-      border-radius: 16rpx;
-      padding: 25rpx;
-      margin-bottom: 30rpx;
-      
-      .code-label {
-        display: block;
-        font-size: 24rpx;
-        color: #666;
-        margin-bottom: 15rpx;
-      }
-      
-      .code-display {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        
-        .code-value {
-          flex: 1;
-          font-size: 40rpx;
-          font-weight: bold;
-          color: #FF6B35;
-          letter-spacing: 6rpx;
-          text-align: center;
-        }
-        
-        .copy-code-btn {
-          padding: 10rpx 28rpx;
-          background: linear-gradient(135deg, #FF8C42 0%, #FF6B35 100%);
-          color: #fff;
-          font-size: 24rpx;
-          border-radius: 20rpx;
-          border: none;
-        }
-      }
-    }
-    
-    .share-actions {
-      display: flex;
-      justify-content: center;
-      
-      .share-btn {
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        background: none;
-        border: none;
-        padding: 20rpx 40rpx;
-        
-        .share-icon {
-          font-size: 60rpx;
-          margin-bottom: 10rpx;
-        }
-        
-        .share-label {
-          font-size: 24rpx;
-          color: #666;
-        }
-      }
-    }
   }
 }
 </style>

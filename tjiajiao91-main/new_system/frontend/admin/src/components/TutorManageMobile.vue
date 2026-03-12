@@ -209,8 +209,8 @@
       </button>
     </div>
 
-    <!-- 卡片列表 -->
-    <div class="tutor-list" v-loading="props.loading">
+    <!-- 卡片列表：首屏用 props.loading，加载更多时用 props.loadingMore 避免整屏遮罩闪烁 -->
+    <div class="tutor-list" v-loading="props.loading && !props.loadingMore">
       <TutorCardMobile
         v-for="tutor in props.tutors"
         :key="tutor.id"
@@ -231,11 +231,15 @@
         <div class="empty-hint">试试调整筛选条件或添加新的家教信息</div>
       </div>
 
-      <!-- 加载更多提示 -->
-      <div v-if="props.tutors.length > 0 && hasMore && !props.loading" class="load-more-trigger" ref="loadMoreTrigger">
+      <!-- 加载更多提示 / 底部加载图案 -->
+      <div 
+        v-if="props.tutors.length > 0 && hasMore" 
+        class="load-more-trigger" 
+        ref="loadMoreTrigger"
+      >
         <div class="load-more-content">
           <el-icon class="is-loading"><Loading /></el-icon>
-          <span>加载更多...</span>
+          <span>{{ props.loadingMore ? '加载中...' : '加载更多...' }}</span>
         </div>
       </div>
 
@@ -585,6 +589,11 @@ const props = defineProps({
     default: () => ({})
   },
   loading: {
+    type: Boolean,
+    default: false
+  },
+  // 加载更多时的 loading（避免整页遮罩闪烁）
+  loadingMore: {
     type: Boolean,
     default: false
   },
@@ -1068,15 +1077,21 @@ const setupIntersectionObserver = () => {
     intersectionObserver = new IntersectionObserver(
       (entries) => {
         entries.forEach((entry) => {
-          if (entry.isIntersecting && hasMore.value && !props.loading) {
+          if (
+            entry.isIntersecting &&
+            hasMore.value &&
+            !props.loading &&
+            !props.loadingMore
+          ) {
             emit('load-more')
           }
         })
       },
       {
         root: null,
-        rootMargin: '200px', // 提前200px开始加载
-        threshold: 0.01
+        // 距离底部 300px 时预加载
+        rootMargin: '0px 0px 300px 0px',
+        threshold: 0
       }
     )
     

@@ -103,9 +103,12 @@
         <el-table-column prop="nickname" label="昵称" min-width="120">
           <template #default="{ row }">
             <div class="user-info">
-              <el-avatar :size="32" :src="row.headimgurl || row.avatar" v-if="row.headimgurl || row.avatar">
-                {{ row.nickname?.charAt(0) }}
-              </el-avatar>
+              <el-avatar 
+                :size="32" 
+                :src="formatAvatarUrl(row.avatar)" 
+                v-if="row.avatar && formatAvatarUrl(row.avatar)"
+                @error="handleAvatarError(row)"
+              />
               <el-avatar :size="32" v-else>
                 {{ row.nickname?.charAt(0) || '用' }}
               </el-avatar>
@@ -121,47 +124,64 @@
         </el-table-column>
         <el-table-column prop="user_type" label="用户角色" width="100" align="center">
           <template #default="{ row }">
-            <el-tag v-if="row.user_type === 'teacher'" type="success" size="small">教师</el-tag>
-            <el-tag v-else-if="row.user_type === 'parent'" type="primary" size="small">家长</el-tag>
-            <el-tag v-else type="info" size="small">未选择</el-tag>
+            <el-tag v-if="row.user_type === 'parent'" type="primary" size="small">家长</el-tag>
+            <el-tag v-else-if="row.user_type === 'teacher'" type="success" size="small">老师</el-tag>
+            <el-tag v-else-if="row.user_type === 'admin'" type="danger" size="small">管理员</el-tag>
+            <el-tag v-else type="info" size="small">未知</el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column prop="status" label="状态" width="80" align="center">
+          <template #default="{ row }">
+            <el-tag v-if="row.status === 1" type="success" size="small">启用</el-tag>
+            <el-tag v-else type="danger" size="small">禁用</el-tag>
           </template>
         </el-table-column>
         <el-table-column prop="openid" label="OpenID" min-width="200" show-overflow-tooltip />
         <el-table-column prop="create_time" label="注册时间" width="180" align="center" />
         <el-table-column prop="update_time" label="最后登录" width="180" align="center" />
-        <el-table-column label="操作" width="180" align="center" fixed="right">
+        <el-table-column label="操作" width="280" align="center" fixed="right">
           <template #default="{ row }">
-            <el-button
-              type="primary"
-              size="small"
-              link
-              @click="handleView(row)"
-            >
-              <el-icon><View /></el-icon>
-              查看
-            </el-button>
-            <el-button
-              type="primary"
-              size="small"
-              link
-              @click="handleEdit(row)"
-            >
-              <el-icon><Edit /></el-icon>
-              编辑
-            </el-button>
-            <el-button
-              type="danger"
-              size="small"
-              link
-              @click="handleDelete(row)"
-            >
-              <el-icon><Delete /></el-icon>
-              删除
-            </el-button>
+            <div class="action-buttons">
+              <el-button
+                type="primary"
+                size="small"
+                link
+                @click="handleView(row)"
+              >
+                <el-icon><View /></el-icon>
+                查看
+              </el-button>
+              <el-button
+                type="primary"
+                size="small"
+                link
+                @click="handleEdit(row)"
+              >
+                <el-icon><Edit /></el-icon>
+                编辑
+              </el-button>
+              <el-button
+                :type="row.status === 1 ? 'warning' : 'success'"
+                size="small"
+                link
+                @click="handleToggleStatus(row)"
+              >
+                <el-icon><Switch /></el-icon>
+                {{ row.status === 1 ? '禁用' : '启用' }}
+              </el-button>
+              <el-button
+                type="danger"
+                size="small"
+                link
+                @click="handleDelete(row)"
+              >
+                <el-icon><Delete /></el-icon>
+                删除
+              </el-button>
+            </div>
           </template>
         </el-table-column>
       </el-table>
-
       <!-- 分页 -->
       <div class="pagination-container">
         <el-pagination
@@ -189,14 +209,53 @@
         :rules="editRules"
         label-width="100px"
       >
+        <el-form-item label="头像" prop="avatar">
+          <div class="avatar-edit-container">
+            <div class="avatar-preview">
+              <el-avatar 
+                :size="80" 
+                :src="formatAvatarUrl(editForm.avatar)" 
+                v-if="editForm.avatar && formatAvatarUrl(editForm.avatar)"
+                @error="handleEditAvatarError"
+              />
+              <el-avatar :size="80" v-else>
+                {{ editForm.nickname?.charAt(0) || '用' }}
+              </el-avatar>
+            </div>
+            <div class="avatar-upload">
+              <el-upload
+                class="avatar-uploader"
+                :action="uploadUrl"
+                :data="uploadData"
+                :show-file-list="false"
+                :before-upload="beforeAvatarUpload"
+                :on-success="handleAvatarSuccess"
+                :on-error="handleAvatarUploadError"
+                :loading="avatarUploading"
+              >
+                <el-button type="primary" :loading="avatarUploading">
+                  <el-icon><Upload /></el-icon>
+                  {{ avatarUploading ? '上传中...' : '点击上传头像' }}
+                </el-button>
+              </el-upload>
+              <el-text size="small" type="info" style="margin-top: 8px; display: block;">
+                支持 JPG、PNG、GIF 格式，文件大小不超过 2MB
+              </el-text>
+            </div>
+          </div>
+        </el-form-item>
         <el-form-item label="昵称" prop="nickname">
           <el-input v-model="editForm.nickname" placeholder="请输入昵称" />
         </el-form-item>
         <el-form-item label="手机号" prop="phone">
           <el-input v-model="editForm.phone" placeholder="请输入手机号" />
         </el-form-item>
-        <el-form-item label="头像" prop="avatar">
-          <el-input v-model="editForm.avatar" placeholder="请输入头像URL" />
+        <el-form-item label="用户角色" prop="user_type">
+          <el-select v-model="editForm.user_type" placeholder="请选择用户角色" style="width: 100%">
+            <el-option label="家长" value="parent" />
+            <el-option label="老师" value="teacher" />
+            <el-option label="管理员" value="admin" />
+          </el-select>
         </el-form-item>
       </el-form>
       <template #footer>
@@ -214,8 +273,16 @@
       width="600px"
     >
       <el-descriptions :column="1" border v-if="currentUser">
-        <el-descriptions-item label="用户ID">
-          {{ currentUser.id }}
+        <el-descriptions-item label="头像">
+          <el-avatar 
+            :size="50" 
+            :src="formatAvatarUrl(currentUser.avatar)" 
+            v-if="currentUser.avatar && formatAvatarUrl(currentUser.avatar)"
+            @error="handleAvatarError(currentUser)"
+          />
+          <el-avatar :size="50" v-else>
+            {{ currentUser.nickname?.charAt(0) || '用' }}
+          </el-avatar>
         </el-descriptions-item>
         <el-descriptions-item label="昵称">
           {{ currentUser.nickname || '未设置' }}
@@ -223,19 +290,21 @@
         <el-descriptions-item label="手机号">
           {{ currentUser.phone || '未绑定' }}
         </el-descriptions-item>
+        <el-descriptions-item label="用户角色">
+          <el-tag v-if="currentUser.user_type === 'parent'" type="primary">家长</el-tag>
+          <el-tag v-else-if="currentUser.user_type === 'teacher'" type="success">老师</el-tag>
+          <el-tag v-else-if="currentUser.user_type === 'admin'" type="danger">管理员</el-tag>
+          <el-tag v-else type="info">未知</el-tag>
+        </el-descriptions-item>
+        <el-descriptions-item label="账户状态">
+          <el-tag v-if="currentUser.status === 1" type="success">启用</el-tag>
+          <el-tag v-else type="danger">禁用</el-tag>
+        </el-descriptions-item>
+        <el-descriptions-item label="用户ID">
+          {{ currentUser.id }}
+        </el-descriptions-item>
         <el-descriptions-item label="OpenID">
           {{ currentUser.openid }}
-        </el-descriptions-item>
-        <el-descriptions-item label="用户角色">
-          <el-tag v-if="currentUser.user_type === 'teacher'" type="success">教师</el-tag>
-          <el-tag v-else-if="currentUser.user_type === 'parent'" type="primary">家长</el-tag>
-          <el-tag v-else type="info">未选择</el-tag>
-        </el-descriptions-item>
-        <el-descriptions-item label="头像">
-          <el-avatar :size="50" :src="currentUser.headimgurl || currentUser.avatar" v-if="currentUser.headimgurl || currentUser.avatar">
-            {{ currentUser.nickname?.charAt(0) }}
-          </el-avatar>
-          <span v-else>未设置</span>
         </el-descriptions-item>
         <el-descriptions-item label="注册时间">
           {{ currentUser.create_time }}
@@ -253,7 +322,7 @@ import { ref, reactive, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
   User, Calendar, TrendCharts, DataLine,
-  Search, Refresh, Delete, View, Edit
+  Search, Refresh, Delete, View, Edit, Upload, Switch
 } from '@element-plus/icons-vue'
 import {
   getMiniUserList,
@@ -261,7 +330,8 @@ import {
   updateMiniUser,
   deleteMiniUser,
   batchDeleteMiniUsers,
-  getMiniUserStats
+  getMiniUserStats,
+  toggleMiniUserStatus
 } from '@/api/miniUser'
 
 // 统计数据
@@ -289,7 +359,6 @@ const pagination = reactive({
   pageSize: 20,
   total: 0
 })
-
 // 编辑对话框
 const editDialogVisible = ref(false)
 const viewDialogVisible = ref(false)
@@ -302,7 +371,8 @@ const editForm = reactive({
   id: null,
   nickname: '',
   phone: '',
-  avatar: ''
+  avatar: '',
+  user_type: ''
 })
 
 const editRules = {
@@ -313,6 +383,14 @@ const editRules = {
     { pattern: /^1[3-9]\d{9}$/, message: '请输入正确的手机号', trigger: 'blur' }
   ]
 }
+
+// 头像上传相关
+const avatarUploading = ref(false)
+const uploadUrl = ref('/admin/api/avatar/upload')
+const uploadData = reactive({
+  openid: '',
+  user_id: ''
+})
 
 // 加载统计数据
 const loadStats = async () => {
@@ -345,7 +423,6 @@ const loadData = async () => {
     loading.value = false
   }
 }
-
 // 搜索
 const handleSearch = () => {
   pagination.page = 1
@@ -387,16 +464,25 @@ const handleView = async (row) => {
   }
 }
 
-// 编辑
-const handleEdit = (row) => {
-  dialogTitle.value = '编辑用户'
-  editForm.id = row.id
-  editForm.nickname = row.nickname
-  editForm.phone = row.phone
-  editForm.avatar = row.avatar
-  editDialogVisible.value = true
+// 编辑用户
+const handleEdit = async (row) => {
+  try {
+    const res = await getMiniUserDetail(row.id)
+    if (res.code === 200) {
+      currentUser.value = res.data.user
+      
+      dialogTitle.value = '编辑用户'
+      editForm.id = row.id
+      editForm.nickname = row.nickname
+      editForm.phone = row.phone
+      editForm.avatar = row.avatar
+      editForm.user_type = row.user_type || ''
+      editDialogVisible.value = true
+    }
+  } catch (error) {
+    ElMessage.error('获取用户详情失败')
+  }
 }
-
 // 保存
 const handleSave = async () => {
   if (!editFormRef.value) return
@@ -409,7 +495,8 @@ const handleSave = async () => {
       const res = await updateMiniUser(editForm.id, {
         nickname: editForm.nickname,
         phone: editForm.phone,
-        avatar: editForm.avatar
+        avatar: editForm.avatar,
+        user_type: editForm.user_type
       })
       
       if (res.code === 200) {
@@ -427,6 +514,33 @@ const handleSave = async () => {
   })
 }
 
+// 切换用户状态
+const handleToggleStatus = (row) => {
+  const action = row.status === 1 ? '禁用' : '启用'
+  const statusText = row.status === 1 ? '禁用后该用户将无法登录小程序' : '启用后该用户可以正常登录小程序'
+  
+  ElMessageBox.confirm(
+    `确定要${action}用户"${row.nickname}"吗？${statusText}`,
+    '提示',
+    {
+      confirmButtonText: '确定',
+      cancelButtonText: '取消',
+      type: 'warning'
+    }
+  ).then(async () => {
+    try {
+      const res = await toggleMiniUserStatus(row.id)
+      if (res.code === 200) {
+        ElMessage.success(`${action}成功`)
+        loadData()
+      } else {
+        ElMessage.error(res.message || `${action}失败`)
+      }
+    } catch (error) {
+      ElMessage.error(`${action}失败`)
+    }
+  }).catch(() => {})
+}
 // 删除
 const handleDelete = (row) => {
   ElMessageBox.confirm(
@@ -488,6 +602,98 @@ const handleDialogClose = () => {
   editForm.nickname = ''
   editForm.phone = ''
   editForm.avatar = ''
+  editForm.user_type = ''
+  currentUser.value = null
+  
+  // 清理上传参数
+  uploadData.openid = ''
+  uploadData.user_id = ''
+  avatarUploading.value = false
+}
+// 格式化头像URL
+const formatAvatarUrl = (avatar) => {
+  if (!avatar) return ''
+  
+  // 如果是微信临时文件路径，返回空
+  if (avatar.includes('http://tmp/') || avatar.includes('tmp/')) {
+    return ''
+  }
+  
+  // 如果已经是完整URL，直接返回
+  if (avatar.startsWith('http://') || avatar.startsWith('https://')) {
+    return avatar
+  }
+  
+  // 如果是相对路径，添加域名
+  if (avatar.startsWith('uploads/')) {
+    const currentDomain = window.location.origin
+    
+    // 开发环境
+    if (currentDomain.includes('localhost') || currentDomain.includes('127.0.0.1')) {
+      return `${currentDomain}/${avatar}`
+    }
+    
+    // 线上环境，需要根据实际部署情况调整
+    return `${currentDomain}/${avatar}`
+  }
+  
+  return avatar
+}
+
+// 头像加载错误处理
+const handleAvatarError = (user) => {
+  console.log(`头像加载失败 - 用户: ${user.nickname}, URL: ${formatAvatarUrl(user.avatar)}`)
+}
+
+// 编辑对话框头像加载错误处理
+const handleEditAvatarError = () => {
+  console.log(`编辑对话框头像加载失败 - URL: ${formatAvatarUrl(editForm.avatar)}`)
+}
+
+// 上传前验证
+const beforeAvatarUpload = (file) => {
+  const isImage = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp'].includes(file.type)
+  const isLt2M = file.size / 1024 / 1024 < 2
+
+  if (!isImage) {
+    ElMessage.error('只能上传 JPG、PNG、GIF、WebP 格式的图片!')
+    return false
+  }
+  if (!isLt2M) {
+    ElMessage.error('上传头像图片大小不能超过 2MB!')
+    return false
+  }
+
+  // 设置上传参数 - 优先使用openid，如果没有则使用用户ID
+  if (currentUser.value?.openid) {
+    uploadData.openid = currentUser.value.openid
+  } else {
+    uploadData.user_id = editForm.id
+  }
+  
+  avatarUploading.value = true
+  console.log('准备上传头像，参数:', uploadData)
+  
+  return true
+}
+// 上传成功
+const handleAvatarSuccess = (response, file) => {
+  avatarUploading.value = false
+  
+  if (response.code === 200) {
+    editForm.avatar = response.data.avatar_url
+    ElMessage.success('头像上传成功')
+    console.log('头像上传成功，新URL:', response.data.avatar_url)
+  } else {
+    ElMessage.error(response.message || '头像上传失败')
+  }
+}
+
+// 上传失败
+const handleAvatarUploadError = (error) => {
+  avatarUploading.value = false
+  console.error('头像上传失败:', error)
+  ElMessage.error('头像上传失败，请重试')
 }
 
 // 初始化
@@ -496,7 +702,6 @@ onMounted(() => {
   loadData()
 })
 </script>
-
 <style lang="scss" scoped>
 .mini-user-manage {
   padding: 20px;
@@ -562,7 +767,6 @@ onMounted(() => {
       background: linear-gradient(135deg, #e89b9b 0%, #d87878 100%);
     }
   }
-  
   &.week {
     background: linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%);
     border: 1px solid #dbeafe;
@@ -625,7 +829,6 @@ onMounted(() => {
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   }
 }
-
 .search-card {
   margin-bottom: 20px;
 
@@ -650,5 +853,52 @@ onMounted(() => {
   margin-top: 20px;
   display: flex;
   justify-content: flex-end;
+}
+
+.action-buttons {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  flex-wrap: nowrap;
+  
+  .el-button {
+    margin: 0;
+    padding: 4px 8px;
+    min-width: auto;
+    
+    .el-icon {
+      margin-right: 2px;
+    }
+  }
+}
+
+.avatar-edit-container {
+  display: flex;
+  align-items: flex-start;
+  gap: 16px;
+  
+  .avatar-preview {
+    flex-shrink: 0;
+  }
+  
+  .avatar-upload {
+    flex: 1;
+    
+    .avatar-uploader {
+      .el-upload {
+        border: 1px dashed #d9d9d9;
+        border-radius: 6px;
+        cursor: pointer;
+        position: relative;
+        overflow: hidden;
+        transition: all 0.3s;
+        
+        &:hover {
+          border-color: #409eff;
+        }
+      }
+    }
+  }
 }
 </style>

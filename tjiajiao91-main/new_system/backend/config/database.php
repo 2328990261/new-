@@ -32,7 +32,10 @@ return [
             'password'        => $password,
             'hostport'        => $hostport,
             'params'          => [
-                \PDO::MYSQL_ATTR_INIT_COMMAND => 'SET NAMES utf8mb4 COLLATE utf8mb4_unicode_ci'
+                \PDO::MYSQL_ATTR_INIT_COMMAND => 'SET NAMES utf8mb4 COLLATE utf8mb4_unicode_ci',
+                \PDO::ATTR_TIMEOUT => 5,
+                \PDO::ATTR_ERRMODE => \PDO::ERRMODE_EXCEPTION,
+                \PDO::ATTR_EMULATE_PREPARES => true,
             ],
             'charset'         => 'utf8mb4',
             'prefix'          => 'fa_',
@@ -42,7 +45,7 @@ return [
             'master_num'      => 1,
             'slave_no'        => '',
             'fields_strict'   => true,
-            'break_reconnect' => false,
+            'break_reconnect' => true,
             'trigger_sql'     => true,
             'fields_cache'    => false,
         ],

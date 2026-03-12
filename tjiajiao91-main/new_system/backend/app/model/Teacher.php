@@ -14,6 +14,7 @@ class Teacher extends Model
     // 设置字段信息
     protected $schema = [
         'id'                    => 'int',
+        'teacher_no'            => 'int',  // 对外展示编号，从1000起，显示为 T1000
         'account_id'            => 'int',
         'name'                  => 'string',
         'gender'                => 'string',

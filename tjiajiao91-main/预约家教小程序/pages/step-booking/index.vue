@@ -204,6 +204,8 @@ export default {
 			currentStep: 0,
 			totalSteps: 4,
 			stepTitles: ['学生信息', '辅导信息', '老师要求', '联系信息'],
+			hasCheckedLogin: false, // 标记是否已经检查过登录
+			isReturningFromLogin: false, // 标记是否从登录页返回
 			formData: {
 				gradeLevel: '',
 				grade: '',
@@ -278,9 +280,18 @@ export default {
 			console.log('❌ URL中没有admin_openid参数')
 		}
 		
+		// 检查是否从登录页返回
+		if (options.from === 'login') {
+			this.isReturningFromLogin = true
+		}
+		
 		this.loadSubjects()
 		this.loadUserInfo()
 		this.loadSavedData()
+	},
+	onShow() {
+		// 每次显示页面时检查登录状态
+		this.checkLoginStatus()
 	},
 	watch: {
 		formData: {
@@ -292,6 +303,53 @@ export default {
 		}
 	},
 	methods: {
+		// 检查登录状态
+		checkLoginStatus() {
+			// 如果已经检查过登录，不再重复检查
+			if (this.hasCheckedLogin) {
+				return
+			}
+			
+			// 检查是否登录
+			if (!auth.isLoggedIn()) {
+				// 如果是从登录页返回的，显示提示并延迟跳转
+				if (this.isReturningFromLogin) {
+					uni.showToast({
+						title: '请先登录后使用',
+						icon: 'none',
+						duration: 2000
+					})
+					
+					// 延迟3秒后再跳转
+					setTimeout(() => {
+						uni.navigateTo({
+							url: '/pages/login/index'
+						})
+					}, 3000)
+				} else {
+					// 首次进入，立即提示并跳转
+					uni.showToast({
+						title: '请先登录',
+						icon: 'none'
+					})
+					
+					setTimeout(() => {
+						uni.navigateTo({
+							url: '/pages/login/index'
+						})
+					}, 1500)
+				}
+				
+				// 标记已经检查过登录
+				this.hasCheckedLogin = true
+				return false
+			}
+			
+			// 已登录，标记已检查
+			this.hasCheckedLogin = true
+			return true
+		},
+		
 		async loadSubjects() {
 			try {
 				const res = await searchApi.getSubjects()
@@ -512,6 +570,7 @@ export default {
 			return true
 		},
 		async submit() {
+			// 再次检查登录状态
 			if (!auth.isLoggedIn()) {
 				uni.showToast({ title: '请先登录', icon: 'none' })
 				setTimeout(() => {

@@ -1,63 +1,45 @@
 <template>
   <div class="application-detail-page" v-loading="loading">
-    <!-- 固定顶部导航栏 -->
-    <div class="fixed-header">
-      <div style="display: flex; justify-content: space-between; align-items: center;">
-        <el-page-header @back="goBack">
-          <template #content>
-            <span style="font-size: 18px; font-weight: 600;">投递详情 #{{ applicationId }}</span>
-          </template>
-        </el-page-header>
-        
-        <!-- 切换按钮 - 中间 -->
-        <div style="display: flex; gap: 10px; align-items: center;">
-          <el-button 
-            :disabled="!hasPrevious" 
-            @click="goToPrevious"
-            :icon="ArrowLeft"
-          >
-            上一个
-          </el-button>
-          <el-button 
-            :disabled="!hasNext" 
-            @click="goToNext"
-            :icon="ArrowRight"
-          >
-            下一个
-          </el-button>
-        </div>
-        
-        <!-- 操作按钮 - 右上角 -->
-        <div style="display: flex; gap: 10px;">
-          <el-button type="primary" @click="copyResume">
-            <el-icon style="margin-right: 4px;"><DocumentCopy /></el-icon>
-            复制简历
-          </el-button>
-          <el-button type="info" @click="viewTeacherMiniProgram">
-            <el-icon style="margin-right: 4px;"><View /></el-icon>
-            查看老师小程序
-          </el-button>
-          <el-button 
-            v-if="currentApplication && currentApplication.status === 'pending'" 
-            type="success" 
-            @click="handleReview('approved')"
-          >
-            通过
-          </el-button>
-          <el-button 
-            v-if="currentApplication && currentApplication.status === 'pending'" 
-            type="danger" 
-            @click="handleReview('rejected')"
-          >
-            拒绝
-          </el-button>
-        </div>
-      </div>
-    </div>
-
-    <!-- 内容区域 - 添加顶部padding以避免被固定头部遮挡 -->
+    <!-- 内容区域 -->
     <div class="content-wrapper">
       <div v-if="currentApplication && teacherResume" class="detail-content">
+      <!-- 顶部导航栏 -->
+      <div class="page-header">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+          <el-page-header @back="goBack">
+            <template #content>
+              <span style="font-size: 18px; font-weight: 600;">投递详情 #{{ applicationId }}</span>
+            </template>
+          </el-page-header>
+          
+          <!-- 操作按钮 - 右上角 -->
+          <div style="display: flex; gap: 10px;">
+            <el-button type="primary" @click="copyResume">
+              <el-icon style="margin-right: 4px;"><DocumentCopy /></el-icon>
+              复制简历
+            </el-button>
+            <el-button type="info" @click="viewTeacherMiniProgram">
+              <el-icon style="margin-right: 4px;"><View /></el-icon>
+              查看老师小程序
+            </el-button>
+            <el-button 
+              v-if="currentApplication && currentApplication.status === 'pending'" 
+              type="success" 
+              @click="handleReview('approved')"
+            >
+              通过
+            </el-button>
+            <el-button 
+              v-if="currentApplication && currentApplication.status === 'pending'" 
+              type="danger" 
+              @click="handleReview('rejected')"
+            >
+              拒绝
+            </el-button>
+          </div>
+        </div>
+      </div>
+      
       <!-- 投递状态和时间 -->
       <el-alert 
         :type="currentApplication.status === 'pending' ? 'warning' : (currentApplication.status === 'approved' ? 'success' : 'error')"
@@ -278,8 +260,8 @@
 import { ref, onMounted, computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import { DocumentCopy, View, Lock, Location, ArrowLeft, ArrowRight } from '@element-plus/icons-vue'
-import { getApplicationDetail, reviewApplication, getApplicationList } from '@/api/application'
+import { DocumentCopy, View, Lock, Location } from '@element-plus/icons-vue'
+import { getApplicationDetail, reviewApplication } from '@/api/application'
 import { getTeacherDetail } from '@/api/teacher'
 
 const route = useRoute()
@@ -291,14 +273,17 @@ const currentApplication = ref(null)
 const teacherResume = ref(null)
 const showContact = ref(false)
 
-// 用于切换的数据
-const applicationIds = ref([])
-const currentIndex = ref(-1)
-const currentTab = ref('all') // 从路由参数或localStorage获取当前tab
-
-// 计算是否有上一个/下一个
-const hasPrevious = computed(() => currentIndex.value > 0)
-const hasNext = computed(() => currentIndex.value < applicationIds.value.length - 1 && currentIndex.value >= 0)
+// 处理图片URL，如果是相对路径则添加域名前缀
+const getFullImageUrl = (url) => {
+  if (!url) return ''
+  // 如果已经是完整URL，直接返回
+  if (url.startsWith('http://') || url.startsWith('https://')) {
+    return url
+  }
+  // 如果是相对路径，添加后端服务地址
+  const backendUrl = import.meta.env.VITE_BACKEND_URL || window.location.origin
+  return backendUrl + (url.startsWith('/') ? url : '/' + url)
+}
 
 // 加载数据
 const loadData = async () => {
@@ -312,82 +297,12 @@ const loadData = async () => {
       if (currentApplication.value.teacher_id) {
         await loadTeacherResume(currentApplication.value.teacher_id)
       }
-      
-      // 加载当前tab的所有投递ID列表
-      await loadApplicationIds()
     }
   } catch (error) {
     console.error('加载数据失败:', error)
     ElMessage.error('加载数据失败')
   } finally {
     loading.value = false
-  }
-}
-
-// 加载当前tab下的所有投递ID
-const loadApplicationIds = async () => {
-  try {
-    // 从路由query或localStorage获取当前tab和筛选条件
-    const tab = route.query.tab || localStorage.getItem('application_current_tab') || 'all'
-    currentTab.value = tab
-    
-    const params = {
-      page: 1,
-      page_size: 9999 // 获取所有数据
-    }
-    
-    // 根据tab设置状态筛选
-    if (tab !== 'all') {
-      params.status = tab
-    }
-    
-    // 从localStorage获取其他筛选条件
-    const searchForm = JSON.parse(localStorage.getItem('application_search_form') || '{}')
-    if (searchForm.teacher_name) params.teacher_name = searchForm.teacher_name
-    if (searchForm.tutor_title) params.tutor_title = searchForm.tutor_title
-    if (searchForm.status) params.status = searchForm.status
-    if (searchForm.startTime && searchForm.endTime) {
-      params.start_time = searchForm.startTime
-      params.end_time = searchForm.endTime
-    }
-    
-    const res = await getApplicationList(params)
-    if (res.success || res.code === 200) {
-      const data = res.data || res
-      const list = data.list || []
-      applicationIds.value = list.map(item => item.id)
-      
-      // 找到当前ID在列表中的位置
-      currentIndex.value = applicationIds.value.indexOf(parseInt(applicationId.value))
-    }
-  } catch (error) {
-    console.error('加载投递列表失败:', error)
-  }
-}
-
-// 切换到上一个
-const goToPrevious = () => {
-  if (hasPrevious.value) {
-    const prevId = applicationIds.value[currentIndex.value - 1]
-    router.push({
-      path: `/applications/${prevId}`,
-      query: { tab: currentTab.value }
-    })
-    applicationId.value = prevId
-    loadData()
-  }
-}
-
-// 切换到下一个
-const goToNext = () => {
-  if (hasNext.value) {
-    const nextId = applicationIds.value[currentIndex.value + 1]
-    router.push({
-      path: `/applications/${nextId}`,
-      query: { tab: currentTab.value }
-    })
-    applicationId.value = nextId
-    loadData()
   }
 }
 
@@ -403,15 +318,15 @@ const loadTeacherResume = async (teacherId) => {
         if (typeof teacherResume.value.photos === 'string') {
           try {
             const photos = JSON.parse(teacherResume.value.photos)
-            teacherResume.value.avatar = photos.avatar || ''
-            teacherResume.value.teaching_photos = photos.teaching_photos || []
+            teacherResume.value.avatar = getFullImageUrl(photos.avatar || '')
+            teacherResume.value.teaching_photos = (photos.teaching_photos || []).map(url => getFullImageUrl(url))
           } catch (e) {
             teacherResume.value.avatar = ''
             teacherResume.value.teaching_photos = []
           }
         } else if (typeof teacherResume.value.photos === 'object') {
-          teacherResume.value.avatar = teacherResume.value.photos.avatar || ''
-          teacherResume.value.teaching_photos = teacherResume.value.photos.teaching_photos || []
+          teacherResume.value.avatar = getFullImageUrl(teacherResume.value.photos.avatar || '')
+          teacherResume.value.teaching_photos = (teacherResume.value.photos.teaching_photos || []).map(url => getFullImageUrl(url))
         }
       }
       
@@ -526,12 +441,15 @@ const copyResume = () => {
   }
   
   let resumeText = `教师简历\n\n`
+  
+  // 基本信息
   resumeText += `姓名：${teacherResume.value.name || ''}\n`
   resumeText += `性别：${teacherResume.value.gender || ''}\n`
   resumeText += `教师类型：${getTeacherTypeLabel(teacherResume.value.teacher_type, teacherResume.value.grade_level, teacherResume.value.education_level)}\n`
   resumeText += `学校：${teacherResume.value.school || ''}\n`
-  resumeText += `专业：${teacherResume.value.major || ''}\n\n`
+  resumeText += `专业：${teacherResume.value.major || ''}\n`
   
+  // 教学信息
   if (teacherResume.value.hourly_rate) {
     resumeText += `时薪：${teacherResume.value.hourly_rate}元/小时\n`
   }
@@ -543,6 +461,11 @@ const copyResume = () => {
     resumeText += `教学科目：${teacherResume.value.subject_names.join('、')}\n`
   }
   
+  if (teacherResume.value.district_names && teacherResume.value.district_names.length > 0) {
+    resumeText += `教学区域：${teacherResume.value.district_names.join('、')}\n`
+  }
+  
+  // 个人介绍（三个字段分别显示）
   if (teacherResume.value.self_intro) {
     resumeText += `\n自我介绍：\n${teacherResume.value.self_intro}\n`
   }
@@ -551,8 +474,27 @@ const copyResume = () => {
     resumeText += `\n个人优势：\n${teacherResume.value.personal_advantage}\n`
   }
   
+  if (teacherResume.value.advantage_tags && teacherResume.value.advantage_tags.length > 0) {
+    resumeText += `\n优势标签：\n${teacherResume.value.advantage_tags.join('、')}\n`
+  }
+  
+  // 教学经历
+  if (teacherResume.value.experience && teacherResume.value.experience.length > 0) {
+    resumeText += `\n教学经历：\n`
+    teacherResume.value.experience.forEach((exp, index) => {
+      resumeText += `${index + 1}. ${exp.subject || ''}${exp.start_date && exp.end_date ? ` (${exp.start_date} - ${exp.end_date})` : ''}\n`
+      if (exp.location) {
+        resumeText += `   地点：${exp.location}\n`
+      }
+      if (exp.description) {
+        resumeText += `   描述：${exp.description}\n`
+      }
+      resumeText += `\n`
+    })
+  }
+  
   navigator.clipboard.writeText(resumeText).then(() => {
-    ElMessage.success('简历已复制到剪贴板（不含联系方式）')
+    ElMessage.success('完整简历已复制到剪贴板（不含联系方式和认证信息）')
   }).catch(() => {
     ElMessage.error('复制失败，请手动复制')
   })
@@ -597,23 +539,8 @@ onMounted(() => {
 
 <style scoped>
 .application-detail-page {
-  padding: 0;
-  background: #fff;
-  min-height: calc(100vh - 60px); /* 减去 header 高度 */
-  position: relative;
-  margin: -20px -20px 0 -20px; /* 左右下抵消 padding，顶部也抵消 */
-}
-
-/* 固定顶部导航栏 */
-.fixed-header {
-  position: sticky;
-  top: 0; /* 直接贴顶 */
-  z-index: 99; /* 略低于 Layout header 的 z-index: 100 */
-  background: #fff;
-  padding: 20px;
-  border-bottom: 1px solid #e4e7ed;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
-  margin-top: -1px; /* 消除可能的1px间隙 */
+  background: #f5f5f5;
+  min-height: calc(100vh - 60px);
 }
 
 /* 内容区域 */
@@ -624,6 +551,15 @@ onMounted(() => {
 .detail-content {
   max-width: 1200px;
   margin: 0 auto;
+}
+
+/* 页面头部 */
+.page-header {
+  background: #fff;
+  padding: 20px;
+  border-radius: 8px;
+  margin-bottom: 20px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
 }
 
 /* 防止标签文字换行 */

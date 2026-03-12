@@ -3,6 +3,7 @@ namespace app\controller\admin;
 
 use app\BaseController;
 use think\facade\Db;
+use think\facade\Config;
 
 /**
  * 用户管理控制器
@@ -20,29 +21,44 @@ class MiniProgramUser extends BaseController
             $keyword = trim($this->request->param('keyword', ''));
             $platform = trim($this->request->param('platform', '')); // 端口筛选
             
-            // 构建查询（使用 name 方法会自动加 fa_ 前缀）
-            $query = Db::name('users');
+            // 确保status字段存在
+            $this->ensureStatusField();
+            
+            // 构建查询，关联微信用户表获取用户类型
+            $query = Db::name('users')
+                ->alias('u')
+                ->leftJoin('wechat_users w', 'u.openid = w.openid')
+                ->field('u.*, w.user_type');
             
             // 搜索条件
             if (!empty($keyword)) {
                 $query->where(function($q) use ($keyword) {
-                    $q->whereOr('phone', 'like', "%{$keyword}%")
-                      ->whereOr('nickname', 'like', "%{$keyword}%")
-                      ->whereOr('openid', 'like', "%{$keyword}%");
+                    $q->whereOr('u.phone', 'like', "%{$keyword}%")
+                      ->whereOr('u.nickname', 'like', "%{$keyword}%")
+                      ->whereOr('u.openid', 'like', "%{$keyword}%");
                 });
             }
             
             // 端口筛选
             if (!empty($platform)) {
-                $query->where('platform', $platform);
+                $query->where('u.platform', $platform);
             }
             
             // 分页查询
             $total = (int)$query->count();
-            $list = $query->order('create_time', 'desc')
+            $list = $query->order('u.create_time', 'desc')
                           ->limit(($page - 1) * $pageSize, $pageSize)
                           ->select()
                           ->toArray();
+            
+            // 处理头像URL和默认状态
+            foreach ($list as &$item) {
+                if (!empty($item['avatar'])) {
+                    $item['avatar'] = $this->formatAvatarUrl($item['avatar'], $item['nickname'] ?? '');
+                }
+                // 统一 status：1 启用，0 禁用；缺失或 null 视为 1
+                $item['status'] = $this->normalizeStatus($item['status'] ?? null);
+            }
             
             // 确保数据编码正确
             array_walk_recursive($list, function(&$item) {
@@ -86,7 +102,16 @@ class MiniProgramUser extends BaseController
                 ]);
             }
             
-            $user = Db::name('users')->where('id', $id)->find();
+            // 确保status字段存在
+            $this->ensureStatusField();
+            
+            // 关联查询获取用户类型
+            $user = Db::name('users')
+                ->alias('u')
+                ->leftJoin('wechat_users w', 'u.openid = w.openid')
+                ->field('u.*, w.user_type')
+                ->where('u.id', $id)
+                ->find();
             
             if (!$user) {
                 return json([
@@ -95,10 +120,17 @@ class MiniProgramUser extends BaseController
                 ]);
             }
             
+            // 处理头像URL
+            if (!empty($user['avatar'])) {
+                $user['avatar'] = $this->formatAvatarUrl($user['avatar'], $user['nickname'] ?? '');
+            }
+            
+            $user['status'] = $this->normalizeStatus($user['status'] ?? null);
+            
             return json([
                 'code' => 200,
                 'message' => '获取成功',
-                'data' => $user
+                'data' => ['user' => $user]
             ]);
             
         } catch (\Exception $e) {
@@ -125,6 +157,7 @@ class MiniProgramUser extends BaseController
                 ]);
             }
             
+            // 获取用户信息（包含openid）
             $user = Db::name('users')->where('id', $id)->find();
             
             if (!$user) {
@@ -134,30 +167,59 @@ class MiniProgramUser extends BaseController
                 ]);
             }
             
-            // 允许更新的字段
-            $allowFields = ['nickname', 'phone', 'avatar'];
-            $updateData = [];
+            // 开启事务
+            Db::startTrans();
             
-            foreach ($allowFields as $field) {
-                if (isset($data[$field])) {
-                    $updateData[$field] = $data[$field];
+            try {
+                // 更新fa_users表的字段
+                $userAllowFields = ['nickname', 'phone', 'avatar'];
+                $userUpdateData = [];
+                
+                foreach ($userAllowFields as $field) {
+                    if (isset($data[$field])) {
+                        $userUpdateData[$field] = $data[$field];
+                    }
                 }
-            }
-            
-            if (empty($updateData)) {
+                
+                if (!empty($userUpdateData)) {
+                    $userUpdateData['update_time'] = date('Y-m-d H:i:s');
+                    Db::name('users')->where('id', $id)->update($userUpdateData);
+                }
+                
+                // 更新fa_wechat_users表的user_type字段
+                if (isset($data['user_type'])) {
+                    $openid = $user['openid'];
+                    
+                    // 检查fa_wechat_users表中是否存在该用户记录
+                    $wechatUser = Db::name('wechat_users')->where('openid', $openid)->find();
+                    
+                    if ($wechatUser) {
+                        // 更新现有记录
+                        Db::name('wechat_users')->where('openid', $openid)->update([
+                            'user_type' => $data['user_type']
+                        ]);
+                    } else {
+                        // 创建新记录
+                        Db::name('wechat_users')->insert([
+                            'openid' => $openid,
+                            'user_type' => $data['user_type'],
+                            'phone' => $user['phone'] ?? null,
+                            'nickname' => $user['nickname'] ?? null
+                        ]);
+                    }
+                }
+                
+                Db::commit();
+                
                 return json([
-                    'code' => 400,
-                    'message' => '没有可更新的数据'
+                    'code' => 200,
+                    'message' => '更新成功'
                 ]);
+                
+            } catch (\Exception $e) {
+                Db::rollback();
+                throw $e;
             }
-            
-            $updateData['update_time'] = date('Y-m-d H:i:s');
-            Db::name('users')->where('id', $id)->update($updateData);
-            
-            return json([
-                'code' => 200,
-                'message' => '更新成功'
-            ]);
             
         } catch (\Exception $e) {
             return json([
@@ -334,6 +396,151 @@ class MiniProgramUser extends BaseController
                     'dailyTrend' => []
                 ]
             ]);
+        }
+    }
+    
+    /**
+     * 格式化头像URL
+     * @param string $avatar
+     * @param string $nickname
+     * @return string
+     */
+    private function formatAvatarUrl($avatar, $nickname = '')
+    {
+        if (empty($avatar)) {
+            return '';
+        }
+        
+        // 如果是微信小程序的临时文件路径，返回空（使用默认头像）
+        if (strpos($avatar, 'http://tmp/') === 0 || strpos($avatar, 'tmp/') === 0) {
+            return '';
+        }
+        
+        // 如果是有效的HTTP URL，直接返回
+        if (strpos($avatar, 'http://') === 0 || strpos($avatar, 'https://') === 0) {
+            return $avatar;
+        }
+        
+        // 如果是相对路径（uploads开头），转换为完整URL
+        if (strpos($avatar, 'uploads/') === 0) {
+            $request = request();
+            $domain = $request->domain();
+            
+            // 线上环境特殊处理
+            if (strpos($domain, 'localhost') === false && strpos($domain, '127.0.0.1') === false) {
+                // 线上环境，直接返回相对路径，让前端处理域名
+                return $avatar;
+            }
+            
+            return $domain . '/' . $avatar;
+        }
+        
+        // 其他情况，假设是相对路径
+        $request = request();
+        $domain = $request->domain();
+        
+        // 线上环境特殊处理
+        if (strpos($domain, 'localhost') === false && strpos($domain, '127.0.0.1') === false) {
+            // 线上环境，直接返回相对路径
+            return ltrim($avatar, '/');
+        }
+        
+        return $domain . '/' . ltrim($avatar, '/');
+    }
+    
+    /**
+     * 切换用户状态（启用/禁用）
+     * PUT 或 POST /admin/api/mini-users/{id}/toggle-status
+     * 更新 fa_users 表的 status 字段：1=启用，0=禁用
+     */
+    public function toggleStatus()
+    {
+        try {
+            $id = $this->request->param('id');
+            if ($id === '' || $id === null) {
+                return json([
+                    'code' => 400,
+                    'message' => '缺少用户ID'
+                ]);
+            }
+            $id = (int) $id;
+            if ($id <= 0) {
+                return json([
+                    'code' => 400,
+                    'message' => '用户ID无效'
+                ]);
+            }
+            
+            $user = Db::name('users')->where('id', $id)->find();
+            if (!$user) {
+                return json([
+                    'code' => 404,
+                    'message' => '用户不存在'
+                ]);
+            }
+            
+            $this->ensureStatusField();
+            
+            $currentStatus = $this->normalizeStatus($user['status'] ?? null);
+            $newStatus = $currentStatus === 1 ? 0 : 1;
+            
+            $affected = Db::name('users')->where('id', $id)->update([
+                'status' => $newStatus,
+                'update_time' => date('Y-m-d H:i:s')
+            ]);
+            
+            if ($affected === 0) {
+                return json([
+                    'code' => 500,
+                    'message' => '更新失败，请确认 fa_users 表存在 status 字段'
+                ]);
+            }
+            
+            $statusText = $newStatus === 1 ? '启用' : '禁用';
+            return json([
+                'code' => 200,
+                'message' => "用户状态已{$statusText}",
+                'data' => [
+                    'status' => $newStatus,
+                    'id' => $id
+                ]
+            ], 200, [], ['json_encode_param' => JSON_UNESCAPED_UNICODE]);
+            
+        } catch (\Exception $e) {
+            \think\facade\Log::error('toggleStatus failed: ' . $e->getMessage());
+            return json([
+                'code' => 500,
+                'message' => '操作失败: ' . $e->getMessage()
+            ]);
+        }
+    }
+    
+    /**
+     * 统一 status 为 0 或 1，null/空 视为 1（启用）
+     */
+    private function normalizeStatus($value)
+    {
+        if ($value === null || $value === '') {
+            return 1;
+        }
+        return (int) $value ? 1 : 0;
+    }
+    
+    /**
+     * 确保 fa_users 表有 status 字段（表名使用配置前缀）
+     */
+    private function ensureStatusField()
+    {
+        try {
+            $prefix = Config::get('database.connections.mysql.prefix', 'fa_');
+            $table = $prefix . 'users';
+            $columns = Db::query("SHOW COLUMNS FROM `{$table}` LIKE 'status'");
+            if (empty($columns)) {
+                Db::execute("ALTER TABLE `{$table}` ADD COLUMN `status` tinyint(1) NOT NULL DEFAULT 1 COMMENT '状态：1启用，0禁用' AFTER `platform`");
+                \think\facade\Log::info("已为 {$table} 表添加 status 字段");
+            }
+        } catch (\Exception $e) {
+            \think\facade\Log::error('添加 status 字段失败: ' . $e->getMessage());
         }
     }
 }

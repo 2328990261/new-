@@ -12,6 +12,7 @@ Route::group('admin/api', function () {
     // 🔓 无需认证的公共接口
     Route::post('leads/recognize', 'admin.Lead/recognize');  // 线索智能识别（无需登录）
     Route::post('tutors/recognize', 'admin.Tutor/recognize');  // 家教订单智能识别（无需登录）
+    Route::post('tutors/test-batch-create', 'admin.Tutor/testBatchCreate');  // 测试批量录入路由
     
     // 需要认证的路由
     Route::group(function () {
@@ -65,6 +66,7 @@ Route::group('admin/api', function () {
         // 家教订单管理
         // 注意：具体路由必须放在通用路由之前，否则会被通用路由拦截
         Route::post('tutors/recognize', 'admin.Tutor/recognize');
+        Route::post('tutors/test-batch-create', 'admin.Tutor/testBatchCreate');
         Route::post('tutors/batch-create', 'admin.Tutor/batchCreate');
         Route::post('admin/tutors/batch-create', 'admin.Tutor/batchCreate');
         Route::post('tutors/batch-delete', 'admin.Tutor/batchDelete');
@@ -221,6 +223,10 @@ Route::group('admin/api', function () {
         Route::post('upload/image', 'admin.Upload/uploadImage');
         Route::post('upload/delete', 'admin.Upload/deleteImage');
         
+        // 头像上传
+        Route::post('avatar/upload', 'api.AvatarUpload/upload');
+        Route::post('avatar/cleanup-temp', 'api.AvatarUpload/cleanupTemp');
+        
         // 线索管理
         // 注意：具体路由必须放在通用路由之前，否则会被通用路由拦截
         Route::get('leads/stats', 'admin.Lead/stats');
@@ -245,6 +251,8 @@ Route::group('admin/api', function () {
         Route::get('mini-users/:id', 'admin.MiniProgramUser/detail');
         Route::get('mini-users', 'admin.MiniProgramUser/list');
         Route::post('mini-users/batch-delete', 'admin.MiniProgramUser/batchDelete');
+        Route::put('mini-users/:id/toggle-status', 'admin.MiniProgramUser/toggleStatus');
+        Route::post('mini-users/:id/toggle-status', 'admin.MiniProgramUser/toggleStatus');
         Route::put('mini-users/:id', 'admin.MiniProgramUser/update');
         Route::delete('mini-users/:id', 'admin.MiniProgramUser/delete');
         

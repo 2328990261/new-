@@ -210,7 +210,11 @@ class WechatMiniProgramService
         
         $nickname = $extraInfo['nickname'] ?? '用户' . substr($phone, -4);
         $avatar = $extraInfo['avatar'] ?? '';
-        $userType = $extraInfo['user_type'] ?? null;
+        // 如果没有指定用户类型，默认为家长
+        $userType = $extraInfo['user_type'] ?? 'parent';
+        $inviterOpenid = $extraInfo['inviter_openid'] ?? '';
+        
+        $isNewUser = false;
         
         if (!$user) {
             // 新用户，创建
@@ -220,10 +224,24 @@ class WechatMiniProgramService
                 'nickname' => $nickname,
                 'avatar' => $avatar,
                 'platform' => 'miniprogram', // 标记为小程序用户
+                'status' => 1, // 默认启用状态
                 'create_time' => date('Y-m-d H:i:s'),
                 'update_time' => date('Y-m-d H:i:s')
             ]);
+            
+            $isNewUser = true;
+            
+            // 处理邀请逻辑
+            if (!empty($inviterOpenid) && $inviterOpenid !== $openid) {
+                $this->handleInvitation($inviterOpenid, $openid, $user->id);
+            }
         } else {
+            // 检查用户状态（只检查fa_users表）
+            $userStatus = $user->status ?? 1; // 如果字段不存在，默认为启用
+            if ($userStatus == 0) {
+                throw new \Exception('账户已被禁用，请联系管理员');
+            }
+            
             // 更新手机号和其他信息
             $user->phone = $phone;
             if (!empty($nickname)) {
@@ -239,6 +257,9 @@ class WechatMiniProgramService
         // 同步保存到 fa_wechat_users 表
         $this->saveToWechatUsers($openid, $phone, $nickname, $avatar, $userType, $user->id);
         
+        // 按手机号匹配教师表并回写 openid/微信昵称（不依赖 user_type，只要该手机号在教师表存在就更新）
+        $this->syncTeacherOpenid($openid, $phone, $nickname);
+        
         // 生成token
         $token = $this->generateToken($user);
         
@@ -249,8 +270,10 @@ class WechatMiniProgramService
                 'phone' => $phone,
                 'nickname' => $user->nickname,
                 'avatar' => $user->avatar ?? '',
-                'openid' => $openid
-            ]
+                'openid' => $openid,
+                'user_type' => $userType
+            ],
+            'isNewUser' => $isNewUser
         ];
     }
     
@@ -268,6 +291,11 @@ class WechatMiniProgramService
         try {
             $existing = Db::name('wechat_users')->where('openid', $openid)->find();
             
+            // 如果没有指定用户类型，默认为家长
+            if (empty($userType)) {
+                $userType = 'parent';
+            }
+            
             $data = [
                 'openid' => $openid,
                 'phone' => $phone,
@@ -279,7 +307,7 @@ class WechatMiniProgramService
             ];
             
             if ($existing) {
-                // 更新
+                // 更新时以本次登录选择的身份为准，不再用“原记录为空则强制 parent”（否则退出登录改选老师后仍被写成 parent）
                 Db::name('wechat_users')->where('openid', $openid)->update($data);
             } else {
                 // 新增
@@ -289,6 +317,63 @@ class WechatMiniProgramService
         } catch (\Exception $e) {
             // 记录错误但不影响主流程
             trace('保存到wechat_users表失败: ' . $e->getMessage(), 'error');
+            \think\facade\Log::error('保存到wechat_users表失败: ' . $e->getMessage());
+        }
+    }
+    
+    /**
+     * 教师端登录时，按手机号回写 openid、微信昵称到教师表，便于后台展示与用 openid 查用户
+     * @param string $openid
+     * @param string $phone
+     * @param string $nickname
+     */
+    private function syncTeacherOpenid($openid, $phone, $nickname)
+    {
+        if (empty($phone)) {
+            return;
+        }
+        try {
+            $updated = Db::name('teachers')
+                ->where('phone', $phone)
+                ->update([
+                    'openid' => $openid,
+                    'wechat_nickname' => $nickname ?: null,
+                    'last_login_time' => date('Y-m-d H:i:s'),
+                    'update_time' => date('Y-m-d H:i:s'),
+                ]);
+            if ($updated > 0) {
+                \think\facade\Log::info("教师表已回写 openid: phone={$phone}, openid={$openid}");
+            }
+        } catch (\Exception $e) {
+            \think\facade\Log::warning('教师表回写 openid 失败: ' . $e->getMessage());
+        }
+    }
+    
+    /**
+     * 仅更新 fa_wechat_users 的 user_type（用于小程序“确认身份”时已登录场景，不重新走登录接口）
+     * @param string $openid
+     * @param string $userType teacher|parent
+     * @return bool
+     */
+    public function updateUserType($openid, $userType)
+    {
+        if (empty($openid) || empty($userType)) {
+            return false;
+        }
+        if (!in_array($userType, ['teacher', 'parent'], true)) {
+            return false;
+        }
+        try {
+            $n = Db::name('wechat_users')
+                ->where('openid', $openid)
+                ->update([
+                    'user_type' => $userType,
+                    'update_time' => date('Y-m-d H:i:s'),
+                ]);
+            return $n > 0;
+        } catch (\Exception $e) {
+            \think\facade\Log::warning('更新 user_type 失败: ' . $e->getMessage());
+            return false;
         }
     }
     
@@ -447,6 +532,101 @@ class WechatMiniProgramService
         curl_close($ch);
         
         return $response;
+    }
+    
+    /**
+     * 处理邀请逻辑
+     * @param string $inviterOpenid 邀请人openid
+     * @param string $inviteeOpenid 被邀请人openid
+     * @param int $inviteeUserId 被邀请人用户ID
+     */
+    private function handleInvitation($inviterOpenid, $inviteeOpenid, $inviteeUserId)
+    {
+        try {
+            // 查找邀请人
+            $inviter = Db::name('users')->where('openid', $inviterOpenid)->find();
+            if (!$inviter) {
+                \think\facade\Log::warning('邀请人不存在: ' . $inviterOpenid);
+                return;
+            }
+            
+            // 检查是否已经有邀请记录（防止重复处理）
+            $existingInvitation = Db::name('user_invitations')
+                ->where('inviter_openid', $inviterOpenid)
+                ->where('invitee_openid', $inviteeOpenid)
+                ->find();
+            
+            if ($existingInvitation) {
+                \think\facade\Log::info('邀请记录已存在，跳过处理');
+                return;
+            }
+            
+            // 开启事务
+            Db::startTrans();
+            
+            try {
+                // 1. 创建邀请记录
+                $invitationId = Db::name('user_invitations')->insertGetId([
+                    'inviter_user_id' => $inviter['id'],
+                    'inviter_openid' => $inviterOpenid,
+                    'invitee_user_id' => $inviteeUserId,
+                    'invitee_openid' => $inviteeOpenid,
+                    'invitation_code' => '', // 简化流程，不使用邀请码
+                    'status' => 1, // 直接设为已认证
+                    'is_rewarded' => 1,
+                    'create_time' => date('Y-m-d H:i:s'),
+                    'verify_time' => date('Y-m-d H:i:s'),
+                    'reward_time' => date('Y-m-d H:i:s')
+                ]);
+                
+                // 2. 给邀请人发放优惠券
+                $inviterCouponId = Db::name('user_coupons')->insertGetId([
+                    'user_id' => $inviter['id'],
+                    'openid' => $inviterOpenid,
+                    'coupon_type' => 'invitation',
+                    'coupon_amount' => 20.00,
+                    'source' => 'inviter',
+                    'related_invitation_id' => $invitationId,
+                    'status' => 1, // 直接设为已领取
+                    'expire_time' => date('Y-m-d H:i:s', strtotime('+30 days')),
+                    'create_time' => date('Y-m-d H:i:s'),
+                    'receive_time' => date('Y-m-d H:i:s')
+                ]);
+                
+                // 3. 给被邀请人发放优惠券
+                $inviteeCouponId = Db::name('user_coupons')->insertGetId([
+                    'user_id' => $inviteeUserId,
+                    'openid' => $inviteeOpenid,
+                    'coupon_type' => 'invitation',
+                    'coupon_amount' => 20.00,
+                    'source' => 'invitee',
+                    'related_invitation_id' => $invitationId,
+                    'status' => 1, // 直接设为已领取
+                    'expire_time' => date('Y-m-d H:i:s', strtotime('+30 days')),
+                    'create_time' => date('Y-m-d H:i:s'),
+                    'receive_time' => date('Y-m-d H:i:s')
+                ]);
+                
+                // 4. 更新邀请记录，关联优惠券ID
+                Db::name('user_invitations')
+                    ->where('id', $invitationId)
+                    ->update([
+                        'inviter_coupon_id' => $inviterCouponId,
+                        'invitee_coupon_id' => $inviteeCouponId
+                    ]);
+                
+                Db::commit();
+                
+                \think\facade\Log::info('邀请奖励发放成功: 邀请人=' . $inviterOpenid . ', 被邀请人=' . $inviteeOpenid);
+                
+            } catch (\Exception $e) {
+                Db::rollback();
+                throw $e;
+            }
+            
+        } catch (\Exception $e) {
+            \think\facade\Log::error('处理邀请失败: ' . $e->getMessage());
+        }
     }
     
     /**

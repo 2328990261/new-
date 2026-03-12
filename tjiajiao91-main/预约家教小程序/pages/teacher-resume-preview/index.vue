@@ -1,4 +1,4 @@
-﻿<template>
+<template>
 	<view class="page">
 		<!-- 加载状态 -->
 		<view v-if="loading" class="loading-container">
@@ -19,7 +19,15 @@
 			<view v-if="reviewStatus" class="status-tip" :class="reviewStatus">
 				<text v-if="reviewStatus === 'pending'">⏳ 简历等待审核，可联系客服催促审核。</text>
 				<text v-else-if="reviewStatus === 'approved'">🎉 恭喜您简历已通过审核，请开始您的教学之旅。</text>
-				<text v-else>✕ 未通过</text>
+				<view v-else class="status-line">
+					<text class="status-icon">⚠️</text>
+					<text>审核未通过，请根据以下备注修改后重新提交</text>
+				</view>
+			</view>
+			
+			<!-- 审核备注（仅在未通过时显示） -->
+			<view v-if="reviewStatus === 'rejected' && resumeData.review_note" class="review-note-card">
+				<text class="review-note-inline">审核备注：{{ resumeData.review_note }}</text>
 			</view>
 
 			<!-- 个人信息 -->
@@ -198,7 +206,8 @@ export default {
 				experiences: [],
 				personal_advantage: '',
 				advantage_tags: [],
-				teaching_photos: []
+				teaching_photos: [],
+				review_note: '' // 审核备注
 			},
 			showConfirmDialog: false,
 			agreed: false,
@@ -319,7 +328,8 @@ export default {
 						experiences: teacher.experiences || [],
 						personal_advantage: teacher.personal_advantage || '',
 						advantage_tags: teacher.advantage_tags || [],
-						teaching_photos: teacher.teaching_photos || []
+						teaching_photos: teacher.teaching_photos || [],
+						review_note: teacher.review_note || '' // 审核备注
 					}
 					console.log('简历数据已加载:', this.resumeData)
 				} else {
@@ -473,7 +483,7 @@ export default {
 				this.submitTeacherInfo()
 			} else {
 				// 没有teacherId，触发上一页的提交方法（从注册页面跳转过来的情况）
-				uni.$emit('confirmSubmitFromPreview')
+				uni.$emit('confirmSubmit')
 			}
 		},
 		
@@ -485,6 +495,8 @@ export default {
 			uni.showLoading({ title: '提交中...' })
 			
 			try {
+				// 合并微信 openid、昵称，便于后端写入教师表
+				const userInfo = uni.getStorageSync('userInfo') || {}
 				// 准备提交数据 - 使用resumeData中的数据
 				const submitData = {
 					id: this.teacherId, // 编辑模式需要传id
@@ -494,6 +506,8 @@ export default {
 					wechat_id: this.resumeData.wechat_id,
 					email: this.resumeData.email,
 					avatar: this.resumeData.avatar,
+					openid: userInfo.openid || '',
+					wechat_nickname: userInfo.nickname || userInfo.wechat_nickname || '',
 					hometown: this.resumeData.hometown,
 					teaching_years: this.resumeData.teaching_years,
 					birth_date: this.resumeData.birth_date,
@@ -645,9 +659,42 @@ const res = this.teacherId
 }
 
 .status-tip.rejected {
-	background: #ffe6e6;
+	background: linear-gradient(135deg, #ffe6e6 0%, #fff0f0 100%);
 	color: #f56c6c;
 	text-align: center;
+	font-weight: 500;
+	padding: 24rpx;
+	border: 2rpx solid #ffc9c9;
+}
+
+.status-icon {
+	font-size: 34rpx;
+	margin-right: 8rpx;
+	line-height: 1;
+}
+
+.status-line {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	gap: 8rpx;
+}
+
+/* 审核备注卡片 */
+.review-note-card {
+	margin: 0 24rpx 24rpx;
+	padding: 22rpx 24rpx;
+	background: #fff;
+	border-radius: 16rpx;
+	box-shadow: 0 2rpx 12rpx rgba(0,0,0,0.04);
+	border-left: 6rpx solid #f56c6c;
+}
+
+.review-note-inline {
+	display: block;
+	font-size: 28rpx;
+	color: #606266;
+	line-height: 1.6;
 }
 
 /* 个人信息卡片 */

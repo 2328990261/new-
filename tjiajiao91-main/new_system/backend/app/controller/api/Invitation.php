@@ -276,14 +276,20 @@ class Invitation extends BaseController
                 return json(['code' => 400, 'message' => '不能使用自己的邀请码']);
             }
             
+            // 获取被邀请人信息
+            $invitee = Db::name('users')->where('openid', $openid)->find();
+            if (!$invitee) {
+                return json(['code' => 404, 'message' => '用户信息不存在']);
+            }
+            
             // 创建邀请记录
             Db::name('user_invitations')->insert([
                 'inviter_user_id' => $inviter['id'],
                 'inviter_openid' => $inviter['openid'],
+                'invitee_user_id' => $invitee['id'],
                 'invitee_openid' => $openid,
                 'invitation_code' => $inviteCode,
                 'status' => 0,
-                'reward_points' => 100,
                 'is_rewarded' => 0,
                 'create_time' => date('Y-m-d H:i:s')
             ]);
@@ -518,7 +524,17 @@ class Invitation extends BaseController
         // 从请求头中获取token，然后解析openid
         $token = $this->request->header('token', '');
         if ($token) {
-            // 从token中解析openid（假设token就是openid或包含openid）
+            // 尝试解析token（假设token是base64编码的JSON）
+            try {
+                $tokenData = json_decode(base64_decode($token), true);
+                if ($tokenData && isset($tokenData['openid'])) {
+                    return $tokenData['openid'];
+                }
+            } catch (\Exception $e) {
+                // 解析失败，可能token就是openid
+            }
+            
+            // 如果解析失败，假设token就是openid
             return $token;
         }
         

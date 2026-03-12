@@ -146,6 +146,10 @@
               <view v-else class="teacher-icon-placeholder">
                 <text class="iconfont icon-teacher"></text>
               </view>
+              <!-- 头像下方显示教师编号，格式 T+teacher_no（无则回退 T+id） -->
+              <view class="teacher-id-wrap" v-if="teacher.id != null || (teacher.teacher_no != null && teacher.teacher_no !== '')">
+                <text class="teacher-id-label">T{{ teacher.teacher_no != null && teacher.teacher_no !== '' ? teacher.teacher_no : teacher.id }}</text>
+              </view>
               <!-- 精选标签 - 左上角 -->
               <view class="teacher-top-badge" v-if="teacher.is_top">
                 <text class="badge-icon">⭐</text>
@@ -156,7 +160,7 @@
             <!-- 第一行：姓名 + 认证 | 性别 | 身份类型 -->
             <view class="teacher-row-1">
               <view class="name-verify-group">
-                <text class="teacher-name">{{ teacher.name }}</text>
+                <text class="teacher-name">{{ (teacher.name && teacher.name.length >= 2) ? (teacher.name[0] + '*' + teacher.name.slice(2)) : (teacher.name || '') }}</text>
                 <view class="teacher-verify-inline" v-if="teacher.is_verified">
                   <text class="verify-icon">✓</text>
                   <text class="verify-text">已认证</text>
@@ -367,6 +371,13 @@ export default {
     this.loadTeacherList()
   },
   methods: {
+    // 家长端列表脱敏：隐藏真实姓名第二个字（2/3/4 个字均隐藏第 2 字）
+    maskTeacherName(name) {
+      if (name == null || name === '') return ''
+      const s = String(name).trim()
+      if (s.length >= 2) return s.slice(0, 1) + '*' + s.slice(2)
+      return s
+    },
     // 获取用户位置
     getUserLocation() {
       // 先检查缓存
@@ -1138,6 +1149,23 @@ export default {
   font-size: 60rpx;
   color: #52C9A6;
   opacity: 0.8;
+}
+
+/* 头像下方显示教师ID（T+id） */
+.teacher-id-wrap {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  text-align: center;
+  padding: 4rpx 0;
+  background: rgba(0, 0, 0, 0.5);
+}
+
+.teacher-id-label {
+  font-size: 22rpx;
+  color: #fff;
+  font-weight: 500;
 }
 
 /* 精选标签 - 左上角高级渐变设计 */

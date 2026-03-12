@@ -77,6 +77,12 @@
                 <text class="coupon-amount">{{ item.coupon_amount }}</text>
               </view>
               <text class="coupon-type">{{ getCouponTypeText(item.coupon_type) }}</text>
+              <view class="coupon-tag" v-if="item.source === 'inviter'">
+                <text class="tag-text">邀请奖励</text>
+              </view>
+              <view class="coupon-tag new-user" v-else-if="item.source === 'invitee'">
+                <text class="tag-text">新人礼包</text>
+              </view>
             </view>
             
             <view class="coupon-divider">
@@ -145,6 +151,8 @@
 </template>
 
 <script>
+import envConfig from '@/config/env.js'
+
 export default {
   data() {
     return {
@@ -164,27 +172,11 @@ export default {
     const systemInfo = uni.getSystemInfoSync()
     this.statusBarHeight = systemInfo.statusBarHeight || 0
     
-    // 显示活动暂未开放提示
-    uni.showModal({
-      title: '温馨提示',
-      content: '该功能暂未开放，敬请期待！',
-      showCancel: false,
-      confirmText: '知道了',
-      success: () => {
-        // 用户点击确定后返回上一页
-        setTimeout(() => {
-          uni.navigateBack()
-        }, 300)
-      }
-    })
-    
-    // 暂时注释掉数据加载
-    // this.loadCoupons()
+    this.loadCoupons()
   },
   
   onShow() {
-    // 暂时注释掉
-    // this.loadCoupons()
+    this.loadCoupons()
   },
   
   methods: {
@@ -212,7 +204,7 @@ export default {
         }
         
         const res = await uni.request({
-          url: this.$baseUrl + '/api/invitation/my-coupons',
+          url: envConfig.API_BASE_URL + '/api/invitation/my-coupons',
           method: 'GET',
           data: {
             openid: openid,
@@ -268,7 +260,7 @@ export default {
         uni.showLoading({ title: '领取中...' })
         
         const res = await uni.request({
-          url: this.$baseUrl + '/api/invitation/receive-coupon',
+          url: envConfig.API_BASE_URL + '/api/invitation/receive-coupon',
           method: 'POST',
           header: {
             'Content-Type': 'application/json',
@@ -548,6 +540,7 @@ export default {
       align-items: center;
       justify-content: center;
       padding: 30rpx 20rpx;
+      position: relative;
       
       .coupon-amount-wrapper {
         display: flex;
@@ -570,6 +563,27 @@ export default {
       .coupon-type {
         font-size: 22rpx;
         color: rgba(255, 255, 255, 0.9);
+        margin-bottom: 8rpx;
+      }
+      
+      .coupon-tag {
+        position: absolute;
+        bottom: 8rpx;
+        left: 50%;
+        transform: translateX(-50%);
+        background: rgba(255, 255, 255, 0.2);
+        border-radius: 8rpx;
+        padding: 2rpx 8rpx;
+        
+        .tag-text {
+          font-size: 18rpx;
+          color: #fff;
+          font-weight: 500;
+        }
+        
+        &.new-user {
+          background: rgba(255, 215, 0, 0.3);
+        }
       }
     }
     

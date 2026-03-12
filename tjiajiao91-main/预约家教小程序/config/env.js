@@ -1,6 +1,8 @@
 // 环境配置文件
 // 自动识别开发环境和生产环境
 
+console.log('=== 环境配置文件已加载 ===')
+
 /**
  * 判断当前运行环境
  * @returns {string} 'development' | 'production'
@@ -12,17 +14,20 @@ const getEnvironment = () => {
 		const accountInfo = uni.getAccountInfoSync()
 		const envVersion = accountInfo.miniProgram.envVersion
 		
+		console.log('小程序环境版本:', envVersion)
+		
 		// develop: 开发版, trial: 体验版, release: 正式版
 		if (envVersion === 'develop') {
-			return 'development'
+			return 'development'            //切换线上版本是  production  开发是  development
 		} else if (envVersion === 'trial') {
 			return 'trial' // 体验版可以单独处理
 		} else {
 			return 'production'
 		}
 	} catch (e) {
-		// 获取环境信息失败，默认为开发环境
-		return 'development'
+		console.log('获取环境信息失败，强制使用生产环境:', e)
+		// 获取环境信息失败，强制使用生产环境进行测试
+		return 'production'
 	}
 	// #endif
 	
@@ -42,8 +47,8 @@ const getEnvironment = () => {
 	return 'development'
 	// #endif
 	
-	// 默认开发环境
-	return 'development'
+	// 默认生产环境（用于测试线上版本）
+	return 'production'
 }
 
 // 环境配置
@@ -76,6 +81,10 @@ const currentEnv = getEnvironment()
 
 // 获取当前环境配置
 const config = envConfig[currentEnv]
+
+// 调试信息
+console.log('当前环境:', currentEnv)
+console.log('API地址:', config.API_BASE_URL)
 
 // 导出配置
 export default {

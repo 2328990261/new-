@@ -928,19 +928,51 @@ class Tutor extends BaseController
     /**
      * 批量创建（智能识别后批量保存）
      */
+    /**
+     * 测试批量录入路由
+     */
+    public function testBatchCreate()
+    {
+        file_put_contents(runtime_path() . 'batch_debug.log', date('Y-m-d H:i:s') . " - testBatchCreate方法被调用\n", FILE_APPEND);
+        return json(['success' => true, 'message' => '测试路由正常']);
+    }
+    
     public function batchCreate()
     {
+        // 强制记录日志
+        file_put_contents(runtime_path() . 'batch_debug.log', date('Y-m-d H:i:s') . " - batchCreate方法被调用\n", FILE_APPEND);
+        
+        // 记录所有POST数据
+        $allPostData = $this->request->post();
+        file_put_contents(runtime_path() . 'batch_debug.log', date('Y-m-d H:i:s') . " - 所有POST数据: " . json_encode($allPostData, JSON_UNESCAPED_UNICODE) . "\n", FILE_APPEND);
+        
+        // 记录原始输入
+        $rawInput = file_get_contents('php://input');
+        file_put_contents(runtime_path() . 'batch_debug.log', date('Y-m-d H:i:s') . " - 原始输入: " . $rawInput . "\n", FILE_APPEND);
         
         if (session_status() === PHP_SESSION_NONE) {
             session_start();
         }
         if (!isset($_SESSION['admin_id'])) {
+            file_put_contents(runtime_path() . 'batch_debug.log', date('Y-m-d H:i:s') . " - 未登录错误\n", FILE_APPEND);
             return json(['success' => false, 'error' => '未登录']);
         }
         
         $orders = $this->request->post('orders');
         
+        // 添加调试信息
+        file_put_contents(runtime_path() . 'batch_debug.log', date('Y-m-d H:i:s') . " - 接收到的订单数据: " . json_encode($orders, JSON_UNESCAPED_UNICODE) . "\n", FILE_APPEND);
+        file_put_contents(runtime_path() . 'batch_debug.log', date('Y-m-d H:i:s') . " - 订单数据类型: " . gettype($orders) . "\n", FILE_APPEND);
+        file_put_contents(runtime_path() . 'batch_debug.log', date('Y-m-d H:i:s') . " - 订单数量: " . (is_array($orders) ? count($orders) : 0) . "\n", FILE_APPEND);
+        
+        trace("接收到的订单数据: " . json_encode($orders, JSON_UNESCAPED_UNICODE), 'info');
+        trace("订单数据类型: " . gettype($orders), 'info');
+        trace("订单数量: " . (is_array($orders) ? count($orders) : 0), 'info');
+        
         if (empty($orders) || !is_array($orders)) {
+            file_put_contents(runtime_path() . 'batch_debug.log', date('Y-m-d H:i:s') . " - 订单数据为空或不是数组\n", FILE_APPEND);
+            file_put_contents(runtime_path() . 'batch_debug.log', date('Y-m-d H:i:s') . " - empty(orders): " . (empty($orders) ? 'true' : 'false') . "\n", FILE_APPEND);
+            file_put_contents(runtime_path() . 'batch_debug.log', date('Y-m-d H:i:s') . " - is_array(orders): " . (is_array($orders) ? 'true' : 'false') . "\n", FILE_APPEND);
             return json(['success' => false, 'error' => '请提供订单数据']);
         }
         
@@ -948,45 +980,81 @@ class Tutor extends BaseController
         $failCount = 0;
         $failedOrders = [];
         
+        file_put_contents(runtime_path() . 'batch_debug.log', date('Y-m-d H:i:s') . " - 开始数据库事务\n", FILE_APPEND);
+        
         Db::startTrans();
         
         try {
+            file_put_contents(runtime_path() . 'batch_debug.log', date('Y-m-d H:i:s') . " - 进入try块\n", FILE_APPEND);
             // 记录接收到的数据
             
             // ========== 性能优化：一次性加载所有订单并构建哈希表 ==========
             $startTime = microtime(true);
             
+            file_put_contents(runtime_path() . 'batch_debug.log', date('Y-m-d H:i:s') . " - 开始性能优化部分\n", FILE_APPEND);
+            
             // 定义标准化函数
             $normalize = function($text) {
-                $text = preg_replace('/\s+/', '', $text);
-                $text = preg_replace('/[^\x{4e00}-\x{9fa5}0-9a-zA-Z]/u', '', $text);
-                return mb_strtolower($text, 'UTF-8');
+                try {
+                    file_put_contents(runtime_path() . 'batch_debug.log', date('Y-m-d H:i:s') . " - normalize函数开始，输入长度: " . mb_strlen($text) . "\n", FILE_APPEND);
+                    
+                    $step1 = preg_replace('/\s+/', '', $text);
+                    file_put_contents(runtime_path() . 'batch_debug.log', date('Y-m-d H:i:s') . " - normalize步骤1完成，长度: " . mb_strlen($step1) . "\n", FILE_APPEND);
+                    
+                    $step2 = preg_replace('/[^\x{4e00}-\x{9fa5}0-9a-zA-Z]/u', '', $step1);
+                    file_put_contents(runtime_path() . 'batch_debug.log', date('Y-m-d H:i:s') . " - normalize步骤2完成，长度: " . mb_strlen($step2) . "\n", FILE_APPEND);
+                    
+                    $result = mb_strtolower($step2, 'UTF-8');
+                    file_put_contents(runtime_path() . 'batch_debug.log', date('Y-m-d H:i:s') . " - normalize函数完成，结果长度: " . mb_strlen($result) . "\n", FILE_APPEND);
+                    
+                    return $result;
+                } catch (\Exception $e) {
+                    file_put_contents(runtime_path() . 'batch_debug.log', date('Y-m-d H:i:s') . " - normalize函数异常: " . $e->getMessage() . "\n", FILE_APPEND);
+                    return $text; // 返回原始文本
+                }
             };
             
             // 一次性加载所有有效订单
+            file_put_contents(runtime_path() . 'batch_debug.log', date('Y-m-d H:i:s') . " - 开始加载现有订单\n", FILE_APPEND);
             $allOrders = TutorOrder::where('status', 1)
                 ->field('id,content')  // 只查询需要的字段，减少内存占用
                 ->select();
+            
+            file_put_contents(runtime_path() . 'batch_debug.log', date('Y-m-d H:i:s') . " - 加载了 " . count($allOrders) . " 条现有订单\n", FILE_APPEND);
             
             // 构建两个哈希表：精确匹配和标准化匹配
             $exactMatchMap = [];      // 精确匹配哈希表
             $normalizedMatchMap = []; // 标准化匹配哈希表
             
+            file_put_contents(runtime_path() . 'batch_debug.log', date('Y-m-d H:i:s') . " - 开始构建哈希表\n", FILE_APPEND);
+            
             foreach ($allOrders as $order) {
-                // 精确匹配映射
-                $exactMatchMap[$order->content] = $order->id;
-                
-                // 标准化匹配映射
-                $normalizedKey = $normalize($order->content);
-                if (!isset($normalizedMatchMap[$normalizedKey])) {
-                    $normalizedMatchMap[$normalizedKey] = $order->id;
+                try {
+                    // 精确匹配映射
+                    $exactMatchMap[$order->content] = $order->id;
+                    
+                    // 标准化匹配映射
+                    $normalizedKey = $normalize($order->content);
+                    if (!isset($normalizedMatchMap[$normalizedKey])) {
+                        $normalizedMatchMap[$normalizedKey] = $order->id;
+                    }
+                } catch (\Exception $e) {
+                    file_put_contents(runtime_path() . 'batch_debug.log', date('Y-m-d H:i:s') . " - 处理订单ID {$order->id} 时出错: " . $e->getMessage() . "\n", FILE_APPEND);
                 }
             }
             
+            file_put_contents(runtime_path() . 'batch_debug.log', date('Y-m-d H:i:s') . " - 哈希表构建完成\n", FILE_APPEND);
+            
             // ========== 性能优化结束 ==========
+            
+            trace("开始处理 " . count($orders) . " 条订单", 'info');
+            
+            file_put_contents(runtime_path() . 'batch_debug.log', date('Y-m-d H:i:s') . " - 开始处理订单循环\n", FILE_APPEND);
             
             foreach ($orders as $index => $orderData) {
                 try {
+                    file_put_contents(runtime_path() . 'batch_debug.log', date('Y-m-d H:i:s') . " - 处理第 " . ($index + 1) . " 条订单\n", FILE_APPEND);
+                    trace("处理第 " . ($index + 1) . " 条订单: " . json_encode($orderData, JSON_UNESCAPED_UNICODE), 'info');
                     
                     // 验证必填字段 - 如果没有content，尝试从其他字段构建
                     if (empty($orderData['content'])) {
@@ -1024,19 +1092,46 @@ class Tutor extends BaseController
                     // ========== 优化后的重复检测：使用哈希表 O(1) 查找 ==========
                     $duplicateId = null;
                     
-                    // 1. 先检查精确匹配（O(1) 时间复杂度）
-                    if (isset($exactMatchMap[$orderData['content']])) {
-                        $duplicateId = $exactMatchMap[$orderData['content']];
-                        trace("精确匹配检测到重复: ID={$duplicateId}", 'info');
-                    }
+                    file_put_contents(runtime_path() . 'batch_debug.log', date('Y-m-d H:i:s') . " - 开始重复检测\n", FILE_APPEND);
                     
-                    // 2. 如果精确匹配失败，检查标准化匹配（O(1) 时间复杂度）
-                    if (!$duplicateId) {
-                        $normalizedContent = $normalize($orderData['content']);
-                        if (isset($normalizedMatchMap[$normalizedContent])) {
-                            $duplicateId = $normalizedMatchMap[$normalizedContent];
-                            trace("标准化匹配检测到重复: ID={$duplicateId}", 'info');
+                    try {
+                        file_put_contents(runtime_path() . 'batch_debug.log', date('Y-m-d H:i:s') . " - 准备检查精确匹配\n", FILE_APPEND);
+                        
+                        // 1. 先检查精确匹配（O(1) 时间复杂度）
+                        if (isset($exactMatchMap[$orderData['content']])) {
+                            $duplicateId = $exactMatchMap[$orderData['content']];
+                            file_put_contents(runtime_path() . 'batch_debug.log', date('Y-m-d H:i:s') . " - 精确匹配检测到重复: ID={$duplicateId}\n", FILE_APPEND);
+                            trace("精确匹配检测到重复: ID={$duplicateId}", 'info');
+                        } else {
+                            file_put_contents(runtime_path() . 'batch_debug.log', date('Y-m-d H:i:s') . " - 精确匹配未发现重复\n", FILE_APPEND);
                         }
+                        
+                        file_put_contents(runtime_path() . 'batch_debug.log', date('Y-m-d H:i:s') . " - 准备检查标准化匹配\n", FILE_APPEND);
+                        
+                        // 2. 如果精确匹配失败，检查标准化匹配（O(1) 时间复杂度）
+                        if (!$duplicateId) {
+                            file_put_contents(runtime_path() . 'batch_debug.log', date('Y-m-d H:i:s') . " - 开始调用normalize函数\n", FILE_APPEND);
+                            
+                            $normalizedContent = $normalize($orderData['content']);
+                            
+                            file_put_contents(runtime_path() . 'batch_debug.log', date('Y-m-d H:i:s') . " - normalize函数调用完成，结果长度: " . mb_strlen($normalizedContent) . "\n", FILE_APPEND);
+                            
+                            if (isset($normalizedMatchMap[$normalizedContent])) {
+                                $duplicateId = $normalizedMatchMap[$normalizedContent];
+                                file_put_contents(runtime_path() . 'batch_debug.log', date('Y-m-d H:i:s') . " - 标准化匹配检测到重复: ID={$duplicateId}\n", FILE_APPEND);
+                                trace("标准化匹配检测到重复: ID={$duplicateId}", 'info');
+                            } else {
+                                file_put_contents(runtime_path() . 'batch_debug.log', date('Y-m-d H:i:s') . " - 标准化匹配未发现重复\n", FILE_APPEND);
+                            }
+                        }
+                        
+                        file_put_contents(runtime_path() . 'batch_debug.log', date('Y-m-d H:i:s') . " - 重复检测逻辑完成\n", FILE_APPEND);
+                        
+                    } catch (\Exception $e) {
+                        file_put_contents(runtime_path() . 'batch_debug.log', date('Y-m-d H:i:s') . " - 重复检测异常: " . $e->getMessage() . "\n", FILE_APPEND);
+                        file_put_contents(runtime_path() . 'batch_debug.log', date('Y-m-d H:i:s') . " - 异常堆栈: " . $e->getTraceAsString() . "\n", FILE_APPEND);
+                        // 如果重复检测失败，继续处理但记录错误
+                        trace("重复检测异常: " . $e->getMessage(), 'error');
                     }
                     
                     if ($duplicateId) {
@@ -1045,39 +1140,80 @@ class Tutor extends BaseController
                             'index' => $index + 1,
                             'reason' => '该订单已存在（ID: ' . $duplicateId . '）'
                         ];
+                        file_put_contents(runtime_path() . 'batch_debug.log', date('Y-m-d H:i:s') . " - 订单重复，跳过: ID={$duplicateId}\n", FILE_APPEND);
                         trace("订单重复，跳过: ID={$duplicateId}", 'info');
                         continue;
                     }
                     // ========== 优化后的重复检测结束 ==========
                     
+                    file_put_contents(runtime_path() . 'batch_debug.log', date('Y-m-d H:i:s') . " - 重复检测完成，无重复\n", FILE_APPEND);
+                    
                     // 添加管理员ID
                     $orderData['admin_id'] = $_SESSION['admin_id'];
                     
+                    file_put_contents(runtime_path() . 'batch_debug.log', date('Y-m-d H:i:s') . " - 添加管理员ID: " . $_SESSION['admin_id'] . "\n", FILE_APPEND);
+                    
                     // 自动填充管理员的 openid（用于小程序端查询"我的订单"）
                     try {
+                        file_put_contents(runtime_path() . 'batch_debug.log', date('Y-m-d H:i:s') . " - 开始填充管理员openid\n", FILE_APPEND);
                         if (!isset($adminOpenid)) {
                             $admin = Admin::find($_SESSION['admin_id']);
                             $adminOpenid = ($admin && !empty($admin->openid)) ? $admin->openid : null;
+                            file_put_contents(runtime_path() . 'batch_debug.log', date('Y-m-d H:i:s') . " - 管理员openid: " . ($adminOpenid ?: 'null') . "\n", FILE_APPEND);
                         }
-                        if ($adminOpenid) {
-                            $orderData['admin_openid'] = $adminOpenid;
-                        }
+                        // 暂时注释掉admin_openid字段，因为数据库表中没有这个字段
+                        // if ($adminOpenid) {
+                        //     $orderData['admin_openid'] = $adminOpenid;
+                        // }
+                        file_put_contents(runtime_path() . 'batch_debug.log', date('Y-m-d H:i:s') . " - 管理员openid填充完成（已跳过）\n", FILE_APPEND);
                     } catch (\Exception $e) {
+                        file_put_contents(runtime_path() . 'batch_debug.log', date('Y-m-d H:i:s') . " - 管理员openid填充异常: " . $e->getMessage() . "\n", FILE_APPEND);
                         // openid 填充失败不影响订单创建
                     }
                     
                     // 如果没有teacher_type字段，自动识别
-                    if (!isset($orderData['teacher_type']) && isset($orderData['content'])) {
-                        $recognitionService = new RecognitionService();
-                        $recognizeResult = $recognitionService->recognizeSingle($orderData['content']);
-                        $orderData['teacher_type'] = $recognizeResult['teacher_type'] ?? 'student';
+                    try {
+                        file_put_contents(runtime_path() . 'batch_debug.log', date('Y-m-d H:i:s') . " - 开始teacher_type识别\n", FILE_APPEND);
+                        if (!isset($orderData['teacher_type']) && isset($orderData['content'])) {
+                            $recognitionService = new RecognitionService();
+                            $recognizeResult = $recognitionService->recognizeSingle($orderData['content']);
+                            $orderData['teacher_type'] = $recognizeResult['teacher_type'] ?? 'student';
+                            file_put_contents(runtime_path() . 'batch_debug.log', date('Y-m-d H:i:s') . " - teacher_type识别结果: " . $orderData['teacher_type'] . "\n", FILE_APPEND);
+                        } else {
+                            file_put_contents(runtime_path() . 'batch_debug.log', date('Y-m-d H:i:s') . " - teacher_type已存在或content为空，跳过识别\n", FILE_APPEND);
+                        }
+                        file_put_contents(runtime_path() . 'batch_debug.log', date('Y-m-d H:i:s') . " - teacher_type处理完成\n", FILE_APPEND);
+                    } catch (\Exception $e) {
+                        file_put_contents(runtime_path() . 'batch_debug.log', date('Y-m-d H:i:s') . " - teacher_type识别异常: " . $e->getMessage() . "\n", FILE_APPEND);
+                        $orderData['teacher_type'] = 'student'; // 默认值
                     }
                     
                     // 生成订单ID（基于创建时间）
-                    $createTime = isset($orderData['create_time']) ? $orderData['create_time'] : null;
-                    $orderData['id'] = TutorOrder::generateOrderId($createTime);
+                    try {
+                        file_put_contents(runtime_path() . 'batch_debug.log', date('Y-m-d H:i:s') . " - 开始生成订单ID\n", FILE_APPEND);
+                        $createTime = isset($orderData['create_time']) ? $orderData['create_time'] : null;
+                        $orderData['id'] = TutorOrder::generateOrderId($createTime);
+                        file_put_contents(runtime_path() . 'batch_debug.log', date('Y-m-d H:i:s') . " - 生成的订单ID: " . $orderData['id'] . "\n", FILE_APPEND);
+                    } catch (\Exception $e) {
+                        file_put_contents(runtime_path() . 'batch_debug.log', date('Y-m-d H:i:s') . " - 订单ID生成异常: " . $e->getMessage() . "\n", FILE_APPEND);
+                        throw $e; // 订单ID生成失败应该中断处理
+                    }
                     
-                    $order = TutorOrder::create($orderData);
+                    file_put_contents(runtime_path() . 'batch_debug.log', date('Y-m-d H:i:s') . " - 准备创建订单，数据: " . json_encode($orderData, JSON_UNESCAPED_UNICODE) . "\n", FILE_APPEND);
+                    
+                    try {
+                        file_put_contents(runtime_path() . 'batch_debug.log', date('Y-m-d H:i:s') . " - 开始调用TutorOrder::create\n", FILE_APPEND);
+                        
+                        $order = TutorOrder::create($orderData);
+                        
+                        file_put_contents(runtime_path() . 'batch_debug.log', date('Y-m-d H:i:s') . " - 订单创建成功，ID: " . $order->id . "\n", FILE_APPEND);
+                        
+                    } catch (\Exception $e) {
+                        file_put_contents(runtime_path() . 'batch_debug.log', date('Y-m-d H:i:s') . " - 订单创建异常: " . $e->getMessage() . "\n", FILE_APPEND);
+                        file_put_contents(runtime_path() . 'batch_debug.log', date('Y-m-d H:i:s') . " - 异常文件: " . $e->getFile() . " 行号: " . $e->getLine() . "\n", FILE_APPEND);
+                        file_put_contents(runtime_path() . 'batch_debug.log', date('Y-m-d H:i:s') . " - 异常堆栈: " . $e->getTraceAsString() . "\n", FILE_APPEND);
+                        throw $e; // 重新抛出异常
+                    }
                     
                     // 自动派单（如果方法存在）
                     try {

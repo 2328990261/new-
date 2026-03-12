@@ -15,6 +15,7 @@ class ResumeApplication extends Model
         'status' => 'string',
         'apply_time' => 'datetime',
         'review_time' => 'datetime',
+        'reviewer_id' => 'int',
         'admin_remark' => 'text',
     ];
     

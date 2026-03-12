@@ -64,6 +64,8 @@ class AdminManage extends BaseController
             foreach ($result->items() as $item) {
                 $itemArray = $item->toArray();
                 $itemArray['leader_name'] = isset($leaders[$item->leader_id]) ? $leaders[$item->leader_id] : null;
+                // 确保status字段为整数类型
+                $itemArray['status'] = (int)$itemArray['status'];
                 $data[] = $itemArray;
             }
             
@@ -173,31 +175,45 @@ class AdminManage extends BaseController
      * 获取所有客服和组长（不做权限过滤，用于家教信息筛选等场景）
      */
     public function getAllCustomerServices()
-    {
-        if (session_status() === PHP_SESSION_NONE) {
-            session_start();
+        {
+            if (session_status() === PHP_SESSION_NONE) {
+                session_start();
+            }
+            if (!isset($_SESSION['admin_id'])) {
+                return json(['success' => false, 'error' => '未登录']);
+            }
+
+            try {
+                $adminId = $_SESSION['admin_id'];
+                $adminRole = $_SESSION['admin_role'] ?? 'customer_service';
+
+                // 基础查询：获取所有启用的客服和组长
+                $query = Admin::where('status', '=', 1)
+                    ->whereIn('role', ['customer_service', 'team_leader'])
+                    ->field('id,username,nickname,email,role,status,create_time,leader_id')
+                    ->order('create_time', 'desc');
+
+                // 如果是组长，只能看到自己组内的客服（包含自己）
+                if ($adminRole === 'team_leader') {
+                    $teamMemberIds = Admin::where('leader_id', $adminId)
+                        ->where('status', '=', 1)
+                        ->column('id');
+                    $teamMemberIds[] = $adminId; // 包含自己
+                    $query->whereIn('id', $teamMemberIds);
+                }
+                // 超级管理员可以看到所有（不需要额外过滤）
+
+                $customerServices = $query->select();
+
+                return json([
+                    'success' => true,
+                    'data' => $customerServices
+                ]);
+            } catch (\Exception $e) {
+                trace('获取所有客服失败: ' . $e->getMessage(), 'error');
+                return json(['success' => false, 'error' => '获取所有客服失败']);
+            }
         }
-        if (!isset($_SESSION['admin_id'])) {
-            return json(['success' => false, 'error' => '未登录']);
-        }
-        
-        try {
-            // 获取所有启用的客服和组长
-            $customerServices = Admin::where('status', '=', 1)
-                ->whereIn('role', ['customer_service', 'team_leader'])
-                ->field('id,username,nickname,email,role,status,create_time,leader_id')
-                ->order('create_time', 'desc')
-                ->select();
-            
-            return json([
-                'success' => true,
-                'data' => $customerServices
-            ]);
-        } catch (\Exception $e) {
-            trace('获取所有客服失败: ' . $e->getMessage(), 'error');
-            return json(['success' => false, 'error' => '获取所有客服失败']);
-        }
-    }
     
     /**
      * 批量设置归属组长
@@ -322,6 +338,16 @@ class AdminManage extends BaseController
             
             $data = $this->request->put();
             
+            // 添加调试日志
+            trace('更新管理员 ID: ' . $id, 'info');
+            trace('接收到的数据: ' . json_encode($data), 'info');
+            trace('当前管理员信息: ' . json_encode($admin->toArray()), 'info');
+            
+            // 处理 openid：空字符串转为 null，避免唯一索引冲突
+            if (isset($data['openid']) && $data['openid'] === '') {
+                $data['openid'] = null;
+            }
+            
             // 客服组邮箱必填验证
             $role = isset($data['role']) ? $data['role'] : $admin->role;
             if ($role === 'customer_service') {
@@ -354,12 +380,17 @@ class AdminManage extends BaseController
                 }
             }
             
-            $admin->save($data);
+            $result = $admin->save($data);
+            
+            // 添加调试日志
+            trace('保存结果: ' . ($result ? 'true' : 'false'), 'info');
+            trace('更新后的管理员信息: ' . json_encode($admin->toArray()), 'info');
             
             return json(['success' => true, 'message' => '更新成功']);
             
         } catch (\Exception $e) {
             trace('更新管理员失败: ' . $e->getMessage(), 'error');
+            trace('错误堆栈: ' . $e->getTraceAsString(), 'error');
             return json(['success' => false, 'error' => '更新管理员失败：' . $e->getMessage()]);
         }
     }

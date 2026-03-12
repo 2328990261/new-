@@ -99,7 +99,7 @@ class Teacher extends BaseController
                 ->order('t.is_top', 'desc')
                 ->order('t.create_time', 'desc')
                 ->page($page, $limit)
-                ->field('id,name,gender,birth_date,education,school,major,teacher_type,grade_level,education_level,hourly_rate,subject_names,district_names,photos,self_intro,experience,advantage_tags,is_top,status,real_name_verified,education_verified,teacher_verified,location_longitude,location_latitude,location_address')
+                ->field('id,teacher_no,name,gender,birth_date,education,school,major,teacher_type,grade_level,education_level,hourly_rate,subject_names,district_names,photos,self_intro,experience,advantage_tags,is_top,status,real_name_verified,education_verified,teacher_verified,location_longitude,location_latitude,location_address')
                 ->select()
                 ->toArray();
 

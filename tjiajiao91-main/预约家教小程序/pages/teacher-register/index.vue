@@ -569,7 +569,7 @@
 					<!-- 城市列表 -->
 					<scroll-view scroll-y class="city-list">
 						<view v-if="hometownCities.length === 0" class="empty-tip">
-							<text>请先选择省份</text>
+							<text>请在左边省份区域滑动选择省份</text>
 						</view>
 						<view 
 							v-for="city in hometownCities" 
@@ -875,10 +875,13 @@ export default {
 				uni.showLoading({ title: '保存中...' })
 				
 				try {
-					// 准备更新数据
+					const userInfo = uni.getStorageSync('userInfo') || {}
+					// 准备更新数据（带上 openid/wechat_nickname 便于后端写入教师表）
 					const updateData = {
 						...this.formData,
-						id: this.teacherId
+						id: this.teacherId,
+						openid: userInfo.openid || '',
+						wechat_nickname: userInfo.nickname || userInfo.wechat_nickname || ''
 					}
 					
 					console.log('[注册页面] 调用update API，数据:', JSON.stringify(updateData).substring(0, 300))
@@ -942,10 +945,13 @@ export default {
 			})
 			
 			try {
-				// 准备更新数据
+				const userInfo = uni.getStorageSync('userInfo') || {}
+				// 准备更新数据（带上 openid/wechat_nickname）
 				const updateData = {
 					...this.formData,
-					id: this.teacherId
+					id: this.teacherId,
+					openid: userInfo.openid || '',
+					wechat_nickname: userInfo.nickname || userInfo.wechat_nickname || ''
 				}
 				
 				// 调用更新API
@@ -2284,20 +2290,21 @@ export default {
 			uni.showLoading({ title: '提交中...' })
 			
 			try {
-				let res
+				// 合并微信 openid、昵称，便于后端写入教师表，避免 openid/wechat_nickname 为空
+				const userInfo = uni.getStorageSync('userInfo') || {}
+				const payload = {
+					...this.formData,
+					openid: userInfo.openid || '',
+					wechat_nickname: userInfo.nickname || userInfo.wechat_nickname || ''
+				}
 				
+				let res
 				// 编辑模式：调用更新API
 				if (this.isEditMode && this.teacherId) {
-					// 添加教师ID到表单数据
-					const updateData = {
-						...this.formData,
-						id: this.teacherId
-					}
-					
-					res = await teacherRegisterApi.update(updateData)
+					payload.id = this.teacherId
+					res = await teacherRegisterApi.update(payload)
 				} else {
-					// 新注册模式：调用提交API
-					res = await teacherRegisterApi.submit(this.formData)
+					res = await teacherRegisterApi.submit(payload)
 				}
 				
 				uni.hideLoading()
@@ -2307,7 +2314,7 @@ export default {
 					uni.removeStorageSync('teacher_register_progress')
 					
 					const title = this.isEditMode ? '更新成功' : '注册成功'
-					const content = this.isEditMode ? '您的信息已更新！' : '您的信息已提交，可以开始接单了！'
+					const content = this.isEditMode ? '您的信息已更新！' : '提交成功，等待审核'
 					
 					uni.showModal({
 						title: title,
@@ -3674,10 +3681,14 @@ export default {
 
 /* 空状态提示 */
 .empty-tip {
-	text-align: center;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	height: 100%;
 	padding: 80rpx 32rpx;
 	color: #909399;
 	font-size: 28rpx;
+	text-align: center;
 }
 </style>
 

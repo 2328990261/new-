@@ -157,6 +157,28 @@
 					<text class="menu-text">我的收藏</text>
 					<text class="menu-arrow">›</text>
 				</view>
+				
+				<view class="menu-item" @click="goToCouponWallet">
+					<view class="menu-icon-wrapper wallet-icon">
+						<text class="icon-emoji">🎫</text>
+					</view>
+					<text class="menu-text">我的卡包</text>
+					<view class="wallet-badge" v-if="couponCount > 0">
+						<text class="badge-text">{{ couponCount }}</text>
+					</view>
+					<text class="menu-arrow">›</text>
+				</view>
+				
+				<view class="menu-item" @click="goToInvitation">
+					<view class="menu-icon-wrapper invitation-icon">
+						<text class="icon-emoji">🎁</text>
+					</view>
+					<text class="menu-text">邀请好友</text>
+					<view class="invitation-badge">
+						<text class="badge-text">赚优惠券</text>
+					</view>
+					<text class="menu-arrow">›</text>
+				</view>
 			</view>
 			
 			<view class="menu-group">
@@ -240,6 +262,8 @@ export default {
 		// 刷新token过期时间
 		if (auth.isLoggedIn()) {
 			auth.refreshTokenExpire(90)
+			// 清理临时头像URL
+			this.cleanupTempAvatar()
 		}
 		
 		this.loadUserInfo()
@@ -275,24 +299,89 @@ export default {
 			}
 		},
 		
+		// 清理临时头像URL
+		cleanupTempAvatar() {
+			const userInfo = uni.getStorageSync('userInfo') || {}
+			const openid = userInfo.openid || ''
+			
+			if (!openid) {
+				return
+			}
+			
+			console.log('=== 清理临时头像URL ===')
+			console.log('OpenID:', openid)
+			
+			uni.request({
+				url: envConfig.API_BASE_URL + '/api/avatar/cleanup-temp',
+				method: 'POST',
+				data: {
+					openid: openid
+				},
+				success: (res) => {
+					console.log('清理临时头像URL响应:', res.data)
+					if (res.data.code === 200) {
+						console.log('临时头像URL已清理')
+					}
+				},
+				fail: (error) => {
+					console.error('清理临时头像URL失败:', error)
+				}
+			})
+		},
+		
+		// 加载用户信息
 		loadUserInfo() {
+			console.log('=== 加载用户信息调试 ===')
+			
 			try {
 				// 使用auth工具检查登录状态
 				if (auth.isLoggedIn()) {
 					const userInfo = auth.getUserInfo()
+					console.log('1. 从auth获取的用户信息:', userInfo)
 					
 					if (userInfo) {
+						// 检查头像URL是否为临时文件
+						let avatarUrl = userInfo.avatar || userInfo.avatarUrl || ''
+						if (avatarUrl && (avatarUrl.includes('http://tmp/') || avatarUrl.includes('tmp/'))) {
+							console.log('2. 检测到临时头像URL，清理中:', avatarUrl)
+							avatarUrl = '' // 清空临时URL
+							
+							// 更新本地存储，清除临时URL
+							const localUserInfo = uni.getStorageSync('userInfo') || {}
+							localUserInfo.avatar = ''
+							localUserInfo.avatarUrl = ''
+							uni.setStorageSync('userInfo', localUserInfo)
+							
+							// 使用auth工具更新
+							auth.updateUserInfo({
+								avatar: '',
+								avatarUrl: ''
+							})
+							
+							console.log('3. 已清理临时头像URL')
+						}
+						
 						this.userInfo = {
 							name: userInfo.name || userInfo.nickname || '',
 							phone: userInfo.phone || '',
-							avatar: userInfo.avatar || userInfo.avatarUrl || ''
+							avatar: avatarUrl
 						}
+						
+						console.log('4. 设置的用户信息:', this.userInfo)
+						console.log('5. 当前头像URL:', this.userInfo.avatar)
+						
+						// 检查本地存储
+						const localUserInfo = uni.getStorageSync('userInfo') || {}
+						console.log('6. 本地存储的用户信息:', localUserInfo)
+						console.log('7. 本地存储的头像URL:', localUserInfo.avatar)
+						
 						this.isLoggedIn = true
 						return
 					}
 				}
 				
 				// 未登录或登录已过期
+				console.log('8. 用户未登录或登录已过期')
 				this.isLoggedIn = false
 				this.userInfo = {
 					name: '',
@@ -381,16 +470,114 @@ export default {
 		
 		onChooseAvatar(e) {
 			const { avatarUrl } = e.detail
-			this.userInfo.avatar = avatarUrl
 			
-			const localUserInfo = uni.getStorageSync('userInfo') || {}
-			localUserInfo.avatar = avatarUrl
-			localUserInfo.avatarUrl = avatarUrl
-			uni.setStorageSync('userInfo', localUserInfo)
+			console.log('微信头像授权回调:', e)
+			console.log('=== 头像上传调试信息 ===')
+			console.log('1. 选择的头像路径:', avatarUrl)
+			console.log('2. API地址:', envConfig.API_BASE_URL + '/api/avatar/upload')
 			
-			uni.showToast({
-				title: '头像已更新',
-				icon: 'success'
+			// 显示加载提示
+			uni.showLoading({
+				title: '上传头像中...'
+			})
+			
+			// 获取用户信息
+			const userInfo = uni.getStorageSync('userInfo') || {}
+			const openid = userInfo.openid || ''
+			
+			console.log('3. 用户OpenID:', openid)
+			
+			if (!openid) {
+				uni.hideLoading()
+				uni.showToast({
+					title: '请先登录',
+					icon: 'none'
+				})
+				return
+			}
+			
+			// 上传头像到服务器
+			uni.uploadFile({
+				url: envConfig.API_BASE_URL + '/api/avatar/upload',
+				filePath: avatarUrl,
+				name: 'avatar',
+				formData: {
+					openid: openid
+				},
+				success: (uploadRes) => {
+					console.log('4. 服务器响应原始数据:', uploadRes.data)
+					
+					try {
+						const result = JSON.parse(uploadRes.data)
+						console.log('5. 解析后的响应数据:', result)
+						
+						if (result.code === 200) {
+							const serverAvatarUrl = result.data.avatar_url
+							console.log('6. 服务器返回的头像URL:', serverAvatarUrl)
+							
+							// 构建完整的头像URL
+							let fullAvatarUrl = serverAvatarUrl
+							if (serverAvatarUrl && !serverAvatarUrl.startsWith('http')) {
+								// 如果是相对路径，添加域名前缀
+								if (serverAvatarUrl.startsWith('uploads/')) {
+									fullAvatarUrl = envConfig.API_BASE_URL + '/' + serverAvatarUrl
+								} else {
+									fullAvatarUrl = envConfig.API_BASE_URL + '/uploads/' + serverAvatarUrl
+								}
+							}
+							
+							console.log('7. 完整的头像URL:', fullAvatarUrl)
+							
+							// 更新本地头像显示
+							this.userInfo.avatar = fullAvatarUrl
+							
+							// 更新本地存储
+							const localUserInfo = uni.getStorageSync('userInfo') || {}
+							localUserInfo.avatar = fullAvatarUrl
+							localUserInfo.avatarUrl = fullAvatarUrl
+							uni.setStorageSync('userInfo', localUserInfo)
+							
+							// 使用auth工具更新用户信息
+							auth.updateUserInfo({
+								avatar: fullAvatarUrl,
+								avatarUrl: fullAvatarUrl
+							})
+							
+							console.log('8. 更新后的本地存储:', localUserInfo)
+							console.log('9. 当前显示的头像URL:', this.userInfo.avatar)
+							console.log('10. auth工具中的用户信息:', auth.getUserInfo())
+							
+							uni.hideLoading()
+							uni.showToast({
+								title: '头像上传成功',
+								icon: 'success'
+							})
+						} else {
+							console.error('上传失败，错误信息:', result.message)
+							uni.hideLoading()
+							uni.showToast({
+								title: result.message || '上传失败',
+								icon: 'none'
+							})
+						}
+					} catch (e) {
+						console.error('解析响应数据失败:', e)
+						console.error('原始响应数据:', uploadRes.data)
+						uni.hideLoading()
+						uni.showToast({
+							title: '上传失败',
+							icon: 'none'
+						})
+					}
+				},
+				fail: (error) => {
+					console.error('头像上传请求失败:', error)
+					uni.hideLoading()
+					uni.showToast({
+						title: '上传失败，请重试',
+						icon: 'none'
+					})
+				}
 			})
 		},
 		

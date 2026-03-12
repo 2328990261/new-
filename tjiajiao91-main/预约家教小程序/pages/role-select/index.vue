@@ -71,6 +71,8 @@
 </template>
 
 <script>
+import { wechatLogin } from '@/utils/api.js'
+
 export default {
 	data() {
 		return {
@@ -100,10 +102,13 @@ export default {
 			// 保存角色到本地存储
 			uni.setStorageSync('userRole', this.selectedRole)
 			
-			console.log('选择的角色:', this.selectedRole)
-			console.log('已保存到本地存储')
+			// 已登录时同步身份到服务端，避免库里 user_type 仍是上次登录时的值
+			const token = uni.getStorageSync('token')
+			if (token) {
+				wechatLogin.updateUserType(this.selectedRole).catch(() => {})
+			}
 			
-			// 立即跳转，不需要等待toast
+			// 立即跳转，不需要等待接口
 			this.navigateToHome(this.selectedRole)
 		},
 		

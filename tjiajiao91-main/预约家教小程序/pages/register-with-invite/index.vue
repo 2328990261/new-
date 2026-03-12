@@ -39,6 +39,8 @@
 </template>
 
 <script>
+import envConfig from '@/config/env.js'
+
 export default {
   data() {
     return {
@@ -61,11 +63,14 @@ export default {
     async checkInviteStatus() {
       try {
         const res = await uni.request({
-          url: this.$baseUrl + '/api/invitation/check-status',
+          url: envConfig.API_BASE_URL + '/api/invitation/check-status',
           method: 'GET',
           header: {
             'Content-Type': 'application/json',
             'token': uni.getStorageSync('token') || ''
+          },
+          data: {
+            openid: (uni.getStorageSync('userInfo') || {}).openid || ''
           }
         })
         
@@ -98,14 +103,15 @@ export default {
         uni.showLoading({ title: '提交中...' })
         
         const res = await uni.request({
-          url: this.$baseUrl + '/api/invitation/register',
+          url: envConfig.API_BASE_URL + '/api/invitation/register',
           method: 'POST',
           header: {
             'Content-Type': 'application/json',
             'token': uni.getStorageSync('token') || ''
           },
           data: {
-            invite_code: this.inviteCode
+            invite_code: this.inviteCode,
+            openid: (uni.getStorageSync('userInfo') || {}).openid || ''
           }
         })
         

@@ -626,7 +626,9 @@ const handleStatusChange = async (row) => {
   } catch (error) {
     // 恢复状态
     row.status = row.status ? 0 : 1
-    
+    // 显示错误信息
+    ElMessage.error(error.response?.data?.error || error.message || '操作失败')
+    console.error('状态切换失败:', error)
   }
 }
 

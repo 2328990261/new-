@@ -66,6 +66,7 @@ class WechatMiniProgram extends BaseController
         $nickname = Request::post('nickname', '');
         $avatar = Request::post('avatar', '');
         $userType = Request::post('user_type', ''); // 用户类型：teacher/parent
+        $inviterOpenid = Request::post('inviter_openid', ''); // 邀请人openid
         
         // 记录接收到的参数（调试用）
         \think\facade\Log::info('Login params received: ' . json_encode([
@@ -73,7 +74,8 @@ class WechatMiniProgram extends BaseController
             'phoneCode' => $phoneCode,
             'nickname' => $nickname,
             'avatar' => $avatar,
-            'userType' => $userType
+            'userType' => $userType,
+            'inviterOpenid' => $inviterOpenid
         ]));
         
         if (empty($code)) {
@@ -94,6 +96,9 @@ class WechatMiniProgram extends BaseController
             }
             if (!empty($userType)) {
                 $extraInfo['user_type'] = $userType;
+            }
+            if (!empty($inviterOpenid)) {
+                $extraInfo['inviter_openid'] = $inviterOpenid;
             }
             
             // 优先使用新版phone_code
@@ -122,6 +127,34 @@ class WechatMiniProgram extends BaseController
                 'message' => $e->getMessage()
             ]);
         }
+    }
+    
+    /**
+     * 仅更新当前用户的 user_type（身份选择页“确认身份”时调用，已登录则同步到服务端）
+     * 需携带 token，从 token 解析 openid，不接收客户端传的 openid 以防篡改
+     * @return Response
+     */
+    public function updateUserType()
+    {
+        $auth = Request::header('Authorization', '');
+        if (empty($auth) || strpos($auth, 'Bearer ') !== 0) {
+            return json(['code' => 401, 'message' => '请先登录']);
+        }
+        $token = trim(substr($auth, 7));
+        $payload = @json_decode(base64_decode($token), true);
+        if (empty($payload['openid'])) {
+            return json(['code' => 401, 'message' => 'token 无效']);
+        }
+        $openid = $payload['openid'];
+        $userType = Request::post('user_type', '');
+        if (!in_array($userType, ['teacher', 'parent'], true)) {
+            return json(['code' => 400, 'message' => 'user_type 须为 teacher 或 parent']);
+        }
+        $ok = $this->service->updateUserType($openid, $userType);
+        if ($ok) {
+            return json(['code' => 200, 'message' => '已更新']);
+        }
+        return json(['code' => 500, 'message' => '更新失败，请稍后重试']);
     }
     
     /**

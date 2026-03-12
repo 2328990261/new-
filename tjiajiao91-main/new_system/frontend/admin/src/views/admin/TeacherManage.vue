@@ -156,6 +156,17 @@
           <el-button @click="handleShowResumePoster" icon="Picture" type="warning" size="small">简历海报</el-button>
           <el-button @click="handleShowMiniPoster" icon="Picture" type="success" size="small">小程序海报</el-button>
         </div>
+        
+        <div class="search-right">
+          <el-button
+            @click="handleRefresh"
+            :loading="refreshing"
+            title="刷新数据"
+          >
+            <el-icon><Refresh /></el-icon>
+            刷新
+          </el-button>
+        </div>
       </div>
 
       <!-- 标签页和操作按钮 -->
@@ -294,7 +305,7 @@
           <span style="font-weight: 600; font-size: 16px;">基本信息</span>
         </el-divider>
         <el-descriptions :column="2" border>
-          <el-descriptions-item label="教师ID">{{ currentTeacher.id }}</el-descriptions-item>
+          <el-descriptions-item label="教师ID">T{{ currentTeacher.teacher_no != null && currentTeacher.teacher_no !== '' ? currentTeacher.teacher_no : currentTeacher.id }}</el-descriptions-item>
           <el-descriptions-item label="关联账号ID">{{ currentTeacher.account_id }}</el-descriptions-item>
           <el-descriptions-item label="性别">{{ currentTeacher.gender }}</el-descriptions-item>
           <el-descriptions-item label="微信号">{{ currentTeacher.wechat_id }}</el-descriptions-item>
@@ -529,7 +540,7 @@
     </el-dialog>
 
     <!-- 编辑弹窗 -->
-    <el-dialog v-model="editVisible" title="编辑教师信息" width="900px" top="5vh">
+    <el-dialog v-model="editVisible" :title="editForm ? `编辑教师信息 (T${editForm.teacher_no != null && editForm.teacher_no !== '' ? editForm.teacher_no : editForm.id})` : '编辑教师信息'" width="900px" top="5vh">
       <el-form 
         ref="editFormRef" 
         :model="editForm" 
@@ -539,10 +550,17 @@
         <el-divider content-position="left">基本信息</el-divider>
         <el-row :gutter="20">
           <el-col :span="12">
+            <el-form-item label="教师编号">
+              <el-input :model-value="editForm.teacher_no != null && editForm.teacher_no !== '' ? 'T' + editForm.teacher_no : 'T' + editForm.id" disabled />
+            </el-form-item>
+          </el-col>
+          <el-col :span="12">
             <el-form-item label="姓名" prop="name">
               <el-input v-model="editForm.name" />
             </el-form-item>
           </el-col>
+        </el-row>
+        <el-row :gutter="20">
           <el-col :span="12">
             <el-form-item label="性别" prop="gender">
               <el-radio-group v-model="editForm.gender">
@@ -845,6 +863,215 @@
             </el-col>
           </el-row>
         </el-form-item>
+
+        <el-divider content-position="left">认证信息</el-divider>
+
+        <!-- 实名认证 -->
+        <el-form-item label="实名认证">
+          <div style="display: block; width: 100%;">
+            <div style="margin-bottom: 12px;">
+              <el-switch
+                v-model="editForm.real_name_verified"
+                :active-value="1"
+                :inactive-value="0"
+                :disabled="!editForm.id_card_front && !editForm.id_card_back"
+                active-text="已认证"
+                inactive-text="未认证"
+                active-color="#67c23a"
+              />
+              <span style="margin-left: 12px; color: #909399; font-size: 13px;">（身份证明）</span>
+              <el-tag v-if="!editForm.id_card_front && !editForm.id_card_back" type="warning" size="small" style="margin-left: 8px;">
+                未上传证明材料
+              </el-tag>
+            </div>
+
+            <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px;">
+              <div>
+                <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px;">
+                  <div style="font-size: 13px; color: #909399;">身份证正面</div>
+                  <el-upload
+                    :show-file-list="false"
+                    :on-success="(response) => handleCertificationUploadSuccess('id_card_front', response, '身份证正面上传成功')"
+                    :before-upload="beforeAvatarUpload"
+                    action="/api/admin/upload/image"
+                    :headers="{ Authorization: 'Bearer ' + getToken() }"
+                    :data="{ type: 'teacher' }"
+                    accept="image/*"
+                  >
+                    <el-button size="small" type="primary" plain>上传</el-button>
+                  </el-upload>
+                </div>
+                <div v-if="editForm.id_card_front" style="position: relative;">
+                  <el-image
+                    :src="editForm.id_card_front"
+                    :preview-src-list="[editForm.id_card_front]"
+                    fit="cover"
+                    style="width: 100%; height: 150px; border-radius: 8px; cursor: pointer; border: 2px solid #e4e7ed;"
+                  />
+                  <el-button
+                    type="danger"
+                    size="small"
+                    circle
+                    icon="Close"
+                    style="position: absolute; top: -8px; right: -8px; width: 20px; height: 20px; padding: 0; font-size: 12px;"
+                    @click="clearCertificationField('id_card_front')"
+                  />
+                </div>
+                <div v-else style="color: #909399; font-size: 13px; padding: 12px; background: #f5f7fa; border-radius: 6px;">
+                  未上传
+                </div>
+              </div>
+
+              <div>
+                <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px;">
+                  <div style="font-size: 13px; color: #909399;">身份证反面</div>
+                  <el-upload
+                    :show-file-list="false"
+                    :on-success="(response) => handleCertificationUploadSuccess('id_card_back', response, '身份证反面上传成功')"
+                    :before-upload="beforeAvatarUpload"
+                    action="/api/admin/upload/image"
+                    :headers="{ Authorization: 'Bearer ' + getToken() }"
+                    :data="{ type: 'teacher' }"
+                    accept="image/*"
+                  >
+                    <el-button size="small" type="primary" plain>上传</el-button>
+                  </el-upload>
+                </div>
+                <div v-if="editForm.id_card_back" style="position: relative;">
+                  <el-image
+                    :src="editForm.id_card_back"
+                    :preview-src-list="[editForm.id_card_back]"
+                    fit="cover"
+                    style="width: 100%; height: 150px; border-radius: 8px; cursor: pointer; border: 2px solid #e4e7ed;"
+                  />
+                  <el-button
+                    type="danger"
+                    size="small"
+                    circle
+                    icon="Close"
+                    style="position: absolute; top: -8px; right: -8px; width: 20px; height: 20px; padding: 0; font-size: 12px;"
+                    @click="clearCertificationField('id_card_back')"
+                  />
+                </div>
+                <div v-else style="color: #909399; font-size: 13px; padding: 12px; background: #f5f7fa; border-radius: 6px;">
+                  未上传
+                </div>
+              </div>
+            </div>
+          </div>
+        </el-form-item>
+
+        <!-- 学历认证 -->
+        <el-form-item label="学历认证">
+          <div style="display: block; width: 100%;">
+            <div style="margin-bottom: 12px;">
+              <el-switch
+                v-model="editForm.education_verified"
+                :active-value="1"
+                :inactive-value="0"
+                :disabled="!editForm.education_certificate"
+                active-text="已认证"
+                inactive-text="未认证"
+                active-color="#67c23a"
+              />
+              <span style="margin-left: 12px; color: #909399; font-size: 13px;">（学历证明）</span>
+              <el-tag v-if="!editForm.education_certificate" type="warning" size="small" style="margin-left: 8px;">
+                未上传证明材料
+              </el-tag>
+            </div>
+
+            <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px;">
+              <div style="font-size: 13px; color: #909399;">学历证明</div>
+              <el-upload
+                :show-file-list="false"
+                :on-success="(response) => handleCertificationUploadSuccess('education_certificate', response, '学历证明上传成功')"
+                :before-upload="beforeAvatarUpload"
+                action="/api/admin/upload/image"
+                :headers="{ Authorization: 'Bearer ' + getToken() }"
+                :data="{ type: 'teacher' }"
+                accept="image/*"
+              >
+                <el-button size="small" type="primary" plain>上传</el-button>
+              </el-upload>
+            </div>
+
+            <div v-if="editForm.education_certificate" style="position: relative; max-width: 520px;">
+              <el-image
+                :src="editForm.education_certificate"
+                :preview-src-list="[editForm.education_certificate]"
+                fit="cover"
+                style="width: 100%; height: 160px; border-radius: 8px; cursor: pointer; border: 2px solid #e4e7ed;"
+              />
+              <el-button
+                type="danger"
+                size="small"
+                circle
+                icon="Close"
+                style="position: absolute; top: -8px; right: -8px; width: 20px; height: 20px; padding: 0; font-size: 12px;"
+                @click="clearCertificationField('education_certificate')"
+              />
+            </div>
+            <div v-else style="color: #909399; font-size: 13px; padding: 12px; background: #f5f7fa; border-radius: 6px;">
+              未上传
+            </div>
+          </div>
+        </el-form-item>
+
+        <!-- 教师认证 -->
+        <el-form-item label="教师认证">
+          <div style="display: block; width: 100%;">
+            <div style="margin-bottom: 12px;">
+              <el-switch
+                v-model="editForm.teacher_verified"
+                :active-value="1"
+                :inactive-value="0"
+                :disabled="!editForm.teacher_certificate"
+                active-text="已认证"
+                inactive-text="未认证"
+                active-color="#67c23a"
+              />
+              <span style="margin-left: 12px; color: #909399; font-size: 13px;">（教师资格证）</span>
+              <el-tag v-if="!editForm.teacher_certificate" type="warning" size="small" style="margin-left: 8px;">
+                未上传证明材料
+              </el-tag>
+            </div>
+
+            <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px;">
+              <div style="font-size: 13px; color: #909399;">教师资格证</div>
+              <el-upload
+                :show-file-list="false"
+                :on-success="(response) => handleCertificationUploadSuccess('teacher_certificate', response, '教师资格证上传成功')"
+                :before-upload="beforeAvatarUpload"
+                action="/api/admin/upload/image"
+                :headers="{ Authorization: 'Bearer ' + getToken() }"
+                :data="{ type: 'teacher' }"
+                accept="image/*"
+              >
+                <el-button size="small" type="primary" plain>上传</el-button>
+              </el-upload>
+            </div>
+
+            <div v-if="editForm.teacher_certificate" style="position: relative; max-width: 520px;">
+              <el-image
+                :src="editForm.teacher_certificate"
+                :preview-src-list="[editForm.teacher_certificate]"
+                fit="cover"
+                style="width: 100%; height: 160px; border-radius: 8px; cursor: pointer; border: 2px solid #e4e7ed;"
+              />
+              <el-button
+                type="danger"
+                size="small"
+                circle
+                icon="Close"
+                style="position: absolute; top: -8px; right: -8px; width: 20px; height: 20px; padding: 0; font-size: 12px;"
+                @click="clearCertificationField('teacher_certificate')"
+              />
+            </div>
+            <div v-else style="color: #909399; font-size: 13px; padding: 12px; background: #f5f7fa; border-radius: 6px;">
+              未上传
+            </div>
+          </div>
+        </el-form-item>
         
         <el-divider content-position="left">其他设置</el-divider>
         <el-form-item label="置顶" prop="is_top">
@@ -1125,13 +1352,14 @@ export default {
 import { ref, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { useRouter } from 'vue-router'
-import { List, CircleCheck, Clock, CircleClose, Lock, Delete, DocumentDelete, Search, Setting, Location, Plus, Close, DocumentCopy, Picture } from '@element-plus/icons-vue'
+import { List, CircleCheck, Clock, CircleClose, Lock, Delete, DocumentDelete, Search, Setting, Location, Plus, Close, DocumentCopy, Picture, Refresh } from '@element-plus/icons-vue'
 import TeacherCard from '@/components/teacher/TeacherCard.vue'
 import { getTeacherList, updateTeacherStatus, setTeacherTop, deleteTeacher, batchDeleteTeachers, batchUpdateTeacherStatus, updateTeacher, getTeacherStatistics, reviewTeacher, getTeacherDetail } from '@/api/teacher'
 
 const router = useRouter()
 
 const loading = ref(false)
+const refreshing = ref(false)
 const saveLoading = ref(false)
 const activeTab = ref('all')
 const searchForm = ref({
@@ -1276,6 +1504,22 @@ const loadData = async () => {
     ElMessage.error('加载失败')
   } finally {
     loading.value = false
+  }
+}
+
+// 刷新数据（参考预约模块的刷新交互）
+const handleRefresh = async () => {
+  if (refreshing.value) return
+  refreshing.value = true
+  try {
+    await Promise.all([loadData(), loadStatistics()])
+    ElMessage.success('刷新成功')
+  } catch (error) {
+    ElMessage.error('刷新失败')
+  } finally {
+    setTimeout(() => {
+      refreshing.value = false
+    }, 500)
   }
 }
 
@@ -1604,6 +1848,21 @@ const handleTeachingPhotoSuccess = (response) => {
   }
 }
 
+const handleCertificationUploadSuccess = (field, response, successMessage) => {
+  if (!editForm.value) return
+  if (response.success) {
+    editForm.value[field] = response.data.url
+    ElMessage.success(successMessage || '上传成功')
+  } else {
+    ElMessage.error(response.error || '上传失败')
+  }
+}
+
+const clearCertificationField = (field) => {
+  if (!editForm.value) return
+  editForm.value[field] = ''
+}
+
 // 审核
 const handleReview = (row) => {
   reviewForm.value = {
@@ -1661,7 +1920,9 @@ const handleSaveEdit = async () => {
       'education', 'school', 'major', 'teacher_type', 'grade_level', 'education_level',
       'hourly_rate', 'subject_ids', 'subject_names', 'district_ids', 'district_names',
       'self_intro', 'personal_advantage', 'advantage_tags',
-      'status', 'is_top', 'experiences', 'avatar', 'teaching_photos'
+      'status', 'is_top', 'experiences', 'avatar', 'teaching_photos',
+      'real_name_verified', 'education_verified', 'teacher_verified',
+      'id_card_front', 'id_card_back', 'education_certificate', 'teacher_certificate'
     ]
     
     const finalData = {}
@@ -2158,6 +2419,13 @@ onMounted(() => {
   display: flex;
   gap: 8px;
   flex-shrink: 0;
+  align-items: center;
+}
+
+.search-right {
+  flex-shrink: 0;
+  margin-left: auto;
+  display: flex;
   align-items: center;
 }
 

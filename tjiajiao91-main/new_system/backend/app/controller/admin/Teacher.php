@@ -225,11 +225,13 @@ class Teacher extends BaseController
             $data['teacher_verified'] = (int)($data['teacher_verified'] ?? 0);
             $data['is_top'] = (int)($data['is_top'] ?? 0);
             
-            // 确保所有字段都存在，即使为空
+            // 确保所有字段都存在，即使为空（避免前端/序列化因空值报错）
             $data['self_intro'] = $data['self_intro'] ?? '';
             $data['wechat_nickname'] = $data['wechat_nickname'] ?? '';
             $data['openid'] = $data['openid'] ?? '';
             $data['last_login_time'] = $data['last_login_time'] ?? null;
+            $data['birth_date'] = isset($data['birth_date']) && $data['birth_date'] !== '' ? $data['birth_date'] : null;
+            $data['birth_year'] = isset($data['birth_year']) && $data['birth_year'] !== '' ? (int)$data['birth_year'] : null;
             
             // 获取教师授课信息
             $teachingInfo = \app\model\TeacherTeachingInfo::getByTeacher($id, $data['openid'] ?? null, $data['phone'] ?? null);
@@ -514,7 +516,9 @@ class Teacher extends BaseController
                 'hourly_rate', 'subject_ids', 'subject_names', 'district_ids', 'district_names',
                 'experience', 'experiences', 'self_intro', 'personal_advantage',
                 'advantage_tags', 'photos', 'avatar', 'teaching_photos',
-                'status', 'is_top'
+                'status', 'is_top',
+                'real_name_verified', 'education_verified', 'teacher_verified',
+                'id_card_front', 'id_card_back', 'education_certificate', 'teacher_certificate'
             ];
             
             $updateData = [];
@@ -551,6 +555,17 @@ class Teacher extends BaseController
                 $updateData['photos'] = $photosData;
                 unset($updateData['avatar']);
                 unset($updateData['teaching_photos']);
+            }
+
+            // 认证字段类型修正
+            if (array_key_exists('real_name_verified', $updateData)) {
+                $updateData['real_name_verified'] = (int)$updateData['real_name_verified'];
+            }
+            if (array_key_exists('education_verified', $updateData)) {
+                $updateData['education_verified'] = (int)$updateData['education_verified'];
+            }
+            if (array_key_exists('teacher_verified', $updateData)) {
+                $updateData['teacher_verified'] = (int)$updateData['teacher_verified'];
             }
             
             $teacher->save($updateData);

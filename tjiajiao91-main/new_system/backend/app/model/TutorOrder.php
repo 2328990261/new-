@@ -25,7 +25,7 @@ class TutorOrder extends Model
         'is_top'          => 'int',
         'top_expire_time' => 'datetime',
         'admin_id'        => 'int',
-        'admin_openid'    => 'string', // 创建管理员的openid（用于小程序端查询我的订单）
+        // 'admin_openid'    => 'string', // 创建管理员的openid（用于小程序端查询我的订单）- 数据库表中没有此字段
         'dispatcher_id'   => 'int',    // 派单管理员ID
         'contact_info'    => 'string', // 派单联系方式
         'assigned_time'   => 'datetime', // 派单时间
@@ -33,7 +33,7 @@ class TutorOrder extends Model
         'is_channel'      => 'int',    // 是否是渠道单
         'channel_code'    => 'string', // 渠道代号
         'booking_channel' => 'string', // 预约渠道：H5/小程序（不为空则表示是预约单）
-        'user_id'         => 'int',    // 小程序用户ID
+        // 'user_id'         => 'int',    // 小程序用户ID - 数据库表中没有此字段
         'create_time'     => 'datetime',
         'update_time'     => 'datetime',
     ];
@@ -68,31 +68,41 @@ class TutorOrder extends Model
         
         $datePrefix = date('ymd', $timestamp); // 例如: 250110
         
-        // 查询该日期已有的记录数量
-        $dayCount = self::where('id', 'like', $datePrefix . '%')->count();
+        // 使用微秒时间戳和随机数确保唯一性（避免并发冲突）
+        $microtime = microtime(true);
+        $microseconds = intval(($microtime - intval($microtime)) * 1000000); // 获取微秒部分
+        $random = rand(0, 99); // 0-99随机数
         
-        // 生成序号（从001开始）
-        $sequence = str_pad($dayCount + 1, 3, '0', STR_PAD_LEFT);
+        // 组合微秒和随机数作为序号（确保3位数）
+        $sequence = str_pad(($microseconds % 900) + $random + 1, 3, '0', STR_PAD_LEFT);
         
         // 组合成完整ID
         $orderId = $datePrefix . $sequence;
         
         // 检查是否已存在（双重保险）
-        $exists = self::where('id', $orderId)->find();
+        $maxAttempts = 10; // 最大尝试次数
+        $attempt = 0;
         
-        if ($exists) {
-            // 如果存在，使用时间戳+随机数作为备选
-            $timestamp = substr(time(), -3); // 取时间戳后3位
-            $random = rand(0, 9); // 0-9随机数
-            $orderId = $datePrefix . $timestamp . $random;
+        while ($attempt < $maxAttempts) {
+            $exists = self::where('id', $orderId)->find();
             
-            // 再次检查
-            $exists2 = self::where('id', $orderId)->find();
-            if ($exists2) {
-                // 最后备选：使用微秒时间戳
-                $microtime = substr(microtime(true) * 1000000, -6); // 取微秒后6位
-                $orderId = $datePrefix . substr($microtime, -3); // 取后3位
+            if (!$exists) {
+                // 不存在，可以使用
+                break;
             }
+            
+            // 如果存在，重新生成
+            $attempt++;
+            $microseconds = intval((microtime(true) - intval(microtime(true))) * 1000000);
+            $random = rand(0, 99);
+            $sequence = str_pad(($microseconds % 900) + $random + $attempt, 3, '0', STR_PAD_LEFT);
+            $orderId = $datePrefix . $sequence;
+        }
+        
+        // 如果尝试多次仍然冲突，使用时间戳后缀
+        if ($attempt >= $maxAttempts) {
+            $timestampSuffix = substr(time(), -3);
+            $orderId = $datePrefix . $timestampSuffix;
         }
         
         return $orderId;

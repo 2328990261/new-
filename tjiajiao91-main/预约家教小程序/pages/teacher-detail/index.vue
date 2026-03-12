@@ -87,21 +87,27 @@
       <!-- 基本信息卡片 -->
       <view class="info-card">
         <view class="teacher-header">
-          <view class="avatar-box">
-            <image 
-              v-if="teacher.avatar" 
-              :src="teacher.avatar" 
-              class="avatar-img" 
-              mode="aspectFill"
-            />
-            <view v-else class="avatar-placeholder">
-              <text class="avatar-icon">👤</text>
+          <view class="avatar-section">
+            <view class="avatar-box">
+              <image 
+                v-if="teacher.avatar" 
+                :src="teacher.avatar" 
+                class="avatar-img" 
+                mode="aspectFill"
+              />
+              <view v-else class="avatar-placeholder">
+                <text class="avatar-icon">👤</text>
+              </view>
+            </view>
+            <!-- 头像下方单独一行显示 ID:T1001 -->
+            <view class="teacher-id-line" v-if="teacher.teacher_no != null || teacher.id != null">
+              <text class="teacher-id-text">ID:T{{ teacher.teacher_no != null && teacher.teacher_no !== '' ? teacher.teacher_no : teacher.id }}</text>
             </view>
           </view>
           
           <view class="header-info">
             <view class="name-row">
-              <text class="teacher-name">{{ teacher.name }}</text>
+              <text class="teacher-name">{{ (teacher.name && teacher.name.length >= 2) ? (teacher.name[0] + '*' + teacher.name.slice(2)) : (teacher.name || '') }}</text>
               <view class="top-badge" v-if="teacher.is_top">
                 <text class="badge-icon">⭐</text>
                 <text class="badge-text">精选</text>
@@ -1545,6 +1551,23 @@ export default {
 .avatar-icon {
   font-size: 70rpx;
   color: rgba(82, 201, 166, 0.5);
+}
+
+/* 头像区域：头像 + 下方 id:T1001 一行 */
+.avatar-section {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+.teacher-id-line {
+  margin-top: 12rpx;
+}
+
+.teacher-id-text {
+  font-size: 26rpx;
+  color: #666;
 }
 
 .header-info {

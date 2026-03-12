@@ -131,7 +131,7 @@
           </template>
         </el-table-column>
         <el-table-column prop="create_time" label="提交时间" min-width="160" align="center" />
-        <el-table-column label="操作" fixed="right" min-width="200" align="center">
+        <el-table-column label="操作" fixed="right" min-width="240" align="center">
           <template #default="scope">
             <el-button type="primary" size="small" link @click="showDetail(scope.row)">详情</el-button>
             <template v-if="scope.row.status === 'pending'">
@@ -139,6 +139,10 @@
               <el-button type="danger" size="small" link @click="handleReject(scope.row)">拒绝</el-button>
             </template>
             <el-button type="info" size="small" link @click="copyTutorContent(scope.row)">复制</el-button>
+            <!-- 删除按钮（仅超级管理员和客服组长） -->
+            <template v-if="canDeleteOrder">
+              <el-button type="danger" size="small" link @click="handleDelete(scope.row)">删除</el-button>
+            </template>
           </template>
         </el-table-column>
       </el-table>
@@ -234,6 +238,10 @@
           <el-button type="success" @click="handleApprove(currentOrder)">通过审核</el-button>
           <el-button type="danger" @click="handleReject(currentOrder)">拒绝审核</el-button>
         </template>
+        <!-- 删除按钮（仅超级管理员和客服组长） -->
+        <template v-if="canDeleteOrder && currentOrder">
+          <el-button type="danger" @click="handleDelete(currentOrder)" :icon="Delete">删除订单</el-button>
+        </template>
       </template>
     </el-dialog>
 
@@ -260,13 +268,14 @@ export default {
 
 <script setup>
 import { ref, reactive, onMounted, computed } from 'vue'
-import { Refresh, List, Clock, CircleClose, CopyDocument, Connection, ArrowLeft, ArrowRight, User } from '@element-plus/icons-vue'
+import { Refresh, List, Clock, CircleClose, CopyDocument, Connection, ArrowLeft, ArrowRight, User, Delete } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { useUserStore } from '@/store'
-import { getOrderList, getOrderStats, approveOrder as approveOrderAPI, rejectOrder as rejectOrderAPI } from '@/api/booking'
+import { getOrderList, getOrderStats, approveOrder as approveOrderAPI, rejectOrder as rejectOrderAPI, deleteOrder as deleteOrderAPI } from '@/api/booking'
 
 const userStore = useUserStore()
 const isSuperAdmin = computed(() => userStore.isSuperAdmin)
+const canDeleteOrder = computed(() => userStore.canDeleteOrder)
 const loading = ref(false)
 const tableData = ref([])
 const currentPage = ref(1)
@@ -538,6 +547,29 @@ const confirmReject = async () => {
   } finally {
     submitLoading.value = false
   }
+}
+
+// 删除订单
+const handleDelete = (row) => {
+  ElMessageBox.confirm(
+    `确认删除订单 ${row.id}？删除后无法恢复，如果该订单已转化为家教信息，相关的家教信息也会被删除。`,
+    '危险操作',
+    {
+      confirmButtonText: '确认删除',
+      cancelButtonText: '取消',
+      type: 'error',
+      dangerouslyUseHTMLString: true
+    }
+  ).then(async () => {
+    try {
+      await deleteOrderAPI(row.id)
+      ElMessage.success('订单删除成功')
+      loadData()
+      loadStats()
+    } catch (error) {
+      ElMessage.error(error.response?.data?.message || '删除失败，请重试')
+    }
+  }).catch(() => {})
 }
 </script>
 

@@ -40,6 +40,15 @@ export const wechatLogin = {
 		})
 	},
 	
+	// 仅更新当前身份到服务端（身份选择页“确认身份”时调用，需已登录）
+	updateUserType(userType) {
+		return request({
+			url: '/api/wechat/update-user-type',
+			method: 'POST',
+			data: { user_type: userType }
+		})
+	},
+	
 	// 生成小程序码（无数量限制）
 	generateQRCode(page, scene, options = {}) {
 		return request({

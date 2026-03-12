@@ -98,6 +98,7 @@
 import { requestLocationAuth, showLocationAuthDialog } from '@/utils/location-auth.js'
 import { wechatLogin } from '@/utils/api.js'
 import auth from '@/utils/auth.js'
+import envConfig from '@/config/env.js'
 
 export default {
 	data() {
@@ -108,7 +109,8 @@ export default {
 			sessionKey: '', // 会话密钥
 			isProcessingPhone: false, // 防止频繁调用手机号授权
 			userAvatar: '', // 用户头像
-			userNickname: '' // 用户昵称
+			userNickname: '', // 用户昵称
+			inviterOpenid: '' // 邀请人openid
 		}
 	},
 	computed: {
@@ -117,9 +119,15 @@ export default {
 			return this.agreedToTerms && this.userAvatar && this.userNickname
 		}
 	},
-	onLoad() {
+	onLoad(options) {
 		// 简化初始化，使用固定状态栏高度
 		this.statusBarHeight = 44
+		
+		// 获取邀请人openid
+		if (options.inviter) {
+			this.inviterOpenid = options.inviter
+			console.log('检测到邀请链接，邀请人openid:', this.inviterOpenid)
+		}
 		
 		// 加载已保存的用户信息
 		try {
@@ -189,21 +197,16 @@ export default {
 			console.log('微信头像授权回调:', e)
 			const { avatarUrl } = e.detail
 			if (avatarUrl) {
+				// 先显示临时头像
 				this.userAvatar = avatarUrl
 				
-				// 保存头像到本地存储
-				try {
-					const userInfo = uni.getStorageSync('userInfo') || {}
-					userInfo.avatar = avatarUrl
-					uni.setStorageSync('userInfo', userInfo)
-				} catch (e) {
-					console.error('保存头像失败', e)
-				}
-				
-				uni.showToast({
-					title: '头像已设置',
-					icon: 'success'
+				// 显示上传提示
+				uni.showLoading({
+					title: '上传头像中...'
 				})
+				
+				// 上传头像到服务器
+				this.uploadAvatarToServer(avatarUrl)
 			} else {
 				console.error('未获取到头像URL')
 				uni.showToast({
@@ -211,6 +214,105 @@ export default {
 					icon: 'none'
 				})
 			}
+		},
+		
+		// 上传头像到服务器
+		uploadAvatarToServer(avatarUrl) {
+			// 获取当前用户信息（如果已登录）
+			const userInfo = uni.getStorageSync('userInfo') || {}
+			const openid = userInfo.openid || ''
+			
+			// 如果没有openid，先生成一个临时标识
+			let uploadOpenid = openid
+			if (!uploadOpenid) {
+				// 使用设备信息生成临时标识
+				const systemInfo = uni.getSystemInfoSync()
+				uploadOpenid = 'temp_' + systemInfo.deviceId || 'temp_' + Date.now()
+			}
+			
+			console.log('=== 登录页头像上传调试信息 ===')
+			console.log('1. 选择的头像路径:', avatarUrl)
+			console.log('2. 使用的OpenID:', uploadOpenid)
+			console.log('3. API地址:', envConfig.API_BASE_URL + '/api/avatar/upload')
+			
+			// 上传头像到服务器
+			uni.uploadFile({
+				url: envConfig.API_BASE_URL + '/api/avatar/upload',
+				filePath: avatarUrl,
+				name: 'avatar',
+				formData: {
+					openid: uploadOpenid
+				},
+				success: (uploadRes) => {
+					console.log('4. 服务器响应原始数据:', uploadRes.data)
+					
+					try {
+						const result = JSON.parse(uploadRes.data)
+						console.log('5. 解析后的响应数据:', result)
+						
+						if (result.code === 200) {
+							const serverAvatarUrl = result.data.avatar_url
+							console.log('6. 服务器返回的头像URL:', serverAvatarUrl)
+							
+							// 构建完整的头像URL
+							let fullAvatarUrl = serverAvatarUrl
+							if (serverAvatarUrl && !serverAvatarUrl.startsWith('http')) {
+								// 如果是相对路径，添加域名前缀
+								if (serverAvatarUrl.startsWith('uploads/')) {
+									fullAvatarUrl = envConfig.API_BASE_URL + '/' + serverAvatarUrl
+								} else {
+									fullAvatarUrl = envConfig.API_BASE_URL + '/uploads/' + serverAvatarUrl
+								}
+							}
+							
+							console.log('7. 完整的头像URL:', fullAvatarUrl)
+							
+							// 更新本地头像显示
+							this.userAvatar = fullAvatarUrl
+							
+							// 保存真实头像URL到本地存储
+							try {
+								const localUserInfo = uni.getStorageSync('userInfo') || {}
+								localUserInfo.avatar = fullAvatarUrl
+								localUserInfo.avatarUrl = fullAvatarUrl
+								uni.setStorageSync('userInfo', localUserInfo)
+								console.log('8. 更新后的本地存储:', localUserInfo)
+							} catch (e) {
+								console.error('保存头像失败', e)
+							}
+							
+							uni.hideLoading()
+							uni.showToast({
+								title: '头像上传成功',
+								icon: 'success'
+							})
+						} else {
+							console.error('上传失败，错误信息:', result.message)
+							uni.hideLoading()
+							uni.showToast({
+								title: result.message || '头像上传失败',
+								icon: 'none'
+							})
+						}
+					} catch (e) {
+						console.error('解析响应数据失败:', e)
+						console.error('原始响应数据:', uploadRes.data)
+						uni.hideLoading()
+						uni.showToast({
+							title: '头像上传失败',
+							icon: 'none'
+						})
+					}
+				},
+				fail: (error) => {
+					console.error('头像上传请求失败:', error)
+					uni.hideLoading()
+					uni.showToast({
+						title: '头像上传失败，请重试',
+						icon: 'none'
+					})
+				}
+			})
 		},
 		
 		// 昵称输入完成
@@ -419,7 +521,8 @@ export default {
 					phone_code: phoneCode,
 					nickname: this.userNickname || '',
 					avatar: this.userAvatar || '',
-					user_type: uni.getStorageSync('userRole') || ''
+					user_type: uni.getStorageSync('userRole') || '',
+					inviter_openid: this.inviterOpenid || '' // 传递邀请人openid
 				})
 				
 				uni.hideLoading()
@@ -547,7 +650,8 @@ export default {
 					iv: iv,
 					nickname: this.userNickname || '',
 					avatar: this.userAvatar || '',
-					user_type: uni.getStorageSync('userRole') || ''
+					user_type: uni.getStorageSync('userRole') || '',
+					inviter_openid: this.inviterOpenid || '' // 传递邀请人openid
 				})
 				
 				uni.hideLoading()

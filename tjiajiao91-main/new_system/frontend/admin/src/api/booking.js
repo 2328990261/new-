@@ -61,6 +61,14 @@ export function updateOrder(orderId, data) {
   })
 }
 
+// 删除订单（仅超级管理员和客服组长）
+export function deleteOrder(orderId) {
+  return request({
+    url: `/api/order/${orderId}/delete`,
+    method: 'delete'
+  })
+}
+
 
 
 

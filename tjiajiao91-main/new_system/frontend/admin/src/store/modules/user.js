@@ -41,8 +41,11 @@ export const useUserStore = defineStore('user', {
     isLoggedIn: (state) => !!state.id,
     isSuperAdmin: (state) => state.role === 'super_admin', // 超级管理员
     isAdmin: (state) => state.role === 'super_admin', // 兼容旧代码
+    isTeamLeader: (state) => state.role === 'team_leader', // 客服组长
     isDispatcher: (state) => state.role === 'dispatcher',
     isCustomerService: (state) => state.role === 'customer_service',
+    // 检查是否可以删除订单（超级管理员或客服组长）
+    canDeleteOrder: (state) => state.role === 'super_admin' || state.role === 'team_leader',
   },
 
   actions: {

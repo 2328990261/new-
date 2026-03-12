@@ -118,11 +118,8 @@
 
       <!-- 批量操作 -->
       <div v-if="selectedRows.length > 0" class="batch-actions">
-        <el-button type="success" size="small" @click="handleBatchReview('approved')">
-          批量通过
-        </el-button>
-        <el-button type="danger" size="small" @click="handleBatchReview('rejected')">
-          批量拒绝
+        <el-button type="primary" size="small" @click="openBatchReviewDialog">
+          批量审核
         </el-button>
         <el-button size="small" @click="clearSelection">
           取消选择 ({{ selectedRows.length }})
@@ -182,19 +179,11 @@
             <el-button type="primary" size="small" @click="handleView(row)" link>查看</el-button>
             <el-button 
               v-if="row.status === 'pending'" 
-              type="success" 
+              type="primary" 
               size="small" 
-              @click="handleReview(row, 'approved')"
+              @click="openReviewDialog(row)"
             >
-              通过
-            </el-button>
-            <el-button 
-              v-if="row.status === 'pending'" 
-              type="danger" 
-              size="small" 
-              @click="handleReview(row, 'rejected')"
-            >
-              拒绝
+              审核
             </el-button>
             <el-button type="danger" size="small" @click="handleDelete(row)" link>删除</el-button>
           </template>
@@ -263,17 +252,10 @@
             <el-button type="primary" @click="handleViewResume">查看简历</el-button>
             <el-button 
               v-if="currentApplication && currentApplication.status === 'pending'" 
-              type="success" 
-              @click="handleReview(currentApplication, 'approved')"
+              type="primary" 
+              @click="openReviewDialog(currentApplication)"
             >
-              通过
-            </el-button>
-            <el-button 
-              v-if="currentApplication && currentApplication.status === 'pending'" 
-              type="danger" 
-              @click="handleReview(currentApplication, 'rejected')"
-            >
-              拒绝
+              审核
             </el-button>
           </div>
         </div>
@@ -905,14 +887,22 @@
     </el-dialog>
 
     <!-- 审核弹窗 -->
-    <el-dialog v-model="reviewVisible" :title="reviewTitle" width="500px">
+    <el-dialog v-model="reviewVisible" title="审核投递" width="520px">
       <el-form :model="reviewForm" label-width="100px">
+        <el-form-item label="审核结果">
+          <el-radio-group v-model="reviewForm.status">
+            <el-radio label="approved">通过</el-radio>
+            <el-radio label="rejected">拒绝</el-radio>
+          </el-radio-group>
+        </el-form-item>
         <el-form-item label="备注">
           <el-input
             v-model="reviewForm.remark"
             type="textarea"
             :rows="4"
-            placeholder="请输入备注信息（选填）"
+            placeholder="请输入审核备注（小程序端会展示拒绝原因）"
+            maxlength="200"
+            show-word-limit
           />
         </el-form-item>
       </el-form>
@@ -928,11 +918,44 @@
         </div>
       </template>
     </el-dialog>
+
+    <!-- 批量审核弹窗 -->
+    <el-dialog v-model="batchReviewVisible" title="批量审核" width="520px">
+      <el-form :model="batchReviewForm" label-width="100px">
+        <el-form-item label="审核结果">
+          <el-radio-group v-model="batchReviewForm.status">
+            <el-radio label="approved">通过</el-radio>
+            <el-radio label="rejected">拒绝</el-radio>
+          </el-radio-group>
+        </el-form-item>
+        <el-form-item label="备注">
+          <el-input
+            v-model="batchReviewForm.remark"
+            type="textarea"
+            :rows="4"
+            placeholder="请输入审核备注（选填）"
+            maxlength="200"
+            show-word-limit
+          />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <div style="display: flex; justify-content: space-between; width: 100%;">
+          <div>
+            <el-button @click="batchReviewVisible = false">取消</el-button>
+          </div>
+          <div>
+            <el-button type="primary" @click="confirmBatchReview">确定</el-button>
+          </div>
+        </div>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
 <script setup>
-import { ref, reactive, onMounted, computed } from 'vue'
+import { ref, reactive, onMounted } from 'vue'
+import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Search, RefreshLeft, Lock, Location, Plus, Close, List, Clock, CircleCheck, CircleClose } from '@element-plus/icons-vue'
 import { 
@@ -944,6 +967,8 @@ import {
   deleteApplication 
 } from '@/api/application'
 import { getTeacherDetail, updateTeacher } from '@/api/teacher'
+
+const router = useRouter()
 
 // 数据
 const loading = ref(false)
@@ -985,12 +1010,14 @@ const editFormPhotos = ref({ avatar: '', teaching_photos: [] })
 const reviewVisible = ref(false)
 const reviewForm = reactive({
   id: null,
-  status: '',
+  status: 'approved',
   remark: ''
 })
 
-const reviewTitle = computed(() => {
-  return reviewForm.status === 'approved' ? '通过投递' : '拒绝投递'
+const batchReviewVisible = ref(false)
+const batchReviewForm = reactive({
+  status: 'approved',
+  remark: ''
 })
 
 // 方法
@@ -1061,22 +1088,21 @@ const handleReset = () => {
   loadData()
 }
 
-const handleView = async (row) => {
-  try {
-    const res = await getApplicationDetail(row.id)
-    if (res.success || res.code === 200) {
-      currentApplication.value = res.data || res
-      detailVisible.value = true
-    }
-  } catch (error) {
-    console.error('获取详情失败:', error)
-    ElMessage.error('获取详情失败')
-  }
+const handleView = (row) => {
+  // 保存当前tab和搜索条件到localStorage，用于详情页返回时恢复
+  localStorage.setItem('application_current_tab', activeTab.value)
+  localStorage.setItem('application_search_form', JSON.stringify(searchForm))
+  
+  // 使用router.push在新标签页中打开详情页
+  router.push({
+    path: `/applications/${row.id}`,
+    query: { tab: activeTab.value }
+  })
 }
 
-const handleReview = (row, status) => {
+const openReviewDialog = (row) => {
   reviewForm.id = row.id
-  reviewForm.status = status
+  reviewForm.status = 'approved'
   reviewForm.remark = ''
   reviewVisible.value = true
 }
@@ -1104,14 +1130,22 @@ const confirmReview = async () => {
   }
 }
 
-const handleBatchReview = async (status) => {
+const openBatchReviewDialog = () => {
   if (selectedRows.value.length === 0) {
     ElMessage.warning('请选择要审核的记录')
     return
   }
-  
-  const statusText = status === 'approved' ? '通过' : '拒绝'
-  
+  batchReviewForm.status = 'approved'
+  batchReviewForm.remark = ''
+  batchReviewVisible.value = true
+}
+
+const confirmBatchReview = async () => {
+  if (selectedRows.value.length === 0) {
+    ElMessage.warning('请选择要审核的记录')
+    return
+  }
+  const statusText = batchReviewForm.status === 'approved' ? '通过' : '拒绝'
   try {
     await ElMessageBox.confirm(
       `确定要批量${statusText}选中的 ${selectedRows.value.length} 条记录吗？`,
@@ -1122,12 +1156,17 @@ const handleBatchReview = async (status) => {
         type: 'warning'
       }
     )
-    
+
     const ids = selectedRows.value.map(row => row.id)
-    const res = await batchReviewApplications({ ids, status })
-    
+    const res = await batchReviewApplications({
+      ids,
+      status: batchReviewForm.status,
+      remark: batchReviewForm.remark
+    })
+
     if (res.success || res.code === 200) {
       ElMessage.success(res.message || '批量审核成功')
+      batchReviewVisible.value = false
       clearSelection()
       loadData()
       loadStatistics()

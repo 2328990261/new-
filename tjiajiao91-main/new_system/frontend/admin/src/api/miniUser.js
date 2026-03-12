@@ -50,3 +50,11 @@ export function getMiniUserStats() {
     method: 'get'
   })
 }
+
+// 切换用户状态
+export function toggleMiniUserStatus(id) {
+  return request({
+    url: `/mini-users/${id}/toggle-status`,
+    method: 'put'
+  })
+}

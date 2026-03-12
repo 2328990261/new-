@@ -16,6 +16,7 @@ const PaymentManage = () => import('@/views/admin/PaymentManage.vue')
 const PaymentDataPanel = () => import('@/views/admin/PaymentDataPanel.vue')
 const PaymentStats = () => import('@/views/admin/PaymentStats.vue')
 const ApplicationManage = () => import('@/views/admin/ApplicationManage.vue')
+const ApplicationDetail = () => import('@/views/admin/ApplicationDetail.vue')
 const SeoGuide = () => import('@/views/admin/SeoGuide.vue')
 const CityLightManage = () => import('@/views/admin/CityLightManage.vue')
 const DataImport = () => import('@/views/admin/DataImport.vue')
@@ -121,6 +122,12 @@ const routes = [
         name: 'ApplicationManage',
         component: ApplicationManage,
         meta: { title: '投递管理', keepAlive: true }
+      },
+      {
+        path: 'applications/:id',
+        name: 'ApplicationDetail',
+        component: ApplicationDetail,
+        meta: { title: '投递详情', keepAlive: false }
       },
       {
         path: 'seo-guide',
