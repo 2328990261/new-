@@ -13,7 +13,7 @@ class TutorOrder extends Model
     
     // 设置字段信息
     protected $schema = [
-        'id'              => 'int',
+        'id'              => 'string',
         'content'         => 'string',
         'city_id'         => 'int',
         'district_id'     => 'int',

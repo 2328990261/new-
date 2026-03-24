@@ -18,13 +18,15 @@ class MiniProgramBooking extends BaseController
     public function create()
     {
         $userId = $this->request->post('user_id');
-        $adminOpenid = $this->request->post('admin_openid'); // 接收管理员openid
+        $adminOpenid = $this->request->post('admin_openid'); // 接收管理员openid（小程序内分享）
+        $adminIdParam = $this->request->post('admin_id'); // 接收管理员ID（管理后台复制的链接）
         $bookingData = $this->request->post('booking_data');
         
         // ===== 调试信息开始 =====
         $debugInfo = [
             'user_id' => $userId,
             'admin_openid' => $adminOpenid,
+            'admin_id' => $adminIdParam,
             'admin_openid_length' => $adminOpenid ? strlen($adminOpenid) : 0,
             'admin_openid_empty' => empty($adminOpenid) ? 'YES' : 'NO',
             'booking_data_keys' => $bookingData ? array_keys($bookingData) : [],
@@ -60,24 +62,55 @@ class MiniProgramBooking extends BaseController
                 ]);
             }
             
-            // 通过openid查找管理员
+            // 确定归属管理员：
+            // 1) 优先使用 admin_id（管理后台链接）
+            // 2) 其次使用 admin_openid（小程序分享）
+            // 3) 若仍为空，使用用户表 superior_openid（登录时首次分享绑定，一次写死不覆盖）
             $admin = null;
             $adminId = 0;
             $adminNickname = null;
-            if ($adminOpenid) {
-                \think\facade\Log::info('开始查找管理员: openid=' . $adminOpenid);
-                $admin = \app\model\Admin::where('openid', $adminOpenid)->find();
+            $resolvedAdminOpenid = '';
+            if (!empty($adminIdParam) && intval($adminIdParam) > 0) {
+                // 管理后台复制的链接：直接使用 admin_id
+                $admin = \app\model\Admin::find(intval($adminIdParam));
                 if ($admin) {
                     $adminId = $admin->id;
                     $adminNickname = $admin->nickname ?: $admin->username;
-                    \think\facade\Log::info('找到管理员: id=' . $adminId . ', nickname=' . $adminNickname);
+                    $resolvedAdminOpenid = (string) ($admin->openid ?? '');
+                    \think\facade\Log::info('通过 admin_id 关联管理员: id=' . $adminId . ', nickname=' . $adminNickname);
+                } else {
+                    \think\facade\Log::warning('admin_id 无效或管理员不存在: admin_id=' . $adminIdParam);
+                }
+            } elseif ($adminOpenid) {
+                // 小程序内分享：通过 openid 查找管理员
+                \think\facade\Log::info('开始查找管理员: openid=' . $adminOpenid);
+                $admin = \app\model\Admin::findByOpenidToken($adminOpenid);
+                if ($admin) {
+                    $adminId = $admin->id;
+                    $adminNickname = $admin->nickname ?: $admin->username;
+                    $resolvedAdminOpenid = (string) ($admin->openid ?? '');
+                    \think\facade\Log::info('通过 openid 找到管理员: id=' . $adminId . ', nickname=' . $adminNickname);
                 } else {
                     \think\facade\Log::warning('未找到匹配的管理员: openid=' . $adminOpenid);
                 }
             } else {
-                \think\facade\Log::warning('admin_openid 为空，无法关联管理员');
+                $superiorOpenid = (string) ($user->superior_openid ?? '');
+                if ($superiorOpenid !== '') {
+                    \think\facade\Log::info('尝试使用用户 superior_openid 关联管理员: openid=' . $superiorOpenid);
+                    $admin = \app\model\Admin::findByOpenidToken($superiorOpenid);
+                    if ($admin) {
+                        $adminId = $admin->id;
+                        $adminNickname = $admin->nickname ?: $admin->username;
+                        $resolvedAdminOpenid = (string) ($admin->openid ?? '');
+                        \think\facade\Log::info('通过 superior_openid 找到管理员: id=' . $adminId . ', nickname=' . $adminNickname);
+                    } else {
+                        \think\facade\Log::warning('superior_openid 未找到匹配管理员: openid=' . $superiorOpenid);
+                    }
+                } else {
+                    \think\facade\Log::warning('admin_openid/admin_id/superior_openid 均为空，订单无法关联管理员');
+                }
             }
-            
+
             // 生成订单号
             $orderNo = ParentOrder::generateOrderNo();
             

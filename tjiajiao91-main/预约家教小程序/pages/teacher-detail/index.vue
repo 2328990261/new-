@@ -16,16 +16,23 @@
       <view class="share-menu" @click.stop>
         <view class="share-title">分享教师简历</view>
         <view class="share-options">
-          <view class="share-option" @click="shareToFriend">
-            <view class="share-option-icon">👥</view>
+          <!-- 微信小程序只能通过 button open-type="share" 触发转发，不能调用 uni.shareAppMessage -->
+          <button class="share-option share-option-btn" open-type="share" @click="hideShareMenu">
+            <view class="share-option-icon">
+              <uni-icons type="contact" size="40" color="#52C9A6" />
+            </view>
             <text class="share-option-text">分享给好友</text>
-          </view>
+          </button>
           <view class="share-option" @click="shareToTimeline">
-            <view class="share-option-icon">🔄</view>
+            <view class="share-option-icon">
+              <uni-icons type="pyq" size="40" color="#52C9A6" />
+            </view>
             <text class="share-option-text">分享到朋友圈</text>
           </view>
           <view class="share-option" @click="generatePoster">
-            <view class="share-option-icon">📷</view>
+            <view class="share-option-icon">
+              <uni-icons type="image-filled" size="40" color="#52C9A6" />
+            </view>
             <text class="share-option-text">生成海报</text>
           </view>
         </view>
@@ -305,8 +312,13 @@
 
 <script>
 import { teacherApi, wechatLogin } from '@/utils/api.js'
+import uniIcons from '@/uni_modules/uni-icons/components/uni-icons/uni-icons.vue'
+import envConfig from '@/config/env.js'
 
 export default {
+  components: {
+    uniIcons
+  },
   data() {
     return {
       statusBarHeight: 20, // 默认状态栏高度
@@ -314,6 +326,7 @@ export default {
       teacher: null,
       isLoading: true,
       isFavorited: false,
+      shareImageUrl: '',
       
       // 分享相关
       shareMenuVisible: false,
@@ -386,6 +399,7 @@ export default {
         
         if (response.success) {
           this.teacher = response.data
+          await this.prepareShareImage()
           
           // 后端已经处理好了数据，直接使用
           console.log('教师详情加载成功:', this.teacher)
@@ -411,50 +425,149 @@ export default {
         this.isLoading = false
       }
     },
+
+    normalizeShareImageUrl(url) {
+      const u = (url || '').trim()
+      if (!u) return ''
+
+      // 相对路径：拼接 API_BASE_URL（线上一般是 https）
+      if (u.startsWith('/')) {
+        const base = (envConfig.API_BASE_URL || '').replace(/\/+$/, '')
+        return base ? (base + u) : u
+      }
+
+      // 如果当前环境 base 是 https，且图片是 http，同域时尝试升级到 https（Android 更严格）
+      if (u.startsWith('http://')) {
+        const base = (envConfig.API_BASE_URL || '').trim()
+        if (base.startsWith('https://')) {
+          try {
+            const baseUrl = new URL(base)
+            const imgUrl = new URL(u)
+            if (baseUrl.host && imgUrl.host && baseUrl.host === imgUrl.host) {
+              return 'https://' + u.slice('http://'.length)
+            }
+          } catch (e) {
+            // ignore
+          }
+        }
+      }
+
+      return u
+    },
+
+    async prepareShareImage() {
+      const fallback = ''
+      const avatarRaw = this.teacher?.avatar || ''
+      const avatar = this.normalizeShareImageUrl(avatarRaw)
+
+      // 先默认给兜底，避免分享时为空
+      this.shareImageUrl = avatar || fallback
+
+      // #ifdef MP-WEIXIN
+      // Android 微信里对分享 imageUrl 更挑剔：预下载为本地临时文件更稳
+      if (avatar && (avatar.startsWith('https://') || avatar.startsWith('http://'))) {
+        try {
+          const downloadRes = await uni.downloadFile({ url: avatar })
+          if (downloadRes.statusCode === 200 && downloadRes.tempFilePath) {
+            this.shareImageUrl = downloadRes.tempFilePath
+          } else {
+            this.shareImageUrl = avatar || fallback
+          }
+        } catch (e) {
+          this.shareImageUrl = avatar || fallback
+        }
+      }
+      // #endif
+    },
     
     // 检查收藏状态
     checkFavoriteStatus() {
-      try {
-        const favorites = uni.getStorageSync('favorited_teachers')
-        if (favorites) {
-          const favoritedList = JSON.parse(favorites)
-          this.isFavorited = favoritedList.includes(this.teacherId)
-        }
-      } catch (e) {
-        console.error('检查收藏状态失败:', e)
+      const userInfo = uni.getStorageSync('userInfo')
+      const userRole = this.getStoredUserRole()
+
+      if (userRole !== 'parent' || !userInfo || !userInfo.openid || !this.teacherId) {
+        this.isFavorited = false
+        return
       }
+
+      uni.request({
+        url: envConfig.API_BASE_URL + '/api/favorite-teacher/check',
+        method: 'GET',
+        data: {
+          openid: userInfo.openid,
+          teacher_id: this.teacherId
+        },
+        success: (res) => {
+          if (res.data && res.data.success) {
+            this.isFavorited = !!res.data.is_favorited
+          }
+        },
+        fail: (error) => {
+          console.error('检查教师收藏状态失败:', error)
+        }
+      })
     },
     
     // 切换收藏
     toggleFavorite() {
-      try {
-        let favorites = uni.getStorageSync('favorited_teachers')
-        let favoritedList = favorites ? JSON.parse(favorites) : []
-        
-        if (this.isFavorited) {
-          // 取消收藏
-          const index = favoritedList.indexOf(this.teacherId)
-          if (index > -1) {
-            favoritedList.splice(index, 1)
+      const userRole = this.getStoredUserRole()
+      if (userRole !== 'parent') {
+        uni.showToast({
+          title: '请切换到家长端后收藏老师',
+          icon: 'none'
+        })
+        return
+      }
+
+      const userInfo = uni.getStorageSync('userInfo')
+      if (!userInfo || !userInfo.openid) {
+        uni.showToast({
+          title: '请先登录',
+          icon: 'none'
+        })
+        return
+      }
+
+      const url = this.isFavorited
+        ? envConfig.API_BASE_URL + '/api/favorite-teacher/remove'
+        : envConfig.API_BASE_URL + '/api/favorite-teacher/add'
+
+      uni.request({
+        url,
+        method: 'POST',
+        data: {
+          openid: userInfo.openid,
+          teacher_id: this.teacherId
+        },
+        success: (res) => {
+          if (res.data && res.data.success) {
+            this.isFavorited = !this.isFavorited
+            uni.showToast({
+              title: this.isFavorited ? '收藏成功' : '已取消收藏',
+              icon: this.isFavorited ? 'success' : 'none'
+            })
+          } else {
+            uni.showToast({
+              title: (res.data && (res.data.error || res.data.message)) || '操作失败',
+              icon: 'none'
+            })
           }
-          this.isFavorited = false
+        },
+        fail: (error) => {
+          console.error('切换教师收藏失败:', error)
           uni.showToast({
-            title: '已取消收藏',
+            title: '网络错误',
             icon: 'none'
           })
-        } else {
-          // 添加收藏
-          favoritedList.push(this.teacherId)
-          this.isFavorited = true
-          uni.showToast({
-            title: '收藏成功',
-            icon: 'success'
-          })
         }
-        
-        uni.setStorageSync('favorited_teachers', JSON.stringify(favoritedList))
+      })
+    },
+
+    getStoredUserRole() {
+      try {
+        return uni.getStorageSync('userRole') || 'teacher'
       } catch (e) {
-        console.error('切换收藏失败:', e)
+        return 'teacher'
       }
     },
     
@@ -542,38 +655,24 @@ export default {
       this.shareMenuVisible = false
     },
     
-    // 分享给好友
-    shareToFriend() {
-      this.hideShareMenu()
-      // 触发onShareAppMessage
-      uni.showShareMenu({
-        withShareTicket: true,
-        menus: ['shareAppMessage']
-      })
-      uni.shareAppMessage({
-        title: `${this.teacher?.name || '优秀教师'}的简历`,
-        path: `/pages/teacher-detail/index?id=${this.teacherId}`,
-        imageUrl: this.teacher?.avatar || ''
-      })
-    },
+    // 分享给好友：微信小程序无 uni.shareAppMessage()，由模板里 button open-type="share" 触发，使用 onShareAppMessage 返回值
+    // 此处仅关闭弹层（若用户点的是弹层外的“分享”按钮则不会进弹层，直接点 open-type="share” 即可）
     
-    // 分享到朋友圈
+    // 分享到朋友圈：微信小程序无 uni.shareToTimeline()，只能通过右上角菜单操作，此处提示用户
     shareToTimeline() {
       this.hideShareMenu()
-      uni.showShareMenu({
-        withShareTicket: true,
-        menus: ['shareTimeline']
-      })
-      uni.shareToTimeline({
-        title: `${this.teacher?.name || '优秀教师'}的简历`,
-        query: `id=${this.teacherId}`,
-        imageUrl: this.teacher?.avatar || ''
+      uni.showToast({
+        title: '请点击右上角「...」选择「分享到朋友圈」',
+        icon: 'none',
+        duration: 2500
       })
     },
     
     // 生成海报
     async generatePoster() {
       this.hideShareMenu()
+      // 每次重新生成，先清空上一张海报，避免旧内容残留导致“重影”
+      this.posterImage = ''
       this.posterVisible = true
       
       // 等待DOM渲染
@@ -643,11 +742,14 @@ export default {
         
         // 设置画布尺寸 - 初始高度设置大一些，后面会动态调整
         const width = 600
-        let height = 1400
+        let height = 1600
         
         // 更新 data 中的画布尺寸
         this.canvasWidth = width
         this.canvasHeight = height
+        
+        // 先清空画布，避免上一次绘制残留
+        ctx.clearRect(0, 0, width, height)
         
         // 绘制渐变背景 - 更柔和的绿色渐变
         const gradient = ctx.createLinearGradient(0, 0, 0, height)
@@ -1240,19 +1342,32 @@ export default {
   },
   // 分享给好友
   onShareAppMessage() {
-    return {
+    const sharerOpenid = this.getSharerOpenid ? this.getSharerOpenid() : ''
+    const imageUrl = (this.shareImageUrl || '').trim()
+    const payload = {
       title: `${this.teacher?.name || '优秀教师'}的简历`,
-      path: `/pages/teacher-detail/index?id=${this.teacherId}`,
-      imageUrl: this.teacher?.avatar || ''
+      path: `/pages/teacher-detail/index?id=${this.teacherId}`
     }
+    if (sharerOpenid) {
+      payload.path += '&superior_openid=' + encodeURIComponent(sharerOpenid)
+    }
+    // 不传 imageUrl 则使用页面缩略图；有头像就用头像（优先本地临时图）
+    if (imageUrl) payload.imageUrl = imageUrl
+    return payload
   },
   // 分享到朋友圈
   onShareTimeline() {
-    return {
+    const sharerOpenid = this.getSharerOpenid ? this.getSharerOpenid() : ''
+    const imageUrl = (this.shareImageUrl || '').trim()
+    const payload = {
       title: `推荐优秀教师：${this.teacher?.name || ''}`,
-      query: `id=${this.teacherId}`,
-      imageUrl: this.teacher?.avatar || ''
+      query: `id=${this.teacherId}`
     }
+    if (sharerOpenid) {
+      payload.query += '&superior_openid=' + encodeURIComponent(sharerOpenid)
+    }
+    if (imageUrl) payload.imageUrl = imageUrl
+    return payload
   }
 }
 </script>
@@ -1271,6 +1386,7 @@ export default {
   padding-bottom: calc(120rpx + env(safe-area-inset-bottom));
   position: relative;
 }
+
 
 /* 自定义导航栏 */
 .nav-bar {
@@ -1389,6 +1505,20 @@ export default {
 .share-option-text {
   font-size: 24rpx;
   color: #666;
+}
+
+/* 分享按钮：去掉 button 默认样式，与 share-option 一致 */
+.share-option-btn {
+  margin: 0;
+  padding: 0;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  line-height: inherit;
+  text-align: center;
+}
+.share-option-btn::after {
+  border: none;
 }
 
 .share-cancel {

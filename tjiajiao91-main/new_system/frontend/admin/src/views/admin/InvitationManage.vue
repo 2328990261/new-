@@ -1,8 +1,20 @@
 <template>
   <div class="invitation-manage">
     <el-card class="overview-card">
-      <div slot="header">
+      <div slot="header" style="display: flex; justify-content: space-between; align-items: center;">
         <span>邀请活动概览</span>
+        <el-popover placement="bottom" width="420" trigger="hover">
+          <template #reference>
+            <el-button type="text" size="small">优惠券使用条件</el-button>
+          </template>
+          <div class="coupon-rules">
+            <div class="coupon-rules-title">优惠券使用条件</div>
+            <p>1. 获取条件：被邀请人简历认证并通过审核后，邀请者和被邀请者各自获得￥20元优惠券。</p>
+            <p>2. 有效期：优惠券有效期为自领取当日起30日内使用。</p>
+            <p>3. 使用数量：优惠券领取不设限；每份家教最多可抵扣3张优惠券，即可优惠60元。</p>
+            <p>4. 使用方式：优惠券使用需联系客服兑换；仅限本人使用，不得提现、不得转让。</p>
+          </div>
+        </el-popover>
       </div>
       <el-row :gutter="20">
         <el-col :span="6">
@@ -121,17 +133,17 @@
           </div>
           <div 
             class="sub-tab-item" 
-            :class="{ active: couponSearch.status === 0 }"
-            @click="filterCoupons(0)">
-            待领取
-            <span class="sub-tab-count">{{ getCouponCount(0) }}</span>
-          </div>
-          <div 
-            class="sub-tab-item" 
             :class="{ active: couponSearch.status === 1 }"
             @click="filterCoupons(1)">
             已领取
             <span class="sub-tab-badge badge-success">{{ getCouponCount(1) }}</span>
+          </div>
+          <div 
+            class="sub-tab-item" 
+            :class="{ active: couponSearch.status === 4 }"
+            @click="filterCoupons(4)">
+            待审核
+            <span class="sub-tab-count">{{ getCouponCount(4) }}</span>
           </div>
           <div 
             class="sub-tab-item" 
@@ -165,41 +177,46 @@
           </el-input>
         </div>
           
-        <el-table :data="invitationList" border stripe>
+        <el-table :data="invitationList" border stripe style="width: 100%;">
           <el-table-column prop="id" label="ID" width="80"></el-table-column>
-          <el-table-column label="邀请人" width="200">
-            <template slot-scope="scope">
-              <div>{{ scope.row.inviter_name }}</div>
-              <div style="color: #999; font-size: 12px;">{{ scope.row.inviter_phone }}</div>
+          <el-table-column label="邀请人">
+            <template #default="scope">
+              <template v-if="scope?.row">
+                <div>{{ scope.row.inviter_name || '-' }}</div>
+                <div style="color: #999; font-size: 12px;">{{ maskPhone(scope.row.inviter_phone) }}</div>
+              </template>
             </template>
           </el-table-column>
-          <el-table-column label="被邀请人" width="200">
-            <template slot-scope="scope">
-              <div>{{ scope.row.invitee_name || '-' }}</div>
-              <div style="color: #999; font-size: 12px;">{{ scope.row.invitee_phone || '-' }}</div>
+          <el-table-column label="被邀请人">
+            <template #default="scope">
+              <template v-if="scope?.row">
+                <div>{{ scope.row.invitee_name || '-' }}</div>
+                <div style="color: #999; font-size: 12px;">{{ maskPhone(scope.row.invitee_phone) }}</div>
+              </template>
             </template>
           </el-table-column>
-          <el-table-column prop="invitation_code" label="邀请码" width="120"></el-table-column>
-          <el-table-column label="状态" width="100">
-            <template slot-scope="scope">
-              <el-tag :type="scope.row.status === 1 ? 'success' : 'warning'" size="small">
+          <el-table-column label="状态">
+            <template #default="scope">
+              <el-tag v-if="scope?.row" :type="scope.row.status === 1 ? 'success' : 'warning'" size="small">
                 {{ scope.row.status === 1 ? '已认证' : '待认证' }}
               </el-tag>
             </template>
           </el-table-column>
-          <el-table-column label="奖励" width="120">
-            <template slot-scope="scope">
-              <span v-if="scope.row.is_rewarded">
-                <el-tag type="success" size="small">已发放</el-tag>
-                <div style="font-size: 12px; color: #67C23A;">￥{{ scope.row.reward_points }}</div>
-              </span>
-              <el-tag v-else type="info" size="small">未发放</el-tag>
+          <el-table-column label="奖励">
+            <template #default="scope">
+              <template v-if="scope?.row">
+                <span v-if="scope.row.is_rewarded === 1">
+                  <el-tag type="success" size="small">已发放</el-tag>
+                  <div style="font-size: 12px; color: #67C23A;">￥20×2（双方）</div>
+                </span>
+                <el-tag v-else type="info" size="small">未发放</el-tag>
+              </template>
             </template>
           </el-table-column>
-          <el-table-column prop="create_time" label="邀请时间" width="160"></el-table-column>
-          <el-table-column prop="verify_time" label="认证时间" width="160">
-            <template slot-scope="scope">
-              {{ scope.row.verify_time || '-' }}
+          <el-table-column prop="create_time" label="邀请时间" min-width="160"></el-table-column>
+          <el-table-column prop="verify_time" label="认证时间" min-width="160">
+            <template #default="scope">
+              {{ scope?.row?.verify_time || '-' }}
             </template>
           </el-table-column>
         </el-table>
@@ -229,7 +246,9 @@
           </el-input>
           <el-space>
             <el-button type="primary" @click="showSearchUserDialog" icon="Search">搜索用户优惠券</el-button>
-            <el-button type="success" @click="batchRedeem" :disabled="selectedCoupons.length === 0">批量兑换</el-button>
+            <el-tooltip content="兑换，仅限本人使用，不得提现、转让" placement="top">
+              <el-button type="success" @click="batchRedeem" :disabled="selectedCoupons.length === 0">批量兑换</el-button>
+            </el-tooltip>
           </el-space>
         </div>
           
@@ -237,56 +256,66 @@
           <el-table-column type="selection" width="55" :selectable="checkSelectable"></el-table-column>
           <el-table-column prop="id" label="ID" width="80"></el-table-column>
           <el-table-column label="用户" width="200">
-            <template slot-scope="scope">
-              <div style="display: flex; align-items: center;">
-                <el-avatar :src="scope.row.avatar_url" size="small" style="margin-right: 10px;"></el-avatar>
-                <div>
-                  <div>{{ scope.row.nickname }}</div>
-                  <div style="color: #999; font-size: 12px;">{{ scope.row.phone }}</div>
+            <template #default="scope">
+              <template v-if="scope?.row">
+                <div style="display: flex; align-items: center;">
+                  <el-avatar :src="scope.row.avatar_url" size="small" style="margin-right: 10px;"></el-avatar>
+                  <div>
+                    <div>{{ scope.row.nickname || '-' }}</div>
+                    <div style="color: #999; font-size: 12px;">{{ maskPhone(scope.row.phone) }}</div>
+                  </div>
                 </div>
-              </div>
+              </template>
+            </template>
+          </el-table-column>
+          <el-table-column prop="coupon_code" label="券码" width="150">
+            <template #default="scope">
+              {{ scope?.row?.coupon_code || '-' }}
             </template>
           </el-table-column>
           <el-table-column label="优惠券金额" width="120">
-            <template slot-scope="scope">
-              <span style="color: #F56C6C; font-weight: bold;">￥{{ scope.row.coupon_amount }}</span>
+            <template #default="scope">
+              <span v-if="scope?.row" style="color: #F56C6C; font-weight: bold;">￥{{ scope.row.coupon_amount }}</span>
             </template>
           </el-table-column>
           <el-table-column label="来源" width="120">
-            <template slot-scope="scope">
-              <el-tag size="small" :type="scope.row.source === 'inviter' ? 'success' : 'primary'">
+            <template #default="scope">
+              <el-tag v-if="scope?.row" size="small" :type="scope.row.source === 'inviter' ? 'success' : 'primary'">
                 {{ scope.row.source === 'inviter' ? '邀请人' : '被邀请人' }}
               </el-tag>
             </template>
           </el-table-column>
           <el-table-column label="状态" width="100">
-            <template slot-scope="scope">
-              <el-tag :type="getCouponStatusType(scope.row.status)" size="small">
+            <template #default="scope">
+              <el-tag v-if="scope?.row" :type="getCouponStatusType(scope.row.status)" size="small">
                 {{ getCouponStatusText(scope.row.status) }}
               </el-tag>
             </template>
           </el-table-column>
           <el-table-column prop="create_time" label="创建时间" width="160"></el-table-column>
           <el-table-column prop="receive_time" label="领取时间" width="160">
-            <template slot-scope="scope">
-              {{ scope.row.receive_time || '-' }}
+            <template #default="scope">
+              {{ scope?.row?.receive_time || '-' }}
             </template>
           </el-table-column>
           <el-table-column prop="redeem_time" label="兑换时间" width="160">
-            <template slot-scope="scope">
-              {{ scope.row.redeem_time || '-' }}
+            <template #default="scope">
+              {{ scope?.row?.redeem_time || '-' }}
             </template>
           </el-table-column>
           <el-table-column label="操作" width="120" fixed="right">
-            <template slot-scope="scope">
-              <el-button
-                v-if="scope.row.status === 1"
-                type="primary"
-                size="mini"
-                @click="redeemCoupon(scope.row)">
-                兑换
-              </el-button>
-              <span v-else style="color: #999;">-</span>
+            <template #default="scope">
+              <template v-if="scope?.row">
+                <el-tooltip v-if="scope.row.status === 1 || scope.row.status === 4" content="兑换，仅限本人使用，不得提现、转让" placement="top">
+                  <el-button
+                    type="primary"
+                    size="mini"
+                    @click="redeemCoupon(scope.row)">
+                    兑换
+                  </el-button>
+                </el-tooltip>
+                <span v-else style="color: #909399;">{{ getCouponStatusText(scope.row.status) }}</span>
+              </template>
             </template>
           </el-table-column>
         </el-table>
@@ -302,34 +331,52 @@
       </div>
 
       <div v-if="activeMainTab === 'ranking'">
+        <div style="margin-bottom: 16px; display: flex; justify-content: space-between; align-items: center;">
+          <div style="color: #909399; font-size: 14px;">
+            <el-icon style="vertical-align: middle;"><InfoFilled /></el-icon>
+            排行榜按已认证邀请人数排序
+          </div>
+          <el-button type="primary" @click="refreshRanking" :loading="refreshingRanking" icon="Refresh">
+            刷新排行榜数据
+          </el-button>
+        </div>
         <el-table :data="rankingList" border stripe>
+          <template #empty>
+            <div class="ranking-empty-tip">
+              <p>排行榜暂无数据。</p>
+              <p v-if="overview.totalInvitations > 0">邀请记录中已有数据，请点击上方<strong>「刷新排行榜数据」</strong>按钮，系统将根据邀请记录生成排行榜。</p>
+              <p v-else>有邀请或认证数据后，点击<strong>「刷新排行榜数据」</strong>即可生成排行榜。</p>
+            </div>
+          </template>
           <el-table-column label="排名" width="80">
-            <template slot-scope="scope">
-              <span style="font-weight: bold; font-size: 16px;">{{ scope.$index + 1 }}</span>
+            <template #default="scope">
+              <span style="font-weight: bold; font-size: 16px;">{{ (scope?.$index ?? 0) + 1 }}</span>
             </template>
           </el-table-column>
           <el-table-column label="用户" width="250">
-            <template slot-scope="scope">
-              <div style="display: flex; align-items: center;">
-                <el-avatar :src="scope.row.avatar_url" size="medium" style="margin-right: 10px;"></el-avatar>
-                <div>
-                  <div style="font-weight: bold;">{{ scope.row.nickname }}</div>
+            <template #default="scope">
+              <template v-if="scope?.row">
+                <div style="display: flex; align-items: center;">
+                  <el-avatar :src="scope.row.avatar_url" size="medium" style="margin-right: 10px;"></el-avatar>
+                  <div>
+                    <div style="font-weight: bold;">{{ scope.row.nickname || '-' }}</div>
+                  </div>
                 </div>
-              </div>
+              </template>
             </template>
           </el-table-column>
           <el-table-column prop="total_invitations" label="总邀请" width="100"></el-table-column>
           <el-table-column prop="verified_invitations" label="已认证" width="100">
-            <template slot-scope="scope">
-              <span style="color: #67C23A; font-weight: bold;">{{ scope.row.verified_invitations }}</span>
+            <template #default="scope">
+              <span v-if="scope?.row" style="color: #67C23A; font-weight: bold;">{{ scope.row.verified_invitations }}</span>
             </template>
           </el-table-column>
           <el-table-column prop="pending_invitations" label="待认证" width="100"></el-table-column>
           <el-table-column prop="total_coupons_received" label="已领取优惠券" width="120"></el-table-column>
           <el-table-column prop="total_coupons_redeemed" label="已兑换优惠券" width="120"></el-table-column>
           <el-table-column label="优惠券总金额" width="120">
-            <template slot-scope="scope">
-              <span style="color: #F56C6C; font-weight: bold;">￥{{ scope.row.total_coupon_amount }}</span>
+            <template #default="scope">
+              <span v-if="scope?.row" style="color: #F56C6C; font-weight: bold;">￥{{ scope.row.total_coupon_amount }}</span>
             </template>
           </el-table-column>
           <el-table-column prop="last_invite_time" label="最后邀请时间" width="160"></el-table-column>
@@ -346,25 +393,25 @@
       </div>
     </el-card>
 
-    <el-dialog title="兑换优惠券" :visible.sync="redeemDialog.visible" width="500px">
-      <el-form :model="redeemDialog.form" label-width="100px">
+    <el-dialog v-model="redeemDialog.visible" title="兑换优惠券" width="500px" @closed="redeemDialog.coupon = {}">
+      <el-form v-if="redeemDialog.coupon.id" :model="redeemDialog.form" label-width="100px">
         <el-form-item label="优惠券金额">
           <span style="color: #F56C6C; font-weight: bold; font-size: 18px;">￥{{ redeemDialog.coupon.coupon_amount }}</span>
         </el-form-item>
         <el-form-item label="用户">
-          <span>{{ redeemDialog.coupon.nickname }}</span>
+          <span>{{ redeemDialog.coupon.nickname || redeemDialog.coupon.phone || '-' }}</span>
         </el-form-item>
         <el-form-item label="兑换备注">
-          <el-input v-model="redeemDialog.form.note" type="textarea" :rows="3" placeholder="请输入兑换备注"></el-input>
+          <el-input v-model="redeemDialog.form.note" type="textarea" :rows="3" placeholder="请输入兑换备注（仅限本人使用，不得提现、转让）"></el-input>
         </el-form-item>
       </el-form>
-      <div slot="footer">
+      <template #footer>
         <el-button @click="redeemDialog.visible = false">取消</el-button>
-        <el-button type="primary" @click="confirmRedeem">确认兑换</el-button>
-      </div>
+        <el-button type="primary" :loading="redeemDialog.loading" @click="confirmRedeem">确认兑换</el-button>
+      </template>
     </el-dialog>
 
-    <el-dialog title="搜索用户优惠券" :visible.sync="searchUserDialog.visible" width="800px">
+    <el-dialog v-model="searchUserDialog.visible" title="搜索用户优惠券" width="800px">
       <el-input
         v-model="searchUserDialog.keyword"
         placeholder="输入用户昵称或手机号"
@@ -382,7 +429,7 @@
                   <el-avatar :src="item.user.avatar_url" size="small" style="margin-right: 10px;"></el-avatar>
                   <div>
                     <div style="font-weight: bold;">{{ item.user.nickname }}</div>
-                    <div style="color: #999; font-size: 12px;">{{ item.user.phone }}</div>
+                    <div style="color: #999; font-size: 12px;">{{ maskPhone(item.user.phone) }}</div>
                   </div>
                 </div>
               </el-col>
@@ -396,22 +443,22 @@
           <el-table :data="item.coupons" size="small" border>
             <el-table-column prop="id" label="ID" width="80"></el-table-column>
             <el-table-column label="金额" width="100">
-              <template slot-scope="scope">
-                <span style="color: #F56C6C; font-weight: bold;">￥{{ scope.row.coupon_amount }}</span>
+              <template #default="scope">
+                <span v-if="scope?.row" style="color: #F56C6C; font-weight: bold;">￥{{ scope.row.coupon_amount }}</span>
               </template>
             </el-table-column>
             <el-table-column label="状态" width="100">
-              <template slot-scope="scope">
-                <el-tag :type="getCouponStatusType(scope.row.status)" size="small">
+              <template #default="scope">
+                <el-tag v-if="scope?.row" :type="getCouponStatusType(scope.row.status)" size="small">
                   {{ getCouponStatusText(scope.row.status) }}
                 </el-tag>
               </template>
             </el-table-column>
             <el-table-column prop="create_time" label="创建时间" width="160"></el-table-column>
             <el-table-column label="操作" width="120">
-              <template slot-scope="scope">
+              <template #default="scope">
                 <el-button
-                  v-if="scope.row.status === 1"
+                  v-if="scope?.row && (scope.row.status === 1 || scope.row.status === 4)"
                   type="primary"
                   size="mini"
                   @click="redeemCouponFromSearch(scope.row)">
@@ -474,8 +521,10 @@ export default {
         pageSize: 20,
         total: 0
       },
+      refreshingRanking: false,
       redeemDialog: {
         visible: false,
+        loading: false,
         coupon: {},
         form: {
           note: ''
@@ -491,8 +540,39 @@ export default {
   mounted() {
     this.loadOverview()
     this.loadInvitations()
+    this.prefetchCouponCounts()
+    this.prefetchRankingTotal()
   },
   methods: {
+    maskPhone(phone) {
+      if (!phone) return '-'
+      const str = String(phone)
+      if (str.length < 7) return str
+      return str.slice(0, 3) + '****' + str.slice(-4)
+    },
+    async prefetchCouponCounts() {
+      try {
+        const res = await this.$http.get('/invitation/coupon-list', {
+          params: { page: 1, page_size: 1, keyword: '', status: '' }
+        })
+        if (res.code === 200) {
+          this.couponPagination.total = res.data?.total ?? 0
+        }
+      } catch (_) {
+        // 失败时维持默认 0，不阻塞页面
+      }
+      this.calculateCouponCounts()
+    },
+    async prefetchRankingTotal() {
+      try {
+        const res = await this.$http.get('/invitation/ranking', {
+          params: { page: 1, page_size: 1 }
+        })
+        if (res.code === 200) {
+          this.rankingPagination.total = res.data?.total ?? 0
+        }
+      } catch (_) {}
+    },
     switchMainTab(tab) {
       this.activeMainTab = tab
       if (tab === 'invitations') {
@@ -521,9 +601,9 @@ export default {
     },
     async loadOverview() {
       try {
-        const res = await this.$http.get('/admin/invitation/overview')
-        if (res.data.code === 200) {
-          this.overview = res.data.data
+        const res = await this.$http.get('/invitation/overview')
+        if (res.code === 200) {
+          this.overview = res.data
         }
       } catch (error) {
         console.error('加载概览失败', error)
@@ -531,16 +611,16 @@ export default {
     },
     async loadInvitations() {
       try {
-        const res = await this.$http.get('/admin/invitation/list', {
+        const res = await this.$http.get('/invitation/list', {
           params: {
             page: this.invitationPagination.page,
             page_size: this.invitationPagination.pageSize,
             ...this.invitationSearch
           }
         })
-        if (res.data.code === 200) {
-          this.invitationList = res.data.data.list
-          this.invitationPagination.total = res.data.data.total
+        if (res.code === 200) {
+          this.invitationList = (Array.isArray(res.data.list) ? res.data.list : []).filter(Boolean)
+          this.invitationPagination.total = res.data.total || 0
           this.calculateInvitationCounts()
         }
       } catch (error) {
@@ -548,34 +628,34 @@ export default {
       }
     },
     calculateInvitationCounts() {
-      this.$http.get('/admin/invitation/list', {
-        params: { page: 1, page_size: 1, status: 0 }
+      this.$http.get('/invitation/list', {
+          params: { page: 1, page_size: 1, status: 0 }
       }).then(res => {
-        if (res.data.code === 200) {
-          this.invitationStatusCounts[0] = res.data.data.total
+        if (res.code === 200) {
+          this.invitationStatusCounts[0] = res.data.total
         }
       })
       
-      this.$http.get('/admin/invitation/list', {
+      this.$http.get('/invitation/list', {
         params: { page: 1, page_size: 1, status: 1 }
       }).then(res => {
-        if (res.data.code === 200) {
-          this.invitationStatusCounts[1] = res.data.data.total
+        if (res.code === 200) {
+          this.invitationStatusCounts[1] = res.data.total
         }
       })
     },
     async loadCoupons() {
       try {
-        const res = await this.$http.get('/admin/invitation/coupon-list', {
+        const res = await this.$http.get('/invitation/coupon-list', {
           params: {
             page: this.couponPagination.page,
             page_size: this.couponPagination.pageSize,
             ...this.couponSearch
           }
         })
-        if (res.data.code === 200) {
-          this.couponList = res.data.data.list
-          this.couponPagination.total = res.data.data.total
+        if (res.code === 200) {
+          this.couponList = (Array.isArray(res.data.list) ? res.data.list : []).filter(Boolean)
+          this.couponPagination.total = res.data.total || 0
           this.calculateCouponCounts()
         }
       } catch (error) {
@@ -583,27 +663,28 @@ export default {
       }
     },
     calculateCouponCounts() {
-      for (let status = 0; status <= 3; status++) {
-        this.$http.get('/admin/invitation/coupon-list', {
+      // 分享后自动领取，不再统计待领取(0)
+      [1, 2, 3, 4].forEach(status => {
+        this.$http.get('/invitation/coupon-list', {
           params: { page: 1, page_size: 1, status: status }
         }).then(res => {
-          if (res.data.code === 200) {
-            this.couponStatusCounts[status] = res.data.data.total
+          if (res.code === 200) {
+            this.couponStatusCounts[status] = res.data.total
           }
         })
-      }
+      })
     },
     async loadRanking() {
       try {
-        const res = await this.$http.get('/admin/invitation/ranking', {
+        const res = await this.$http.get('/invitation/ranking', {
           params: {
             page: this.rankingPagination.page,
             page_size: this.rankingPagination.pageSize
           }
         })
-        if (res.data.code === 200) {
-          this.rankingList = res.data.data.list
-          this.rankingPagination.total = res.data.data.total
+        if (res.code === 200) {
+          this.rankingList = (Array.isArray(res.data.list) ? res.data.list : []).filter(Boolean)
+          this.rankingPagination.total = res.data.total || 0
         }
       } catch (error) {
         console.error('加载排行榜失败', error)
@@ -621,11 +702,28 @@ export default {
       this.rankingPagination.page = page
       this.loadRanking()
     },
+    async refreshRanking() {
+      this.refreshingRanking = true
+      try {
+        const res = await this.$http.post('/invitation/refresh-ranking')
+        if (res.code === 200) {
+          this.$message.success(res.message)
+          this.loadRanking()
+          this.loadOverview()
+        } else {
+          this.$message.error(res.message || '刷新失败')
+        }
+      } catch (error) {
+        this.$message.error('刷新失败')
+      } finally {
+        this.refreshingRanking = false
+      }
+    },
     handleCouponSelectionChange(selection) {
       this.selectedCoupons = selection
     },
     checkSelectable(row) {
-      return row.status === 1
+      return row && (row.status === 1 || row.status === 4)
     },
     redeemCoupon(coupon) {
       this.redeemDialog.coupon = coupon
@@ -633,21 +731,30 @@ export default {
       this.redeemDialog.visible = true
     },
     async confirmRedeem() {
+      if (!this.redeemDialog.coupon || !this.redeemDialog.coupon.id) {
+        this.$message.warning('请选择要兑换的优惠券')
+        return
+      }
+      this.redeemDialog.loading = true
       try {
-        const res = await this.$http.post('/admin/invitation/redeem-coupon', {
+        const res = await this.$http.post('/invitation/redeem-coupon', {
           coupon_id: this.redeemDialog.coupon.id,
-          note: this.redeemDialog.form.note
+          note: this.redeemDialog.form.note || ''
         })
-        if (res.data.code === 200) {
-          this.$message.success('兑换成功')
+        if (res.code === 200) {
+          this.$message.success('兑换成功，小程序端该券将显示为已使用')
           this.redeemDialog.visible = false
+          this.redeemDialog.coupon = {}
           this.loadCoupons()
           this.loadOverview()
+          this.loadRanking()
         } else {
-          this.$message.error(res.data.message)
+          this.$message.error(res.message || '兑换失败')
         }
       } catch (error) {
-        this.$message.error('兑换失败')
+        this.$message.error(error?.message || '兑换失败')
+      } finally {
+        this.redeemDialog.loading = false
       }
     },
     async batchRedeem() {
@@ -663,16 +770,16 @@ export default {
       }).then(async () => {
         try {
           const couponIds = this.selectedCoupons.map(c => c.id)
-          const res = await this.$http.post('/admin/invitation/batch-redeem', {
+          const res = await this.$http.post('/invitation/batch-redeem', {
             coupon_ids: couponIds,
             note: '批量兑换'
           })
-          if (res.data.code === 200) {
-            this.$message.success(res.data.message)
+          if (res.code === 200) {
+            this.$message.success(res.message)
             this.loadCoupons()
             this.loadOverview()
           } else {
-            this.$message.error(res.data.message)
+            this.$message.error(res.message)
           }
         } catch (error) {
           this.$message.error('批量兑换失败')
@@ -691,15 +798,15 @@ export default {
       }
       
       try {
-        const res = await this.$http.get('/admin/invitation/search-user-coupons', {
+        const res = await this.$http.get('/invitation/search-user-coupons', {
           params: {
             keyword: this.searchUserDialog.keyword
           }
         })
-        if (res.data.code === 200) {
-          this.searchUserDialog.results = res.data.data
+        if (res.code === 200) {
+          this.searchUserDialog.results = res.data
         } else {
-          this.$message.error(res.data.message)
+          this.$message.error(res.message)
         }
       } catch (error) {
         this.$message.error('搜索失败')
@@ -716,7 +823,8 @@ export default {
         0: 'info',
         1: 'success',
         2: 'warning',
-        3: 'danger'
+        3: 'danger',
+        4: 'warning'
       }
       return types[status] || 'info'
     },
@@ -725,7 +833,8 @@ export default {
         0: '待领取',
         1: '已领取',
         2: '已兑换',
-        3: '已过期'
+        3: '已过期',
+        4: '待审核'
       }
       return texts[status] || '未知'
     }
@@ -909,5 +1018,30 @@ export default {
 .badge-success {
   background: #F0F9FF;
   color: #67C23A;
+}
+
+.coupon-rules {
+  padding: 4px 0;
+  line-height: 1.7;
+  color: #606266;
+  font-size: 13px;
+}
+.coupon-rules-title {
+  font-weight: 600;
+  margin-bottom: 10px;
+  color: #303133;
+}
+.coupon-rules p {
+  margin: 8px 0;
+}
+.ranking-empty-tip {
+  padding: 24px 16px;
+  color: #909399;
+  font-size: 14px;
+  line-height: 1.8;
+  text-align: center;
+}
+.ranking-empty-tip strong {
+  color: #409eff;
 }
 </style>

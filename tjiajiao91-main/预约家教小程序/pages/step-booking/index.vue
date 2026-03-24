@@ -1,7 +1,18 @@
 <template>
 	<view class="step-booking">
+		<!-- 自定义导航栏（参考优师精选样式） -->
+		<view class="custom-navbar" :style="{ paddingTop: statusBarHeight + 'px' }">
+			<view class="navbar-content">
+				<view class="navbar-back" @click="handleBack">
+					<text class="back-icon">‹</text>
+				</view>
+				<text class="navbar-title">预约家教</text>
+				<view class="navbar-placeholder"></view>
+			</view>
+		</view>
+		
 		<!-- 顶部进度条 -->
-		<view class="header">
+		<view class="header" :style="{ marginTop: navbarHeight + 'px' }">
 			<view class="progress-bar">
 				<view class="progress-fill" :style="{ width: progressPercent + '%' }"></view>
 			</view>
@@ -199,8 +210,11 @@ import auth from '@/utils/auth.js'
 export default {
 	data() {
 		return {
+			statusBarHeight: 0,
+			navbarHeight: 0,
 			safeAreaBottom: 0,
-			adminOpenid: null, // 从URL获取的管理员openid
+			adminOpenid: null,  // 从URL获取的管理员openid（小程序内分享使用）
+			adminId: null,     // 从URL获取的管理员ID（管理后台复制的链接使用）
 			currentStep: 0,
 			totalSteps: 4,
 			stepTitles: ['学生信息', '辅导信息', '老师要求', '联系信息'],
@@ -263,6 +277,8 @@ export default {
 	},
 	onLoad(options) {
 		const systemInfo = uni.getSystemInfoSync()
+		this.statusBarHeight = systemInfo.statusBarHeight || 0
+		this.navbarHeight = this.statusBarHeight + 44
 		this.safeAreaBottom = systemInfo.safeAreaInsets?.bottom || 0
 		
 		// ===== 调试信息：显示URL参数 =====
@@ -271,13 +287,32 @@ export default {
 		console.log('admin_openid参数:', options.admin_openid)
 		// ===== 调试信息结束 =====
 		
-		// 获取URL参数中的管理员openid
+		// 获取URL参数：支持 admin_openid（小程序内分享）或 admin_id（管理后台复制的链接）
 		if (options.admin_openid) {
 			this.adminOpenid = options.admin_openid
-			console.log('✅ 成功获取管理员openid:', this.adminOpenid)
-			console.log('OpenID长度:', this.adminOpenid.length)
+			this.saveAdminParamsToStorage()
+			uni.setStorageSync('booking_share_admin_openid', options.admin_openid)
+			console.log('✅ 从URL获取管理员openid:', this.adminOpenid)
+		} else if (options.admin_id) {
+			this.adminId = options.admin_id
+			this.saveAdminParamsToStorage()
+			uni.setStorageSync('booking_share_admin_id', options.admin_id)
+			console.log('✅ 从URL获取管理员ID:', this.adminId)
 		} else {
-			console.log('❌ URL中没有admin_openid参数')
+			// 尝试从 storage 恢复（例如：登录后返回时可能丢失 URL 参数）
+			this.restoreAdminParamsFromStorage()
+			// 再从全局兜底缓存恢复
+			if (!this.adminOpenid) {
+				const cachedOpenid = uni.getStorageSync('booking_share_admin_openid')
+				if (cachedOpenid) this.adminOpenid = cachedOpenid
+			}
+			if (!this.adminId) {
+				const cachedAdminId = uni.getStorageSync('booking_share_admin_id')
+				if (cachedAdminId) this.adminId = cachedAdminId
+			}
+			if (!this.adminOpenid && !this.adminId) {
+				console.log('❌ URL中没有admin_openid或admin_id参数')
+			}
 		}
 		
 		// 检查是否从登录页返回
@@ -303,6 +338,12 @@ export default {
 		}
 	},
 	methods: {
+		// 统一处理返回：始终回到家长端老师列表
+		handleBack() {
+			uni.reLaunch({
+				url: '/pages/teacher-library/index'
+			})
+		},
 		// 检查登录状态
 		checkLoginStatus() {
 			// 如果已经检查过登录，不再重复检查
@@ -312,6 +353,13 @@ export default {
 			
 			// 检查是否登录
 			if (!auth.isLoggedIn()) {
+				// 跳转登录前保存管理员参数，以便登录后恢复
+				const adminParams = {}
+				if (this.adminOpenid) adminParams.admin_openid = this.adminOpenid
+				if (this.adminId) adminParams.admin_id = this.adminId
+				if (Object.keys(adminParams).length) {
+					uni.setStorageSync('booking_redirect_admin', adminParams)
+				}
 				// 如果是从登录页返回的，显示提示并延迟跳转
 				if (this.isReturningFromLogin) {
 					uni.showToast({
@@ -322,9 +370,7 @@ export default {
 					
 					// 延迟3秒后再跳转
 					setTimeout(() => {
-						uni.navigateTo({
-							url: '/pages/login/index'
-						})
+						auth.navigateToLogin({ extraQuery: 'from=step-booking' })
 					}, 3000)
 				} else {
 					// 首次进入，立即提示并跳转
@@ -334,9 +380,7 @@ export default {
 					})
 					
 					setTimeout(() => {
-						uni.navigateTo({
-							url: '/pages/login/index'
-						})
+						auth.navigateToLogin({ extraQuery: 'from=step-booking' })
 					}, 1500)
 				}
 				
@@ -407,6 +451,41 @@ export default {
 				console.log('已清除保存的表单数据')
 			} catch (e) {
 				console.error('清除保存的数据失败:', e)
+			}
+		},
+		saveAdminParamsToStorage() {
+			try {
+				const params = {}
+				if (this.adminOpenid) params.admin_openid = this.adminOpenid
+				if (this.adminId) params.admin_id = this.adminId
+				if (Object.keys(params).length) {
+					uni.setStorageSync('step_booking_admin_params', params)
+				}
+			} catch (e) {
+				console.error('保存管理员参数失败:', e)
+			}
+		},
+		restoreAdminParamsFromStorage() {
+			try {
+				const params = uni.getStorageSync('step_booking_admin_params')
+				if (params && typeof params === 'object') {
+					if (params.admin_openid) this.adminOpenid = params.admin_openid
+					if (params.admin_id) this.adminId = params.admin_id
+					if (this.adminOpenid || this.adminId) {
+						console.log('从storage恢复管理员参数:', params)
+					}
+				}
+				// 也检查 login 流程保存的 booking_redirect_admin
+				const redirectParams = uni.getStorageSync('booking_redirect_admin')
+				if (redirectParams && typeof redirectParams === 'object' && (!this.adminOpenid && !this.adminId)) {
+					if (redirectParams.admin_openid) this.adminOpenid = redirectParams.admin_openid
+					if (redirectParams.admin_id) this.adminId = redirectParams.admin_id
+					if (this.adminOpenid || this.adminId) {
+						console.log('从booking_redirect_admin恢复管理员参数:', redirectParams)
+					}
+				}
+			} catch (e) {
+				console.error('恢复管理员参数失败:', e)
 			}
 		},
 		selectGradeLevel(level) {
@@ -574,7 +653,7 @@ export default {
 			if (!auth.isLoggedIn()) {
 				uni.showToast({ title: '请先登录', icon: 'none' })
 				setTimeout(() => {
-					uni.navigateTo({ url: '/pages/login/index' })
+					auth.navigateToLogin()
 				}, 1500)
 				return
 			}
@@ -605,23 +684,10 @@ export default {
 					budget_max: parseInt(this.formData.budgetMax) || 0
 				}
 				
-				// ===== 调试信息：显示即将提交的数据 =====
-				console.log('=== 提交订单调试信息 ===')
-				console.log('用户ID:', userInfo.id)
-				console.log('管理员OpenID:', this.adminOpenid)
-				console.log('OpenID长度:', this.adminOpenid ? this.adminOpenid.length : 0)
-				console.log('OpenID是否为空:', this.adminOpenid ? '否' : '是')
-				console.log('预约数据:', bookingData)
-				console.log('完整提交数据:', {
-					user_id: userInfo.id,
-					admin_openid: this.adminOpenid,
-					booking_data: bookingData
-				})
-				// ===== 调试信息结束 =====
-				
 				const res = await bookingApi.createBooking({
 					user_id: userInfo.id,
-					admin_openid: this.adminOpenid, // 传递管理员openid
+					admin_openid: this.adminOpenid,  // 小程序内分享：管理员openid
+					admin_id: this.adminId ? parseInt(this.adminId, 10) : undefined,  // 管理后台链接：管理员ID
 					booking_data: bookingData
 				})
 				
@@ -634,7 +700,8 @@ export default {
 					this.clearSavedData()
 					
 					setTimeout(() => {
-						uni.redirectTo({ url: '/pages/my-demands/index' })
+						// 家长端提交成功后回到优师精选页，方便继续浏览老师
+						uni.reLaunch({ url: '/pages/teacher-library/index' })
 					}, 1500)
 				} else {
 					uni.showToast({ title: res.message || '预约失败', icon: 'none' })
@@ -651,44 +718,58 @@ export default {
 	onShareAppMessage() {
 		// 获取当前用户的 openid
 		const userInfo = uni.getStorageSync('userInfo')
-		const adminOpenid = userInfo?.openid || ''
+		const sharerOpenid = this.getSharerOpenid ? this.getSharerOpenid() : (userInfo?.openid || '')
+		const adminOpenid = sharerOpenid
+		const superiorOpenid = adminOpenid // 分享者 openid：用于 superior_openid 绑定
+		const nickname = userInfo?.nickName || userInfo?.nickname || userInfo?.wechat_nickname || ''
 		
 		// 构建分享路径，带上 admin_openid 参数
 		let sharePath = '/pages/step-booking/index'
 		if (adminOpenid) {
 			sharePath += '?admin_openid=' + adminOpenid
+			sharePath += '&superior_openid=' + encodeURIComponent(superiorOpenid)
 			console.log('分享路径（带管理员openid）:', sharePath)
 		} else {
 			console.log('⚠️ 当前用户没有openid，分享路径不带参数')
 		}
 		
-		return {
-			title: '快速预约家教，找到适合孩子的好老师！',
-			path: sharePath,
-			imageUrl: '/static/share-booking.png'
+		const imageUrl = '/static/tabbar/applications.png'
+		const payload = {
+			title: nickname ? `${nickname}推荐你预约家教，快速找到适合孩子的好老师！` : '快速预约家教，找到适合孩子的好老师！',
+			path: sharePath
 		}
+		if (imageUrl && !imageUrl.startsWith('/static/tabbar/')) {
+			payload.imageUrl = imageUrl
+		}
+		return payload
 	},
 	
 	// 分享到朋友圈
 	onShareTimeline() {
 		// 获取当前用户的 openid
 		const userInfo = uni.getStorageSync('userInfo')
-		const adminOpenid = userInfo?.openid || ''
+		const adminOpenid = this.getSharerOpenid ? this.getSharerOpenid() : (userInfo?.openid || '')
+		const superiorOpenid = adminOpenid
+		const nickname = userInfo?.nickName || userInfo?.nickname || userInfo?.wechat_nickname || ''
 		
 		// 构建查询参数
 		let query = ''
 		if (adminOpenid) {
-			query = 'admin_openid=' + adminOpenid
+			query = 'admin_openid=' + adminOpenid + '&superior_openid=' + encodeURIComponent(superiorOpenid)
 			console.log('分享到朋友圈（带管理员openid）:', query)
 		} else {
 			console.log('⚠️ 当前用户没有openid，分享不带参数')
 		}
 		
-		return {
-			title: '快速预约家教，找到适合孩子的好老师！',
-			query: query,
-			imageUrl: '/static/share-booking.png'
+		const imageUrl = '/static/tabbar/applications.png'
+		const payload = {
+			title: nickname ? `${nickname}推荐你预约家教，快速找到适合孩子的好老师！` : '快速预约家教，找到适合孩子的好老师！',
+			query: query
 		}
+		if (imageUrl && !imageUrl.startsWith('/static/tabbar/')) {
+			payload.imageUrl = imageUrl
+		}
+		return payload
 	}
 }
 </script>
@@ -698,6 +779,52 @@ export default {
 	min-height: 100vh;
 	background: #F5F7FA;
 }
+
+/* 自定义导航栏：复用预约表单的风格，保持顶部白色背景和系统感 */
+.custom-navbar {
+	position: fixed;
+	top: 0;
+	left: 0;
+	right: 0;
+	z-index: 1000;
+	background: #ffffff;
+}
+
+.navbar-content {
+	height: 44px;
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	padding: 0 30rpx;
+}
+
+.navbar-back {
+	width: 60rpx;
+	height: 60rpx;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+}
+
+.back-icon {
+	font-size: 48rpx;
+	color: #303133;
+	font-weight: 300;
+}
+
+.navbar-title {
+	flex: 1;
+	text-align: center;
+	font-size: 34rpx;
+	font-weight: 600;
+	color: #111827;
+}
+
+.navbar-placeholder {
+	width: 60rpx;
+	height: 60rpx;
+}
+
 .header {
 	background: #fff;
 	padding: 20rpx 30rpx 30rpx;

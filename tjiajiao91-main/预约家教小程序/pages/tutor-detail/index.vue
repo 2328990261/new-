@@ -94,26 +94,27 @@
 					<view class="share-close" @click="showShareDialog = false">✕</view>
 				</view>
 				<view class="share-options">
-					<view class="share-option" @click="handlePosterShare">
-						<view class="share-icon poster-icon">
-							<view class="icon-image"></view>
-						</view>
-						<text class="option-name">生成海报</text>
-						<text class="option-desc">保存分享</text>
-					</view>
+					<!-- 完全照搬教师简历的三个入口：好友 / 朋友圈 / 海报 -->
 					<button class="share-option share-button" open-type="share" @click="handleFriendShare">
-						<view class="share-icon wechat-icon">
-							<view class="icon-chat"></view>
+						<view class="share-option-icon">
+							<uni-icons type="contact" size="40" color="#52C9A6" />
 						</view>
-						<text class="option-name">转发好友</text>
+						<text class="option-name">分享给好友</text>
 						<text class="option-desc">微信好友</text>
 					</button>
 					<view class="share-option" @click="handleMomentsShare">
-						<view class="share-icon moments-icon">
-							<view class="icon-circle-dots"></view>
+						<view class="share-option-icon">
+							<uni-icons type="pyq" size="40" color="#52C9A6" />
 						</view>
-						<text class="option-name">朋友圈</text>
+						<text class="option-name">分享到朋友圈</text>
 						<text class="option-desc">分享海报</text>
+					</view>
+					<view class="share-option" @click="handlePosterShare">
+						<view class="share-option-icon">
+							<uni-icons type="image-filled" size="40" color="#52C9A6" />
+						</view>
+						<text class="option-name">生成海报</text>
+						<text class="option-desc">保存分享</text>
 					</view>
 				</view>
 				<view class="share-cancel-wrap">
@@ -176,9 +177,14 @@
 
 <script>
 import envConfig from '../../config/env.js'
+import auth from '../../utils/auth.js'
 import { wechatLogin, applyForTutor, teacherRegisterApi } from '../../utils/api.js'
+import uniIcons from '@/uni_modules/uni-icons/components/uni-icons/uni-icons.vue'
 
 export default {
+	components: {
+		uniIcons
+	},
 	computed: {
 		titleText() {
 			const cityDistrict = this.cityDistrictText
@@ -280,22 +286,34 @@ export default {
 	},
 	// 分享给好友 - 使用生成的海报作为分享图
 	onShareAppMessage() {
+		const sharerOpenid = this.getSharerOpenid ? this.getSharerOpenid() : ''
 		const jobTitle = this.titleText || '家教信息'
-		return {
+		const payload = {
 			title: `${jobTitle} | 高薪优质家教`,
-			path: `/pages/tutor-detail/index?id=${this.tutorId}`,
-			imageUrl: this.posterImage || '' // 使用生成的海报图片
+			path: `/pages/tutor-detail/index?id=${this.tutorId}`
 		}
+		if (sharerOpenid) {
+			payload.path +=
+				(payload.path.indexOf('?') >= 0 ? '&' : '?') + 'superior_openid=' + encodeURIComponent(sharerOpenid)
+		}
+		// 不传 imageUrl 则使用页面缩略图；避免传空字符串导致安卓端空白
+		if (this.posterImage) payload.imageUrl = this.posterImage
+		return payload
 	},
 	
 	// 分享到朋友圈 - 使用生成的海报作为分享图
 	onShareTimeline() {
+		const sharerOpenid = this.getSharerOpenid ? this.getSharerOpenid() : ''
 		const jobTitle = this.titleText || '家教信息'
-		return {
+		const payload = {
 			title: `${jobTitle} | 高薪优质家教到91家教`,
-			query: `id=${this.tutorId}`,
-			imageUrl: this.posterImage || '' // 使用生成的海报图片
+			query: `id=${this.tutorId}`
 		}
+		if (sharerOpenid) {
+			payload.query += '&superior_openid=' + encodeURIComponent(sharerOpenid)
+		}
+		if (this.posterImage) payload.imageUrl = this.posterImage
+		return payload
 	},
 	methods: {
 		async loadTutorDetail() {
@@ -418,9 +436,7 @@ export default {
 					icon: 'none'
 				})
 				setTimeout(() => {
-					uni.navigateTo({
-						url: '/pages/login/index'
-					})
+					auth.navigateToLogin()
 				}, 1500)
 				return
 			}
@@ -445,7 +461,7 @@ export default {
 						})
 					} else {
 						uni.showToast({
-							title: res.data.message || '操作失败',
+							title: res.data.error || res.data.message || '操作失败',
 							icon: 'none'
 						})
 					}
@@ -468,9 +484,7 @@ export default {
 					icon: 'none'
 				})
 				setTimeout(() => {
-					uni.navigateTo({
-						url: '/pages/login/index'
-					})
+					auth.navigateToLogin()
 				}, 1500)
 				return
 			}
@@ -570,9 +584,7 @@ export default {
 						icon: 'none'
 					})
 					setTimeout(() => {
-						uni.navigateTo({
-							url: '/pages/login/index'
-						})
+						auth.navigateToLogin()
 					}, 1500)
 					return
 				}
@@ -2074,116 +2086,26 @@ export default {
 	border: none;
 }
 
-.share-icon {
-	width: 112rpx;
-	height: 112rpx;
-	border-radius: 24rpx;
+.share-option-icon {
+	width: 100rpx;
+	height: 100rpx;
+	border-radius: 50%;
 	display: flex;
 	align-items: center;
 	justify-content: center;
 	position: relative;
+	background: linear-gradient(135deg, #f0f9f5 0%, #e8f5f1 100%);
+	border: 2rpx solid #52C9A6;
 }
 
-/* 海报图标 - 相机/图片 */
-.poster-icon {
-	background: linear-gradient(135deg, #667EEA 0%, #764BA2 100%);
-}
-
-.icon-image {
-	width: 56rpx;
-	height: 56rpx;
-	background: rgba(255, 255, 255, 0.95);
-	border-radius: 12rpx;
-	position: relative;
-	box-shadow: 0 4rpx 12rpx rgba(0, 0, 0, 0.15);
-}
-
-.icon-image::before {
-	content: '';
-	position: absolute;
-	width: 18rpx;
-	height: 18rpx;
-	background: #667EEA;
-	border-radius: 50%;
-	top: 10rpx;
-	left: 10rpx;
-}
-
-.icon-image::after {
-	content: '';
-	position: absolute;
-	width: 0;
-	height: 0;
-	border-left: 18rpx solid transparent;
-	border-right: 18rpx solid transparent;
-	border-bottom: 14rpx solid #667EEA;
-	bottom: 8rpx;
-	left: 10rpx;
-}
-
-/* 微信图标 - 对话气泡 */
-.wechat-icon {
-	background: linear-gradient(135deg, #07C160 0%, #06AE56 100%);
-}
-
-.icon-chat {
-	width: 52rpx;
-	height: 44rpx;
-	position: relative;
-}
-
-.icon-chat::before {
-	content: '';
-	position: absolute;
-	width: 44rpx;
-	height: 36rpx;
-	background: rgba(255, 255, 255, 0.95);
-	border-radius: 18rpx 18rpx 18rpx 4rpx;
-	top: 0;
-	left: 0;
-	box-shadow: 0 4rpx 12rpx rgba(0, 0, 0, 0.15);
-}
-
-.icon-chat::after {
-	content: '';
-	position: absolute;
-	width: 28rpx;
-	height: 24rpx;
-	background: rgba(255, 255, 255, 0.95);
-	border-radius: 12rpx 12rpx 4rpx 12rpx;
-	bottom: 0;
-	right: 0;
-	box-shadow: 0 4rpx 12rpx rgba(0, 0, 0, 0.15);
-}
-
-/* 朋友圈图标 - 圆形+点 */
-.moments-icon {
-	background: linear-gradient(135deg, #1890FF 0%, #096DD9 100%);
-}
-
+/* 旧的自定义小图形不再需要 */
+.poster-icon,
+.wechat-icon,
+.moments-icon,
+.icon-image,
+.icon-chat,
 .icon-circle-dots {
-	width: 52rpx;
-	height: 52rpx;
-	background: rgba(255, 255, 255, 0.95);
-	border-radius: 50%;
-	position: relative;
-	display: flex;
-	align-items: center;
-	justify-content: center;
-	box-shadow: 0 4rpx 12rpx rgba(0, 0, 0, 0.15);
-}
-
-.icon-circle-dots::before {
-	content: '';
-	position: absolute;
-	width: 8rpx;
-	height: 8rpx;
-	background: #1890FF;
-	border-radius: 50%;
-	top: 50%;
-	left: 50%;
-	transform: translate(-50%, -50%);
-	box-shadow: -12rpx 0 0 #1890FF, 12rpx 0 0 #1890FF;
+	background: none;
 }
 
 .option-name {

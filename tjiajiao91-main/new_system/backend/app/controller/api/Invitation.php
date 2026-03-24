@@ -27,6 +27,19 @@ class Invitation extends BaseController
             if (!$user) {
                 return json(['code' => 404, 'message' => '用户不存在']);
             }
+
+            // 顶部展示用的“邀请人头像/昵称”
+            // 规则：取 user_invitations 最新一条记录的 inviter_user_id（已发放优先），再去 users 表查头像昵称
+            $latestInvitation = Db::name('user_invitations')
+                ->order('is_rewarded', 'desc')
+                ->order('reward_time', 'desc')
+                ->order('verify_time', 'desc')
+                ->order('create_time', 'desc')
+                ->find();
+            $displayUser = null;
+            if ($latestInvitation && !empty($latestInvitation['inviter_user_id'])) {
+                $displayUser = Db::name('users')->where('id', (int)$latestInvitation['inviter_user_id'])->find();
+            }
             
             // 生成邀请码（如果没有）
             $invitationCode = $this->getOrCreateInvitationCode($openid);
@@ -92,8 +105,8 @@ class Invitation extends BaseController
                 'data' => [
                     'invitationCode' => $invitationCode,
                     'userInfo' => [
-                        'nickname' => $user['nickname'] ?? '',
-                        'avatarUrl' => $user['avatar'] ?? ''
+                        'nickname' => $displayUser['nickname'] ?? ($user['nickname'] ?? ''),
+                        'avatarUrl' => $displayUser['avatar'] ?? ($user['avatar'] ?? '')
                     ],
                     'stats' => [
                         'invitedCount' => $invitedCount,
@@ -112,6 +125,57 @@ class Invitation extends BaseController
             
         } catch (\Exception $e) {
             trace('获取邀请统计失败: ' . $e->getMessage(), 'error');
+            return json(['code' => 500, 'message' => '获取失败：' . $e->getMessage()]);
+        }
+    }
+
+    /**
+     * 获取“我的邀请人”资料（受邀人视角）
+     * 规则：优先取已发放(is_rewarded=1)的最新一条，否则取最新一条邀请记录
+     * GET /api/invitation/inviter-profile
+     */
+    public function inviterProfile()
+    {
+        try {
+            $openid = $this->getUserOpenid();
+            if (!$openid) {
+                return json(['code' => 401, 'message' => '请先登录']);
+            }
+
+            $invitation = Db::name('user_invitations')
+                ->where('invitee_openid', $openid)
+                ->order('is_rewarded', 'desc')
+                ->order('reward_time', 'desc')
+                ->order('verify_time', 'desc')
+                ->order('create_time', 'desc')
+                ->find();
+
+            if (!$invitation) {
+                return json([
+                    'code' => 200,
+                    'message' => '无邀请记录',
+                    'data' => null
+                ]);
+            }
+
+            $inviter = Db::name('users')->where('openid', $invitation['inviter_openid'])->find();
+
+            return json([
+                'code' => 200,
+                'message' => '获取成功',
+                'data' => [
+                    'invitation_id' => $invitation['id'] ?? null,
+                    'inviter_openid' => $invitation['inviter_openid'] ?? '',
+                    'status' => (int)($invitation['status'] ?? 0),
+                    'is_rewarded' => (int)($invitation['is_rewarded'] ?? 0),
+                    'inviter' => [
+                        'nickname' => $inviter['nickname'] ?? '',
+                        'avatarUrl' => $inviter['avatar'] ?? ''
+                    ]
+                ]
+            ]);
+        } catch (\Exception $e) {
+            trace('获取邀请人资料失败: ' . $e->getMessage(), 'error');
             return json(['code' => 500, 'message' => '获取失败：' . $e->getMessage()]);
         }
     }
@@ -171,6 +235,68 @@ class Invitation extends BaseController
     }
     
     /**
+     * 使用/兑换优惠券（小程序端点击「使用」后标记为已使用，实际支付未开放时仅做记录）
+     * POST /api/invitation/use-coupon
+     */
+    public function useCoupon()
+    {
+        try {
+            $openid = $this->getUserOpenid();
+            if (!$openid) {
+                return json(['code' => 401, 'message' => '请先登录']);
+            }
+            
+            $couponId = $this->request->post('coupon_id', 0);
+            if (!$couponId) {
+                return json(['code' => 400, 'message' => '优惠券ID不能为空']);
+            }
+            
+            $coupon = Db::name('user_coupons')
+                ->where('id', $couponId)
+                ->where('openid', $openid)
+                ->find();
+            
+            if (!$coupon) {
+                return json(['code' => 404, 'message' => '优惠券不存在']);
+            }
+            
+            if ($coupon['status'] != 1) {
+                return json(['code' => 400, 'message' => '该优惠券不可使用']);
+            }
+            
+            if ($coupon['expire_time'] && strtotime($coupon['expire_time']) < time()) {
+                Db::name('user_coupons')->where('id', $couponId)->update(['status' => 3]);
+                return json(['code' => 400, 'message' => '优惠券已过期']);
+            }
+            
+            // 仅简历认证通过成为老师后才可使用优惠券
+            $teacher = Db::name('teachers')
+                ->where('openid', $openid)
+                ->where('review_status', 'approved')
+                ->find();
+            if (!$teacher) {
+                return json(['code' => 400, 'message' => '仅简历认证通过成为老师后可使用该优惠券']);
+            }
+            
+            // 用户申请使用 → 置为待审核，由后台邀请管理人工兑换后变为已使用
+            $update = [
+                'status' => 4, // 4-待审核（人工兑换后由后台改为 2-已使用）
+                'update_time' => date('Y-m-d H:i:s')
+            ];
+            Db::name('user_coupons')->where('id', $couponId)->update($update);
+            
+            return json([
+                'code' => 200,
+                'message' => '已提交，等待客服人工审核兑换'
+            ]);
+            
+        } catch (\Exception $e) {
+            trace('使用优惠券失败: ' . $e->getMessage(), 'error');
+            return json(['code' => 500, 'message' => '操作失败：' . $e->getMessage()]);
+        }
+    }
+    
+    /**
      * 获取我的优惠券列表
      * GET /api/invitation/my-coupons
      */
@@ -192,10 +318,17 @@ class Invitation extends BaseController
             
             $list = $query->order('create_time', 'desc')->select()->toArray();
             
+            // 是否已通过简历认证成为老师（仅老师可使用优惠券）
+            $teacherCertified = (bool) Db::name('teachers')
+                ->where('openid', $openid)
+                ->where('review_status', 'approved')
+                ->find();
+            
             return json([
                 'code' => 200,
                 'message' => '获取成功',
-                'data' => $list
+                'data' => $list,
+                'teacher_certified' => $teacherCertified
             ]);
             
         } catch (\Exception $e) {
@@ -341,6 +474,7 @@ class Invitation extends BaseController
                     'coupon_amount' => 20.00,
                     'source' => 'inviter',
                     'related_invitation_id' => $invitation['id'],
+                    'coupon_code' => $this->generateUniqueCouponCode(),
                     'status' => 0, // 待领取
                     'expire_time' => date('Y-m-d H:i:s', strtotime('+30 days')),
                     'create_time' => date('Y-m-d H:i:s')
@@ -354,6 +488,7 @@ class Invitation extends BaseController
                     'coupon_amount' => 20.00,
                     'source' => 'invitee',
                     'related_invitation_id' => $invitation['id'],
+                    'coupon_code' => $this->generateUniqueCouponCode(),
                     'status' => 0, // 待领取
                     'expire_time' => date('Y-m-d H:i:s', strtotime('+30 days')),
                     'create_time' => date('Y-m-d H:i:s')
@@ -508,6 +643,33 @@ class Invitation extends BaseController
         }
         
         throw new \Exception('无法生成唯一邀请码');
+    }
+
+    /**
+     * 生成唯一优惠券码
+     * 券码用于后台查询和小程序展示，保持全局唯一
+     */
+    private function generateUniqueCouponCode()
+    {
+        $attempts = 0;
+        $maxAttempts = 100;
+
+        while ($attempts < $maxAttempts) {
+            // 生成 10 位字母数字券码，例如：CP8F3A9K2L
+            $code = 'CP' . strtoupper(substr(md5(uniqid(mt_rand(), true)), 0, 8));
+
+            $exists = Db::name('user_coupons')
+                ->where('coupon_code', $code)
+                ->find();
+
+            if (!$exists) {
+                return $code;
+            }
+
+            $attempts++;
+        }
+
+        throw new \Exception('无法生成唯一优惠券码');
     }
     
     /**

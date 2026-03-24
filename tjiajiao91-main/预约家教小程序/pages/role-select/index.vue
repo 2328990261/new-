@@ -112,15 +112,24 @@ export default {
 			this.navigateToHome(this.selectedRole)
 		},
 		
-		// 根据角色跳转到对应首页
+		// 根据角色跳转到对应首页（家长端首页=教员库，老师端首页=生源信息；AI 机器人页从「请家教」等入口进入）
 		navigateToHome(role) {
 			console.log('准备跳转，角色:', role)
+			try {
+				const pending = (uni.getStorageSync('post_role_redirect_url') || '').trim()
+				if (pending) {
+					uni.removeStorageSync('post_role_redirect_url')
+					const u = pending.startsWith('/') ? pending : '/' + pending
+					uni.reLaunch({ url: u })
+					return
+				}
+			} catch (e) {}
 			
 			if (role === 'parent') {
-				// 家长跳转到AI预约页面
-				console.log('跳转到家长首页: /pages/ai-booking/index')
+				// 家长端首页：教员库
+				console.log('跳转到家长首页: /pages/teacher-library/index')
 				uni.reLaunch({
-					url: '/pages/ai-booking/index',
+					url: '/pages/teacher-library/index',
 					success: () => {
 						console.log('跳转成功')
 					},

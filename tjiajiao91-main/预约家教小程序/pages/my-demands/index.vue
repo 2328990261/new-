@@ -117,9 +117,7 @@ export default {
 					icon: 'none'
 				})
 				setTimeout(() => {
-					uni.navigateTo({
-						url: '/pages/login/index'
-					})
+					auth.navigateToLogin()
 				}, 1500)
 				return
 			}

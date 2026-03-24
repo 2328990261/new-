@@ -3,6 +3,7 @@ namespace app\controller\admin;
 
 use app\BaseController;
 use app\model\Teacher as TeacherModel;
+use think\facade\Db;
 use think\facade\Session;
 
 /**
@@ -154,6 +155,13 @@ class Teacher extends BaseController
                     $itemArray['avatar'] = $photos['avatar'] ?? '';
                     $itemArray['teaching_photos'] = $photos['teaching_photos'] ?? [];
                 }
+                // 若教师表头像为空，用 fa_users 表头像(openid 关联，微信/登录头像)作为列表头像
+                if (empty($itemArray['avatar']) && !empty($item->openid)) {
+                    $user = Db::name('users')->where('openid', $item->openid)->field('avatar')->find();
+                    if ($user && !empty($user['avatar'])) {
+                        $itemArray['avatar'] = $user['avatar'];
+                    }
+                }
                 
                 // 使用获取器返回解析后的experience数组
                 $itemArray['experience'] = $item->experience ?? [];
@@ -188,6 +196,59 @@ class Teacher extends BaseController
         }
     }
     
+    /**
+     * 获取上一老师/下一老师 ID（优先按 teacher_no 顺序，无该字段或异常时按 id）
+     */
+    public function prevNext($id)
+    {
+        if (session_status() === PHP_SESSION_NONE) {
+            session_start();
+        }
+        if (!isset($_SESSION['admin_id'])) {
+            return json(['success' => false, 'error' => '未登录']);
+        }
+        $currentId = (int) $id;
+        if ($currentId <= 0) {
+            return json(['success' => true, 'data' => ['prev_id' => null, 'next_id' => null]]);
+        }
+        try {
+            $current = TeacherModel::find($currentId);
+            if (!$current) {
+                return json(['success' => true, 'data' => ['prev_id' => null, 'next_id' => null]]);
+            }
+            $prev = null;
+            $next = null;
+            // 优先按 teacher_no 判断（表有该字段且当前有值时才用）
+            $useTeacherNo = isset($current->teacher_no) && $current->teacher_no !== '' && $current->teacher_no !== null;
+            if ($useTeacherNo) {
+                try {
+                    $currentNo = (int) $current->teacher_no;
+                    $prev = TeacherModel::whereRaw('COALESCE(teacher_no, 0) < ?', [$currentNo])
+                        ->orderRaw('COALESCE(teacher_no, 0) DESC')
+                        ->value('id');
+                    $next = TeacherModel::whereRaw('COALESCE(teacher_no, 0) > ?', [$currentNo])
+                        ->orderRaw('COALESCE(teacher_no, 0) ASC')
+                        ->value('id');
+                } catch (\Throwable $e) {
+                    $useTeacherNo = false;
+                }
+            }
+            if (!$useTeacherNo) {
+                $prev = TeacherModel::where('id', '<', $currentId)->order('id', 'desc')->value('id');
+                $next = TeacherModel::where('id', '>', $currentId)->order('id', 'asc')->value('id');
+            }
+            return json([
+                'success' => true,
+                'data' => [
+                    'prev_id' => $prev ? (int) $prev : null,
+                    'next_id' => $next ? (int) $next : null
+                ]
+            ]);
+        } catch (\Exception $e) {
+            return json(['success' => false, 'error' => $e->getMessage()]);
+        }
+    }
+
     /**
      * 获取教师详情
      */
@@ -231,7 +292,6 @@ class Teacher extends BaseController
             $data['openid'] = $data['openid'] ?? '';
             $data['last_login_time'] = $data['last_login_time'] ?? null;
             $data['birth_date'] = isset($data['birth_date']) && $data['birth_date'] !== '' ? $data['birth_date'] : null;
-            $data['birth_year'] = isset($data['birth_year']) && $data['birth_year'] !== '' ? (int)$data['birth_year'] : null;
             
             // 获取教师授课信息
             $teachingInfo = \app\model\TeacherTeachingInfo::getByTeacher($id, $data['openid'] ?? null, $data['phone'] ?? null);
@@ -244,6 +304,78 @@ class Teacher extends BaseController
                 ];
             } else {
                 $data['teaching_info'] = null;
+            }
+            
+            // 微信昵称旁的头像使用用户表 fa_users 的 avatar，优先 account_id 再 openid 关联
+            $data['user_avatar'] = '';
+            if (!empty($teacher->account_id)) {
+                $user = Db::name('users')->where('id', $teacher->account_id)->field('avatar')->find();
+                if ($user && !empty($user['avatar'])) {
+                    $data['user_avatar'] = $user['avatar'];
+                }
+            }
+            if (empty($data['user_avatar']) && !empty($teacher->openid)) {
+                $user = Db::name('users')->where('openid', $teacher->openid)->field('avatar')->find();
+                if ($user && !empty($user['avatar'])) {
+                    $data['user_avatar'] = $user['avatar'];
+                }
+            }
+            // 若教师表头像(photos.avatar)为空，用用户表头像(微信/登录头像)作为主头像，保证后台能显示真实头像
+            if (empty($data['avatar']) && !empty($data['user_avatar'])) {
+                $data['avatar'] = $data['user_avatar'];
+            }
+
+            // 分享者：1) 邀请活动 user_invitations.inviter_openid  2) 小程序分享链路 users.superior_openid（与登录注册绑定一致）
+            $data['sharer_nickname'] = '';
+            $data['sharer_avatar'] = '';
+            if (!empty($teacher->openid)) {
+                $invitation = Db::name('user_invitations')
+                    ->where('invitee_openid', $teacher->openid)
+                    ->order('is_rewarded', 'desc')
+                    ->order('reward_time', 'desc')
+                    ->order('verify_time', 'desc')
+                    ->order('create_time', 'desc')
+                    ->find();
+                if ($invitation && !empty($invitation['inviter_openid'])) {
+                    $inviter = Db::name('users')
+                        ->where('openid', $invitation['inviter_openid'])
+                        ->field('nickname,avatar')
+                        ->find();
+                    if ($inviter) {
+                        $data['sharer_nickname'] = (string)($inviter['nickname'] ?? '');
+                        $data['sharer_avatar'] = (string)($inviter['avatar'] ?? '');
+                    }
+                }
+            }
+            // 邀请表未建链或邀请人资料为空时，用该教师对应用户行的 superior_openid 反查分享者（优师精选/分享注册常见）
+            $teacherUser = null;
+            if (!empty($teacher->account_id)) {
+                $teacherUser = Db::name('users')
+                    ->where('id', $teacher->account_id)
+                    ->field('superior_openid')
+                    ->find();
+            }
+            if (!$teacherUser && !empty($teacher->openid)) {
+                $teacherUser = Db::name('users')
+                    ->where('openid', $teacher->openid)
+                    ->field('superior_openid')
+                    ->find();
+            }
+            $superiorOpenid = trim((string)($teacherUser['superior_openid'] ?? ''));
+            $teacherOpenidTrim = trim((string)($teacher->openid ?? ''));
+            if ($superiorOpenid !== '' && $superiorOpenid !== $teacherOpenidTrim) {
+                $superiorUser = Db::name('users')
+                    ->where('openid', $superiorOpenid)
+                    ->field('nickname,avatar')
+                    ->find();
+                if ($superiorUser) {
+                    if ($data['sharer_nickname'] === '') {
+                        $data['sharer_nickname'] = (string)($superiorUser['nickname'] ?? '');
+                    }
+                    if ($data['sharer_avatar'] === '') {
+                        $data['sharer_avatar'] = (string)($superiorUser['avatar'] ?? '');
+                    }
+                }
             }
             
             return json([
@@ -307,14 +439,20 @@ class Teacher extends BaseController
         }
         
         try {
-            $status = $this->request->post('status');
+            // 各项认证开关（0/1）
+            $realNameVerified = (int)$this->request->post('real_name_verified', 0);
+            $educationVerified = (int)$this->request->post('education_verified', 0);
+            $teacherVerified = (int)$this->request->post('teacher_verified', 0);
             $reason = $this->request->post('reason', '');
-            $realNameVerified = $this->request->post('real_name_verified');
-            $educationVerified = $this->request->post('education_verified');
-            $teacherVerified = $this->request->post('teacher_verified');
             
-            if (!in_array($status, ['pending', 'approved', 'rejected'])) {
-                return json(['success' => false, 'error' => '无效的审核状态']);
+            // 根据认证开关自动判定整体审核结果：
+            // 任一认证通过 => 审核通过；全部未通过 => 审核拒绝
+            $hasAnyCertification = ($realNameVerified || $educationVerified || $teacherVerified);
+            $status = $hasAnyCertification ? 'approved' : 'rejected';
+            
+            // 当未通过且后台未填写备注时，使用统一的默认审核备注
+            if ($status === 'rejected' && $reason === '') {
+                $reason = '您的提交认证资料不齐全，请重新上传完整且有效的证件信息重新审核。';
             }
             
             $teacher = TeacherModel::find($id);
@@ -322,7 +460,7 @@ class Teacher extends BaseController
                 return json(['success' => false, 'error' => '教师不存在']);
             }
             
-            // 更新审核状态
+            // 更新审核状态与备注
             $teacher->review_status = $status;
             $teacher->review_note = $reason;
             $teacher->review_time = date('Y-m-d H:i:s');
@@ -340,6 +478,11 @@ class Teacher extends BaseController
             }
             
             $teacher->save();
+            
+            // 简历认证通过：若该教师是被邀请人，则发放邀请双方优惠券
+            if ($status === 'approved' && !empty($teacher->openid)) {
+                \app\service\InvitationService::grantCouponsForApprovedInvitee($teacher->openid);
+            }
             
             $statusText = [
                 'pending' => '待审核',
@@ -510,7 +653,7 @@ class Teacher extends BaseController
             // 允许更新的字段
             $allowedFields = [
                 'name', 'gender', 'phone', 'wechat_id', 'wechat_nickname', 'openid', 'email',
-                'hometown', 'teaching_years', 'birth_year',
+                'hometown', 'teaching_years', 'birth_date',
                 'location_province', 'location_city', 'location_district', 'location_address',
                 'education', 'school', 'major', 'teacher_type', 'grade_level', 'education_level',
                 'hourly_rate', 'subject_ids', 'subject_names', 'district_ids', 'district_names',

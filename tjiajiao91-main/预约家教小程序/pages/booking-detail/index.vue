@@ -1,4 +1,4 @@
-﻿<template>
+<template>
 <view class="detail-container">
 <scroll-view 
   class="detail-scroll" 
@@ -133,7 +133,7 @@
 
 <script>
 import request from '@/utils/request.js'
-import { isLoggedIn } from '@/utils/auth.js'
+import auth, { isLoggedIn } from '@/utils/auth.js'
 
 export default {
 data() {
@@ -149,7 +149,8 @@ onLoad(options) {
   console.log('预约详情页面接收到的参数:', options)
   console.log('所有参数的键名:', Object.keys(options))
   
-  this.orderId = options?.order_id || options?.id || ''
+  const orderIdFromOptions = options && (options.order_id || options.id)
+  this.orderId = orderIdFromOptions ? (options.order_id || options.id) : ''
   console.log('解析出的orderId:', this.orderId)
   
   if (!this.orderId) {
@@ -167,12 +168,19 @@ onLoad(options) {
 },
 computed: {
 normalizedStatus() {
-const s = String(this.detail?.status ?? '').toLowerCase()
+const statusVal = (this.detail && this.detail.status !== undefined && this.detail.status !== null) ? this.detail.status : ''
+const s = String(statusVal).toLowerCase()
+if (s === 'cancelled') return 'cancelled'
+if (s === 'rejected') return 'rejected'
 if (s === 'approved' || s === '1' || s === '已审核') return 'approved'
 return 'pending'
 },
 statusText() {
-return this.normalizedStatus === 'approved' ? '已审核' : '待审核'
+const n = this.normalizedStatus
+if (n === 'cancelled') return '已取消'
+if (n === 'rejected') return '已拒绝'
+if (n === 'approved') return '已审核'
+return '待审核'
 }
 },
 methods: {
@@ -195,13 +203,16 @@ async loadDetail() {
         duration: 2000
       })
       setTimeout(() => {
-        uni.navigateTo({ url: '/pages/login/index' })
+        auth.navigateToLogin()
       }, 1500)
       return
     }
     
     // 获取用户ID
-    const userId = uni.getStorageSync('userId') || uni.getStorageSync('userInfo')?.id
+    const cachedUserId = uni.getStorageSync('userId')
+    const userInfo = uni.getStorageSync('userInfo')
+    const userInfoId = userInfo ? userInfo.id : ''
+    const userId = cachedUserId || userInfoId
     console.log('获取的用户ID:', userId)
     console.log('存储的userInfo:', uni.getStorageSync('userInfo'))
     
@@ -219,36 +230,38 @@ async loadDetail() {
     console.log('订单ID:', this.orderId)
     console.log('响应数据:', JSON.stringify(res, null, 2))
     
-    if (res && res.code === 200) {
-      this.detail = res.data || {}
+    if (res && res.code === 200 && res.data) {
+      this.detail = res.data
       console.log('设置详情数据:', this.detail)
-      
-      // 加载投递列表
       this.loadApplications()
     } else {
-      uni.showToast({
-        title: res?.message || '加载失败，请稍后重试',
-        icon: 'none',
-        duration: 2000
-      })
+      // 订单不存在或已被后台取消：不报错，直接显示为「已取消」
+      this.detail = {
+        status: 'cancelled',
+        reject_reason: '已由管理员取消',
+        order_no: this.orderId || '-',
+        id: this.orderId,
+        create_time: '-'
+      }
+      console.log('订单不存在或已被删除，设置为已取消状态')
     }
   } catch (e) {
     console.error('加载预约详情失败:', e)
-    let errorMsg = e.errMsg || '网络错误，请检查网络后重试'
-    
-    // 如果是未授权错误，跳转到登录页
+    // 401 仍跳转登录，其余（含 404/网络错误）不弹错，显示为「已取消」
     if (e.statusCode === 401 || (e.data && e.data.code === 401)) {
-      errorMsg = '登录已过期，请重新登录'
-      setTimeout(() => {
-        uni.navigateTo({ url: '/pages/login/index' })
-      }, 1500)
+      uni.showToast({ title: '登录已过期，请重新登录', icon: 'none', duration: 2000 })
+      setTimeout(() => { auth.navigateToLogin() }, 1500)
+    } else {
+      // 对于404或其他错误，显示为已取消状态
+      this.detail = {
+        status: 'cancelled',
+        reject_reason: '已由管理员取消',
+        order_no: this.orderId || '-',
+        id: this.orderId,
+        create_time: '-'
+      }
+      console.log('请求失败，设置为已取消状态:', e.message || e)
     }
-    
-    uni.showToast({
-      title: errorMsg,
-      icon: 'none',
-      duration: 2000
-    })
   } finally {
     this.isLoading = false
     uni.hideLoading()
@@ -263,7 +276,7 @@ return `${item.budget_min}-${item.budget_max}元/小时`;
 return '-'
 },
 
-// 加载投递列表
+// 加载投递列表（接口不存在或报错时静默失败，不打扰用户）
 async loadApplications() {
   try {
     const res = await request({
@@ -274,13 +287,15 @@ async loadApplications() {
       }
     })
     
-    console.log('投递列表响应:', res)
-    
     if (res && res.success) {
       this.applications = res.data || []
+    } else {
+      // 接口未实现或返回非 success，直接忽略
+      this.applications = []
     }
   } catch (e) {
-    console.error('加载投递列表失败:', e)
+    // 静默忽略加载投递列表失败，避免控制台大量错误
+    this.applications = []
   }
 },
 
@@ -523,6 +538,13 @@ border: 1rpx solid rgba(255, 149, 0, 0.2);
 background: linear-gradient(135deg, #E8F8F2 0%, #D4F5E8 100%);
 color: #52C9A6;
 border: 1rpx solid rgba(82, 201, 166, 0.3);
+}
+
+.status-cancelled,
+.status-rejected {
+background: linear-gradient(135deg, rgba(153, 153, 153, 0.15) 0%, rgba(153, 153, 153, 0.08) 100%);
+color: #666;
+border: 1rpx solid rgba(153, 153, 153, 0.25);
 }
 
 .info-card {

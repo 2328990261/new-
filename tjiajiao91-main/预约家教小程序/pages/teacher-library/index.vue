@@ -2,9 +2,7 @@
   <view class="teacher-library-container" :style="{ '--status-bar-height': statusBarHeight + 'px' }">
     <!-- 自定义导航栏 - 保持固定 -->
     <view class="nav-bar" :style="{paddingTop: statusBarHeight + 'px'}">
-      <view class="nav-left" @click="goBack">
-        <text class="nav-icon">‹</text>
-      </view>
+      <view class="nav-left"></view>
       <view class="nav-title">优师精选</view>
       <view class="nav-right" @click="showShareMenu">
         <text class="share-icon">⋯</text>
@@ -39,6 +37,7 @@
       
       <!-- 筛选条件 - 不再固定 -->
       <view class="filter-container">
+        <scroll-view class="filter-scroll" scroll-x :show-scrollbar="false" enable-flex>
         <view class="filter-list">
           <!-- 类型筛选 -->
           <view 
@@ -70,7 +69,18 @@
             <text class="filter-arrow" :class="{ rotate: showSubjectFilter }">▼</text>
             <text v-if="selectedSubjects.length > 0" class="filter-badge">{{ selectedSubjects.length }}</text>
           </view>
+          
+          <!-- 排序 -->
+          <view 
+            class="filter-item" 
+            :class="{ active: showSortFilter }"
+            @click="toggleSortFilter"
+          >
+            <text>{{ currentSortLabel }}</text>
+            <text class="filter-arrow" :class="{ rotate: showSortFilter }">▼</text>
+          </view>
         </view>
+        </scroll-view>
         
       <!-- 类型筛选下拉面板 -->
       <view class="filter-panel" v-if="showTypeFilter">
@@ -122,6 +132,22 @@
           <view class="subject-actions">
             <view class="action-btn clear-btn" @click="clearSubjects">清空</view>
             <view class="action-btn confirm-btn" @click="confirmSubjects">确定</view>
+          </view>
+        </view>
+      </view>
+      
+      <!-- 排序下拉面板 -->
+      <view class="filter-panel" v-if="showSortFilter">
+        <view class="filter-panel-content">
+          <view 
+            v-for="(opt, index) in sortOptions" 
+            :key="index"
+            class="filter-option"
+            :class="{ selected: selectedSort === opt.value }"
+            @click="selectSort(opt.value)"
+          >
+            <text>{{ opt.label }}</text>
+            <text v-if="selectedSort === opt.value" class="check-icon">✓</text>
           </view>
         </view>
       </view>
@@ -217,7 +243,9 @@
             
             <!-- 距离显示 - 右下角 -->
             <view class="distance-badge" v-if="teacher.distance_text">
-              <text class="distance-icon">📍</text>
+              <view class="distance-icon">
+                <uni-icons type="location" size="18" color="#52C9A6" />
+              </view>
               <text class="distance-value">{{ teacher.distance_text }}</text>
             </view>
           </view>
@@ -262,10 +290,11 @@
       <view class="share-menu" @click.stop>
         <view class="share-title">分享优师精选</view>
         <view class="share-options">
-          <view class="share-option" @click="shareToFriend">
+          <!-- 与 tutor-list/teacher-detail 一致：用官方分享能力，path 以 onShareAppMessage 为准，必带 superior_openid -->
+          <button class="share-option share-friend-btn" open-type="share" @click="hideShareMenu">
             <view class="share-option-icon">👥</view>
             <text class="share-option-text">分享给好友</text>
-          </view>
+          </button>
           <view class="share-option" @click="shareToTimeline">
             <view class="share-option-icon">🔄</view>
             <text class="share-option-text">分享到朋友圈</text>
@@ -286,6 +315,7 @@
 import { teacherApi } from '@/utils/api.js'
 import CustomTabbar from '@/components/custom-tabbar/index.vue'
 import { getLocationCache, saveLocationCache } from '@/utils/location.js'
+import uniIcons from '@/uni_modules/uni-icons/components/uni-icons/uni-icons.vue'
 
 const ICONS = {
   male: "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%234A90E2' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><circle cx='10' cy='14' r='5'/><path d='M14 10l7-7'/><path d='M15 3h6v6'/></svg>",
@@ -295,7 +325,8 @@ const ICONS = {
 
 export default {
   components: {
-    CustomTabbar
+    CustomTabbar,
+    uniIcons
   },
   data() {
     return {
@@ -311,6 +342,7 @@ export default {
       showTypeFilter: false,
       showGenderFilter: false,
       showSubjectFilter: false,
+      showSortFilter: false,
       
       // 筛选选项
       teacherTypes: [
@@ -336,6 +368,12 @@ export default {
       selectedType: '',
       selectedGender: '',
       selectedSubjects: [],
+      selectedSort: 'default',
+      sortOptions: [
+        { label: '综合排序', value: 'default' },
+        { label: '距离最近', value: 'distance' },
+        { label: '最新入驻', value: 'latest' }
+      ],
       
       teacherList: [],
       page: 1,
@@ -346,6 +384,12 @@ export default {
       
       // 分享相关
       shareMenuVisible: false
+    }
+  },
+  computed: {
+    currentSortLabel() {
+      const opt = this.sortOptions.find((o) => o.value === this.selectedSort)
+      return opt ? opt.label : '综合排序'
     }
   },
   onLoad() {
@@ -387,7 +431,7 @@ export default {
         this.userLongitude = cachedLocation.longitude
         
         // 如果已经加载了教师列表，重新加载以计算距离
-        if (this.teacherList.length > 0) {
+        if (this.teacherList.length > 0 || this.selectedSort === 'distance') {
           this.page = 1
           this.loadTeacherList()
         }
@@ -409,8 +453,8 @@ export default {
             address: '当前位置'
           })
           
-          // 如果已经加载了教师列表，重新加载以计算距离
-          if (this.teacherList.length > 0) {
+          // 如果已经加载了教师列表，或当前为距离排序，重新拉取列表
+          if (this.teacherList.length > 0 || this.selectedSort === 'distance') {
             this.page = 1
             this.loadTeacherList()
           }
@@ -451,6 +495,9 @@ export default {
         }
         if (this.selectedSubjects.length > 0) {
           params.subjects = this.selectedSubjects.join(',')
+        }
+        if (this.selectedSort && this.selectedSort !== 'default') {
+          params.sort = this.selectedSort
         }
         
         console.log('请求教师列表，参数:', params)
@@ -545,6 +592,7 @@ export default {
       this.showTypeFilter = !this.showTypeFilter
       this.showGenderFilter = false
       this.showSubjectFilter = false
+      this.showSortFilter = false
     },
     
     // 切换性别筛选面板
@@ -552,6 +600,7 @@ export default {
       this.showGenderFilter = !this.showGenderFilter
       this.showTypeFilter = false
       this.showSubjectFilter = false
+      this.showSortFilter = false
     },
     
     // 切换科目筛选面板
@@ -559,6 +608,53 @@ export default {
       this.showSubjectFilter = !this.showSubjectFilter
       this.showTypeFilter = false
       this.showGenderFilter = false
+      this.showSortFilter = false
+    },
+    
+    toggleSortFilter() {
+      this.showSortFilter = !this.showSortFilter
+      this.showTypeFilter = false
+      this.showGenderFilter = false
+      this.showSubjectFilter = false
+    },
+    
+    selectSort(value) {
+      if (value === 'distance' && (!this.userLatitude || !this.userLongitude)) {
+        uni.showToast({
+          title: '需要位置信息，正在获取定位…',
+          icon: 'none'
+        })
+        uni.getLocation({
+          type: 'gcj02',
+          success: (res) => {
+            this.userLatitude = res.latitude
+            this.userLongitude = res.longitude
+            saveLocationCache({
+              latitude: res.latitude,
+              longitude: res.longitude,
+              name: '当前位置',
+              address: '当前位置'
+            })
+            this.selectedSort = 'distance'
+            this.showSortFilter = false
+            this.page = 1
+            this.hasMore = true
+            this.loadTeacherList()
+          },
+          fail: () => {
+            uni.showToast({
+              title: '请允许定位后使用距离排序',
+              icon: 'none'
+            })
+          }
+        })
+        return
+      }
+      this.selectedSort = value
+      this.showSortFilter = false
+      this.page = 1
+      this.hasMore = true
+      this.loadTeacherList()
     },
     
     // 选择教师类型
@@ -646,19 +742,6 @@ export default {
       }
     },
     
-    // 返回上一页
-    goBack() {
-      const pages = getCurrentPages()
-      if (pages.length > 1) {
-        uni.navigateBack()
-      } else {
-        // 没有上一页，跳转到首页
-        uni.reLaunch({
-          url: '/pages/ai-booking/index'
-        })
-      }
-    },
-    
     // 显示分享菜单
     showShareMenu() {
       this.shareMenuVisible = true
@@ -669,32 +752,34 @@ export default {
       this.shareMenuVisible = false
     },
     
-    // 分享给好友
-    shareToFriend() {
-      this.hideShareMenu()
-      // 触发分享
-      uni.showShareMenu({
-        withShareTicket: true,
-        menus: ['shareAppMessage']
-      })
-      uni.shareAppMessage({
-        title: '优质教员库，找到适合你的好老师！',
-        path: '/pages/teacher-library/index',
-        imageUrl: '/static/share-teacher.png'
-      })
+    getSharerOpenidForShare() {
+      if (this.getSharerOpenid) {
+        const oid = this.getSharerOpenid()
+        if (oid) return String(oid)
+      }
+      try {
+        const u = uni.getStorageSync('userInfo') || {}
+        if (u.openid) return String(u.openid)
+      } catch (e) {}
+      try {
+        const oid = uni.getStorageSync('openid') || ''
+        return oid ? String(oid) : ''
+      } catch (e) {}
+      return ''
     },
-    
+
     // 分享到朋友圈
     shareToTimeline() {
       this.hideShareMenu()
+      const sharerOpenid = this.getSharerOpenidForShare()
+      const query = sharerOpenid ? 'superior_openid=' + encodeURIComponent(sharerOpenid) : ''
       uni.showShareMenu({
         withShareTicket: true,
         menus: ['shareTimeline']
       })
       uni.shareToTimeline({
         title: '优质教员库，找到适合你的好老师！',
-        query: '',
-        imageUrl: '/static/share-teacher.png'
+        query
       })
     },
     
@@ -732,21 +817,23 @@ export default {
     }
   },
   
-  // 分享给好友/群聊
+  // 分享给好友/群聊：弹层内 open-type=share、右上角转发都走这里，统一带 superior_openid
   onShareAppMessage() {
+    const sharerOpenid = this.getSharerOpenidForShare()
     return {
       title: '优质教员库，找到适合你的好老师！',
-      path: '/pages/teacher-library/index',
-      imageUrl: '/static/share-teacher.png'
+      path: sharerOpenid
+        ? '/pages/teacher-library/index?superior_openid=' + encodeURIComponent(sharerOpenid)
+        : '/pages/teacher-library/index'
     }
   },
-  
+
   // 分享到朋友圈
   onShareTimeline() {
+    const sharerOpenid = this.getSharerOpenidForShare()
     return {
       title: '优质教员库，找到适合你的好老师！',
-      query: '',
-      imageUrl: '/static/share-teacher.png'
+      query: sharerOpenid ? 'superior_openid=' + encodeURIComponent(sharerOpenid) : ''
     }
   }
 }
@@ -771,7 +858,7 @@ export default {
   align-items: center;
   justify-content: space-between;
   height: 44px;
-  padding: 0 15px;
+  padding: 0 30rpx;
   background: transparent;
   z-index: 1000;
 }
@@ -877,19 +964,28 @@ export default {
 
 .filter-container {
   background: transparent;
-  padding: 0 30rpx 12rpx 30rpx;
+  padding: 0 0 12rpx 0;
+}
+
+.filter-scroll {
+  width: 100%;
+  white-space: nowrap;
 }
 
 .filter-list {
-  display: flex;
-  justify-content: space-between;
+  display: inline-flex;
+  flex-direction: row;
+  flex-wrap: nowrap;
   gap: 20rpx;
+  padding: 0 30rpx;
+  box-sizing: border-box;
 }
 
 .filter-item {
   position: relative;
   display: flex;
-  flex: 1;
+  flex: 0 0 auto;
+  min-width: 148rpx;
   align-items: center;
   justify-content: center;
   padding: 12rpx 12rpx;
@@ -1317,8 +1413,11 @@ export default {
 }
 
 .distance-badge .distance-icon {
-  font-size: 24rpx;
-  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28rpx;
+  height: 28rpx;
 }
 
 .distance-badge .distance-value {
@@ -1540,6 +1639,20 @@ export default {
   flex-direction: column;
   align-items: center;
   gap: 16rpx;
+}
+
+/* button.open-type=share：去掉默认样式，与左侧 view 选项视觉一致 */
+.share-friend-btn {
+  background: transparent;
+  padding: 0;
+  margin: 0;
+  line-height: normal;
+  border: none;
+  font-size: inherit;
+}
+
+.share-friend-btn::after {
+  border: none;
 }
 
 .share-option-icon {

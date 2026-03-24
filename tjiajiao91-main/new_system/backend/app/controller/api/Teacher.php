@@ -23,6 +23,8 @@ class Teacher extends BaseController
         // 获取用户位置（用于计算距离）
         $userLatitude = (float)$this->request->param('latitude', 0);
         $userLongitude = (float)$this->request->param('longitude', 0);
+        // 列表排序：default 综合（精选优先+时间）；latest 最新入驻；distance 距离最近（需传经纬度）
+        $sort = trim((string)$this->request->param('sort', ''));
 
         try {
             // 先检查表是否存在
@@ -95,9 +97,27 @@ class Teacher extends BaseController
                 ]]);
             }
 
+            if ($sort === 'latest') {
+                $query->order('t.create_time', 'desc')->order('t.id', 'desc');
+            } elseif ($sort === 'distance' && $userLatitude != 0.0 && $userLongitude != 0.0) {
+                // Haversine（公里），与 helper 中 calculate_distance 一致；无坐标教员排后
+                $ulat = $userLatitude;
+                $ulng = $userLongitude;
+                $distExpr = "6371 * ACOS(GREATEST(-1, LEAST(1,
+                    COS(RADIANS({$ulat})) * COS(RADIANS(t.location_latitude)) * COS(RADIANS(t.location_longitude) - RADIANS({$ulng}))
+                    + SIN(RADIANS({$ulat})) * SIN(RADIANS(t.location_latitude))
+                )))";
+                $query->orderRaw("(CASE
+                    WHEN t.location_latitude IS NOT NULL AND t.location_latitude != 0
+                        AND t.location_longitude IS NOT NULL AND t.location_longitude != 0
+                    THEN {$distExpr}
+                    ELSE 999999
+                END) ASC, t.is_top DESC, t.create_time DESC");
+            } else {
+                $query->order('t.is_top', 'desc')->order('t.create_time', 'desc');
+            }
+
             $list = $query
-                ->order('t.is_top', 'desc')
-                ->order('t.create_time', 'desc')
                 ->page($page, $limit)
                 ->field('id,teacher_no,name,gender,birth_date,education,school,major,teacher_type,grade_level,education_level,hourly_rate,subject_names,district_names,photos,self_intro,experience,advantage_tags,is_top,status,real_name_verified,education_verified,teacher_verified,location_longitude,location_latitude,location_address')
                 ->select()
@@ -211,7 +231,43 @@ class Teacher extends BaseController
         $userLongitude = (float)$this->request->param('longitude', 0);
         
         try {
-            $teacher = Db::name('teachers')->where('id', (int)$id)->find();
+            // 公开接口：只返回前端展示所需字段，避免泄露敏感信息（phone/openid/email/wechat_id 等）
+            $teacher = Db::name('teachers')
+                ->field([
+                    'id',
+                    'teacher_no',
+                    'name',
+                    'gender',
+                    'birth_date',
+                    'hometown',
+                    'teaching_years',
+                    'education',
+                    'school',
+                    'major',
+                    'teacher_type',
+                    'grade_level',
+                    'education_level',
+                    'hourly_rate',
+                    'subject_ids',
+                    'subject_names',
+                    'district_ids',
+                    'district_names',
+                    'photos',
+                    'self_intro',
+                    'experience',
+                    'advantage_tags',
+                    'is_top',
+                    'status',
+                    'real_name_verified',
+                    'education_verified',
+                    'teacher_verified',
+                    'location_longitude',
+                    'location_latitude',
+                    'location_address',
+                    'create_time',
+                ])
+                ->where('id', (int)$id)
+                ->find();
             if (!$teacher) {
                 return json(['success' => false, 'error' => '教师不存在']);
             }

@@ -69,6 +69,14 @@ export const useTabsStore = defineStore('tabs', {
     setActiveTab(path) {
       this.activeTab = path
     },
+
+    /** 更新已存在标签的标题（如教师详情页加载后显示 T1007：姓名） */
+    updateTabTitle(path, title) {
+      const tab = this.tabs.find(t => t.path === path)
+      if (tab && title) {
+        tab.title = title
+      }
+    },
     
     // 固定/取消固定标签
     togglePin(path) {

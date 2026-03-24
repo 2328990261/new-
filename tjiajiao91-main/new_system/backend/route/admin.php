@@ -168,6 +168,7 @@ Route::group('admin/api', function () {
         
         // 教师管理
         Route::get('teachers/statistics', 'admin.Teacher/statistics');  // 统计信息（必须在 teachers/:id 之前）
+        Route::get('teachers/prev-next/:id', 'admin.Teacher/prevNext');  // 上一老师/下一老师 ID（必须在 teachers/:id 之前）
         Route::post('teachers/batch-delete', 'admin.Teacher/batchDelete');  // 批量删除
         Route::post('teachers/batch-update-status', 'admin.Teacher/batchUpdateStatus');  // 批量更新状态
         Route::post('teachers/generate-poster', 'admin.Teacher/generatePoster');  // 生成教师海报
@@ -266,6 +267,16 @@ Route::group('admin/api', function () {
         Route::post('payment-config/save', 'admin.PaymentConfig/saveConfig');
         Route::get('payments/config', 'admin.PaymentConfig/getConfig');
         Route::post('payments/config', 'admin.PaymentConfig/saveConfig');
+        
+        // 邀请管理（邀请记录、优惠券管理、邀请排行榜）
+        Route::get('invitation/overview', 'admin.InvitationManage/overview');
+        Route::get('invitation/list', 'admin.InvitationManage/invitationList');
+        Route::get('invitation/coupon-list', 'admin.InvitationManage/couponList');
+        Route::get('invitation/ranking', 'admin.InvitationManage/ranking');
+        Route::post('invitation/refresh-ranking', 'admin.InvitationManage/refreshRanking');
+        Route::post('invitation/redeem-coupon', 'admin.InvitationManage/redeemCoupon');
+        Route::post('invitation/batch-redeem', 'admin.InvitationManage/batchRedeem');
+        Route::get('invitation/search-user-coupons', 'admin.InvitationManage/searchUserCoupons');
         
     })->middleware(\app\middleware\Auth::class);
     

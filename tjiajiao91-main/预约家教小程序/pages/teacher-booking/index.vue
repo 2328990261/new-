@@ -6,7 +6,7 @@
 		<!-- 自定义导航栏 -->
 		<view class="nav-bar" :style="{paddingTop: statusBarHeight + 'px'}">
 			<view class="nav-left" @click="goBack">
-				<text class="nav-icon">←</text>
+				<text class="nav-icon">‹</text>
 			</view>
 			<view class="nav-title">预约教师</view>
 			<view class="nav-right"></view>
@@ -190,6 +190,7 @@
 
 <script>
 import request from '@/utils/request.js'
+import auth from '@/utils/auth.js'
 
 export default {
 	data() {
@@ -427,7 +428,7 @@ export default {
 					icon: 'none'
 				})
 				setTimeout(() => {
-					uni.navigateTo({ url: '/pages/login/index' })
+					auth.navigateToLogin()
 				}, 1500)
 				return
 			}

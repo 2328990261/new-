@@ -99,6 +99,11 @@ class TeacherReview extends BaseController
             
             $teacher->save();
             
+            // 简历认证通过：若该教师是被邀请人，则发放邀请双方优惠券
+            if ($teacher->review_status === 'approved' && !empty($teacher->openid)) {
+                \app\service\InvitationService::grantCouponsForApprovedInvitee($teacher->openid);
+            }
+            
             return json([
                 'success' => true,
                 'message' => '审核完成',
@@ -141,6 +146,16 @@ class TeacherReview extends BaseController
             ];
             
             $count = Teacher::whereIn('id', $ids)->update($updateData);
+            
+            // 本次设为「通过」的教师：若为被邀请人则发放邀请优惠券
+            if ($reviewStatus === 'approved') {
+                $approvedTeachers = Teacher::whereIn('id', $ids)->where('review_status', 'approved')->column('openid');
+                foreach ($approvedTeachers as $openid) {
+                    if (!empty($openid)) {
+                        \app\service\InvitationService::grantCouponsForApprovedInvitee($openid);
+                    }
+                }
+            }
             
             return json([
                 'success' => true,

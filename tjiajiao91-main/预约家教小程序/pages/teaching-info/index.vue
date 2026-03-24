@@ -231,6 +231,7 @@
 
 <script>
 import envConfig from '@/config/env.js'
+import auth from '@/utils/auth.js'
 
 export default {
 	data() {
@@ -373,9 +374,7 @@ export default {
 					content: '请先登录后再查看授课信息',
 					showCancel: false,
 					success: () => {
-						uni.navigateTo({
-							url: '/pages/login/index'
-						})
+						auth.navigateToLogin()
 					}
 				})
 				return
@@ -392,9 +391,7 @@ export default {
 						// 清除登录信息
 						uni.removeStorageSync('userInfo')
 						uni.removeStorageSync('token')
-						uni.navigateTo({
-							url: '/pages/login/index'
-						})
+						auth.navigateToLogin()
 					}
 				})
 				return
@@ -648,9 +645,7 @@ export default {
 					content: '请先登录后再保存授课信息',
 					showCancel: false,
 					success: () => {
-						uni.navigateTo({
-							url: '/pages/login/index'
-						})
+						auth.navigateToLogin()
 					}
 				})
 				return
@@ -667,9 +662,7 @@ export default {
 						// 清除登录信息
 						uni.removeStorageSync('userInfo')
 						uni.removeStorageSync('token')
-						uni.navigateTo({
-							url: '/pages/login/index'
-						})
+						auth.navigateToLogin()
 					}
 				})
 				return
@@ -775,9 +768,9 @@ export default {
 	top: 0;
 	left: 0;
 	right: 0;
-	background: #fff;
+	background: linear-gradient(135deg, #7FDFB8 0%, #52C9A6 100%);
 	z-index: 1000;
-	border-bottom: 1rpx solid #e4e7ed;
+	border-bottom: none;
 }
 
 .navbar-content {
@@ -800,14 +793,14 @@ export default {
 
 .back-icon {
 	font-size: 48rpx;
-	color: #303133;
+	color: #FFFFFF;
 	font-weight: 300;
 }
 
 .navbar-title {
 	font-size: 36rpx;
 	font-weight: 600;
-	color: #303133;
+	color: #FFFFFF;
 }
 
 .content {

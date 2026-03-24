@@ -1,7 +1,7 @@
 <template>
 	<view class="custom-tabbar" :style="{ paddingBottom: safeAreaBottom + 'px' }">
-		<!-- 家长端 tabBar -->
-		<template v-if="userRole === 'parent'">
+		<!-- 家长端 tabBar：老师、请家教、我的预约、我的 -->
+		<template v-if="displayRole === 'parent'">
 			<view 
 				v-for="(item, index) in parentTabs" 
 				:key="'parent-' + index"
@@ -10,17 +10,18 @@
 				@click="switchTab(item.path)"
 			>
 				<view class="tabbar-icon">
-					<text 
-						class="icon-text" 
-						:style="{ color: currentPath === item.path ? '#52C9A6' : '#999' }"
-					>{{ item.icon }}</text>
+					<uni-icons
+						:type="item.icon"
+						:color="currentPath === item.path ? '#52C9A6' : '#999'"
+						:size="currentPath === item.path ? 32 : 28"
+					/>
 				</view>
 				<text class="tabbar-label">{{ item.text }}</text>
 			</view>
 		</template>
 		
-		<!-- 老师端 tabBar -->
-		<template v-else-if="userRole === 'teacher'">
+		<!-- 老师端 tabBar：生源信息、我的投递、个人中心 -->
+		<template v-else-if="displayRole === 'teacher'">
 			<view 
 				v-for="(item, index) in teacherTabs" 
 				:key="'teacher-' + index"
@@ -29,10 +30,11 @@
 				@click="switchTab(item.path)"
 			>
 				<view class="tabbar-icon">
-					<text 
-						class="icon-text" 
-						:style="{ color: currentPath === item.path ? '#52C9A6' : '#999' }"
-					>{{ item.icon }}</text>
+					<uni-icons
+						:type="item.icon"
+						:color="currentPath === item.path ? '#52C9A6' : '#999'"
+						:size="currentPath === item.path ? 32 : 28"
+					/>
 				</view>
 				<text class="tabbar-label">{{ item.text }}</text>
 			</view>
@@ -41,8 +43,13 @@
 </template>
 
 <script>
+import uniIcons from '@/uni_modules/uni-icons/components/uni-icons/uni-icons.vue'
+
 export default {
 	name: 'CustomTabbar',
+	components: {
+		uniIcons
+	},
 	props: {
 		current: {
 			type: String,
@@ -51,46 +58,58 @@ export default {
 	},
 	data() {
 		return {
-			userRole: 'teacher', // 默认为老师端
+			userRole: 'teacher', // 默认为老师端，与 storage 同步
 			safeAreaBottom: 0,
 			switching: false, // 防止快速点击
+			// 仅属于家长端的 tab 页（老师端没有这些页）
+			parentOnlyPaths: [
+				'/pages/teacher-library/index',
+				'/pages/step-booking/index',
+				'/pages/my-demands/index'
+			],
+			// 仅属于老师端的 tab 页（家长端没有这些页）
+			teacherOnlyPaths: [
+				'/pages/tutor-list/index',
+				'/pages/my-applications/index'
+			],
+			// 这里的 icon 字段对应 uni-icons 的 type
 			parentTabs: [
 				{ 
 					path: '/pages/teacher-library/index', 
 					text: '老师', 
-					icon: '👨‍🏫'
+					icon: 'person'
 				},
 				{ 
 					path: '/pages/step-booking/index', 
 					text: '请家教', 
-					icon: '✏️'
+					icon: 'compose'
 				},
 				{ 
 					path: '/pages/my-demands/index', 
 					text: '我的预约', 
-					icon: '📅'
+					icon: 'calendar'
 				},
 				{ 
 					path: '/pages/profile/index', 
 					text: '我的', 
-					icon: '👤'
+					icon: 'person-filled'
 				}
 			],
 			teacherTabs: [
 				{ 
 					path: '/pages/tutor-list/index', 
 					text: '生源信息', 
-					icon: '📋'  // 列表emoji
+					icon: 'home'
 				},
 				{ 
 					path: '/pages/my-applications/index', 
 					text: '我的投递', 
-					icon: '📄'  // 文件emoji
+					icon: 'paperplane'
 				},
 				{ 
 					path: '/pages/profile/index', 
 					text: '个人中心', 
-					icon: '👤'  // 用户emoji
+					icon: 'person'
 				}
 			]
 		}
@@ -98,6 +117,16 @@ export default {
 	computed: {
 		currentPath() {
 			return this.current || this.getCurrentPath()
+		},
+		// 根据当前页面路径决定显示哪套 tab，避免「老师端栏 + 家长端页」错位
+		displayRole() {
+			const path = this.currentPath
+			// 仅家长端有的 tab 页
+			if (this.parentOnlyPaths.indexOf(path) !== -1) return 'parent'
+			// 仅老师端有的 tab 页
+			if (this.teacherOnlyPaths.indexOf(path) !== -1) return 'teacher'
+			// 个人中心等共用页用存储角色
+			return this.userRole
 		}
 	},
 	mounted() {
@@ -112,11 +141,17 @@ export default {
 	methods: {
 		loadUserRole() {
 			try {
-				const userRole = uni.getStorageSync('userRole')
-				if (userRole) {
-					this.userRole = userRole
-				} else {
+				let userRole = uni.getStorageSync('userRole')
+				if (!userRole) userRole = 'teacher'
+				this.userRole = userRole
+				// 若当前页是「仅家长/仅老师」的 tab 页，以页面为准并回写 storage，避免栏与页错位
+				const path = this.getCurrentPath()
+				if (this.parentOnlyPaths.indexOf(path) !== -1) {
+					this.userRole = 'parent'
+					uni.setStorageSync('userRole', 'parent')
+				} else if (this.teacherOnlyPaths.indexOf(path) !== -1) {
 					this.userRole = 'teacher'
+					uni.setStorageSync('userRole', 'teacher')
 				}
 			} catch (e) {
 				this.userRole = 'teacher'
@@ -150,8 +185,8 @@ export default {
 			const currentPage = pages[pages.length - 1]
 			const currentRoute = '/' + currentPage.route
 			
-			// 如果是 tabBar 页面之间的切换，使用 redirectTo
-			const tabBarPages = this.userRole === 'parent' 
+			// 使用与当前显示一致的 tab 集合（displayRole），避免切到错端
+			const tabBarPages = this.displayRole === 'parent'
 				? this.parentTabs.map(t => t.path)
 				: this.teacherTabs.map(t => t.path)
 			
@@ -218,8 +253,8 @@ export default {
 }
 
 .tabbar-icon {
-	width: 48rpx;
-	height: 48rpx;
+	width: 56rpx;
+	height: 56rpx;
 	display: flex;
 	align-items: center;
 	justify-content: center;

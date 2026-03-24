@@ -5,6 +5,7 @@ use app\BaseController;
 use app\model\ParentOrder;
 use app\model\TutorOrder;
 use app\model\Admin;
+use app\model\User;
 use app\service\EmailService;
 use think\facade\Db;
 use think\facade\Validate;
@@ -109,6 +110,7 @@ class Order extends BaseController
             $limit = $this->request->get('limit/d', 20);
             $isChannel = $this->request->get('is_channel', '');
             $adminId = $this->request->get('admin_id', ''); // 前端传递的admin_id参数
+            $keyword = trim((string) $this->request->get('keyword', ''));
             
             // 如果没有登录，返回空数据
             if (!$admin) {
@@ -124,10 +126,8 @@ class Order extends BaseController
                 ]);
             }
             
-            // 构建查询
-            $query = ParentOrder::with(['admin' => function($query) {
-                    $query->field('id,username,nickname');
-                }, 'teacher' => function($query) {
+            // 构建查询（不预加载 admin 关联，避免 ThinkPHP 在 admin_id=0 时错误返回第一条记录）
+            $query = ParentOrder::with(['teacher' => function($query) {
                     $query->field('id,name,phone');
                 }])
                 ->order('create_time', 'desc');
@@ -136,15 +136,59 @@ class Order extends BaseController
             if ($adminId) {
                 // 前端明确指定了admin_id，按指定的admin_id筛选
                 $query->where('admin_id', $adminId);
-            } elseif (!$this->isSuperAdmin()) {
-                // 非超级管理员且没有指定admin_id，只能查看归属于自己的订单
+            } elseif (!$this->canViewAllOrders()) {
+                // 非超级管理员/客服组长且没有指定admin_id，只能查看归属于自己的订单
                 $query->where('admin_id', $admin->id);
             }
-            // 超级管理员且没有指定admin_id，查看所有订单
+            // 超级管理员或客服组长且没有指定admin_id，查看所有订单
             
             // 筛选状态
             if ($status && $status !== 'all') {
                 $query->where('status', $status);
+            }
+            
+            // 关键词：家长电话、订单号、称呼、订单ID、归属管理员（昵称/登录名）
+            if ($keyword !== '') {
+                $like = '%' . addcslashes($keyword, '%_\\') . '%';
+                // 1) 匹配管理员（admin 表 nickname/username）
+                $adminIds = Admin::where(function ($aq) use ($like) {
+                    $aq->where('nickname', 'like', $like)->whereOr('username', 'like', $like);
+                })->column('id');
+                $adminOpenids = [];
+                if (!empty($adminIds)) {
+                    $adminOpenidValues = Admin::where('id', 'in', $adminIds)->column('openid');
+                    foreach ($adminOpenidValues as $openidValue) {
+                        $adminOpenids = array_merge($adminOpenids, Admin::splitOpenids($openidValue));
+                    }
+                    $adminOpenids = array_values(array_unique($adminOpenids));
+                }
+
+                // 2) 匹配分享者为普通用户（users 表 nickname/phone）
+                $shareUserOpenids = User::where(function ($uq) use ($like) {
+                    $uq->where('nickname', 'like', $like)->whereOr('phone', 'like', $like);
+                })->column('openid');
+
+                // 3) 通过 superior_openid 找到被该 openid 绑定的下级用户，再反查订单 user_id
+                $superiorOpenids = array_values(array_unique(array_filter(array_merge($adminOpenids, $shareUserOpenids))));
+                $userIdsBySuperior = [];
+                if (!empty($superiorOpenids)) {
+                    $userIdsBySuperior = User::where('superior_openid', 'in', $superiorOpenids)->column('id');
+                }
+
+                $query->where(function ($q) use ($like, $keyword, $adminIds, $userIdsBySuperior) {
+                    $q->where('parent_contact', 'like', $like)
+                        ->whereOr('order_no', 'like', $like)
+                        ->whereOr('parent_name', 'like', $like);
+                    if (preg_match('/^\d+$/', $keyword)) {
+                        $q->whereOr('id', '=', (int) $keyword);
+                    }
+                    if (!empty($adminIds)) {
+                        $q->whereOr('admin_id', 'in', $adminIds);
+                    }
+                    if (!empty($userIdsBySuperior)) {
+                        $q->whereOr('user_id', 'in', $userIdsBySuperior);
+                    }
+                });
             }
             
             // 分页查询
@@ -152,6 +196,85 @@ class Order extends BaseController
                 'list_rows' => $limit,
                 'page' => $page,
             ]);
+            
+            // 手动构建 admin，完全避免 ThinkPHP 关联在 admin_id=0 时错误返回第一条记录
+            $items = $result->items();
+            // 批量解析：通过下单用户 user_id → superior_openid → admin/user 显示归属
+            $userIds = [];
+            foreach ($items as $o) {
+                $uid = (int) ($o->getData('user_id') ?? 0);
+                if ($uid > 0) $userIds[] = $uid;
+            }
+            $userIds = array_values(array_unique($userIds));
+
+            $usersById = [];
+            $superiorOpenids = [];
+            if (!empty($userIds)) {
+                $uRows = User::field('id,openid,superior_openid,phone,nickname')->where('id', 'in', $userIds)->select();
+                foreach ($uRows as $ur) {
+                    $ua = $ur->toArray();
+                    $usersById[(int) $ua['id']] = $ua;
+                    $so = trim((string) ($ua['superior_openid'] ?? ''));
+                    if ($so !== '') $superiorOpenids[] = $so;
+                }
+            }
+            $superiorOpenids = array_values(array_unique(array_filter($superiorOpenids)));
+
+            $adminsByOpenid = [];
+            $shareUsersByOpenid = [];
+            if (!empty($superiorOpenids)) {
+                $aRows = Admin::queryByOpenidTokens($superiorOpenids)
+                    ->field('id,username,nickname,openid')
+                    ->select();
+                foreach ($aRows as $ar) {
+                    $aa = $ar->toArray();
+                    $openidTokens = Admin::splitOpenids($aa['openid'] ?? '');
+                    foreach ($openidTokens as $ok) {
+                        if (!isset($adminsByOpenid[$ok])) {
+                            $adminsByOpenid[$ok] = $aa;
+                        }
+                    }
+                }
+                $suRows = User::field('id,openid,phone,nickname')->where('openid', 'in', $superiorOpenids)->select();
+                foreach ($suRows as $sr) {
+                    $sa = $sr->toArray();
+                    $ok = trim((string) ($sa['openid'] ?? ''));
+                    if ($ok !== '') $shareUsersByOpenid[$ok] = $sa;
+                }
+            }
+
+            $list = [];
+            foreach ($items as $order) {
+                $arr = $order->toArray();
+                $rawAdminId = $order->getData('admin_id');
+                if ($rawAdminId > 0) {
+                    $admin = Admin::field('id,username,nickname')->find($rawAdminId);
+                    $arr['admin'] = $admin ? $admin->toArray() : null;
+                    $arr['admin_id'] = (int) $rawAdminId;
+                    $arr['owner_display'] = ($arr['admin'] && ($arr['admin']['nickname'] ?? '' || $arr['admin']['username'] ?? ''))
+                        ? (($arr['admin']['nickname'] ?? '') ?: ($arr['admin']['username'] ?? ''))
+                        : '-';
+                } else {
+                    $arr['admin'] = null;
+                    $arr['admin_id'] = 0;
+                    $arr['owner_display'] = '-';
+
+                    $uid = (int) ($order->getData('user_id') ?? 0);
+                    if ($uid > 0 && isset($usersById[$uid])) {
+                        $so = trim((string) ($usersById[$uid]['superior_openid'] ?? ''));
+                        if ($so !== '') {
+                            if (isset($adminsByOpenid[$so])) {
+                                $a = $adminsByOpenid[$so];
+                                $arr['owner_display'] = (string) (($a['nickname'] ?? '') ?: ($a['username'] ?? ''));
+                            } elseif (isset($shareUsersByOpenid[$so])) {
+                                $u = $shareUsersByOpenid[$so];
+                                $arr['owner_display'] = (string) (($u['nickname'] ?? '') ?: ($u['phone'] ?? '') ?: ('用户#' . ($u['id'] ?? '')));
+                            }
+                        }
+                    }
+                }
+                $list[] = $arr;
+            }
             
             // 禁用缓存
             header('Cache-Control: no-cache, no-store, must-revalidate');
@@ -161,7 +284,7 @@ class Order extends BaseController
             return json([
                 'success' => true,
                 'data' => [
-                    'list' => $result->items(),
+                    'list' => $list,
                     'total' => $result->total(),
                     'page' => $page,
                     'limit' => $limit
@@ -198,6 +321,7 @@ class Order extends BaseController
                         'pending' => 0,
                         'approved' => 0,
                         'rejected' => 0,
+                        'cancelled' => 0,
                         'channel' => 0
                     ],
                     'message' => '请先登录查看统计'
@@ -214,23 +338,26 @@ class Order extends BaseController
                 $pending = ParentOrder::where('admin_id', $adminId)->where('status', 'pending')->count();
                 $approved = ParentOrder::where('admin_id', $adminId)->where('status', 'approved')->count();
                 $rejected = ParentOrder::where('admin_id', $adminId)->where('status', 'rejected')->count();
-            } elseif ($this->isSuperAdmin()) {
-                // 超级管理员且没有指定admin_id，统计所有订单
+                $cancelled = ParentOrder::where('admin_id', $adminId)->where('status', 'cancelled')->count();
+            } elseif ($this->canViewAllOrders()) {
+                // 超级管理员或客服组长且没有指定admin_id，统计所有订单
                 $total = ParentOrder::count();
                 $pending = ParentOrder::where('status', 'pending')->count();
                 $approved = ParentOrder::where('status', 'approved')->count();
                 $rejected = ParentOrder::where('status', 'rejected')->count();
+                $cancelled = ParentOrder::where('status', 'cancelled')->count();
             } else {
                 // 非超级管理员且没有指定admin_id，只统计自己的订单
                 $total = ParentOrder::where('admin_id', $admin->id)->count();
                 $pending = ParentOrder::where('admin_id', $admin->id)->where('status', 'pending')->count();
                 $approved = ParentOrder::where('admin_id', $admin->id)->where('status', 'approved')->count();
                 $rejected = ParentOrder::where('admin_id', $admin->id)->where('status', 'rejected')->count();
+                $cancelled = ParentOrder::where('admin_id', $admin->id)->where('status', 'cancelled')->count();
             }
             
-            // 所有订单统计（仅超级管理员）
+            // 所有订单统计（超级管理员或客服组长）
             $allCount = 0;
-            if ($this->isSuperAdmin()) {
+            if ($this->canViewAllOrders()) {
                 $allCount = ParentOrder::count();
             }
             
@@ -248,6 +375,7 @@ class Order extends BaseController
                     'pending' => $pending,
                     'approved' => $approved,
                     'rejected' => $rejected,
+                    'cancelled' => $cancelled,
                     'channel' => 0          // 暂时返回0，等添加字段后再启用
                 ]
             ]);
@@ -273,18 +401,15 @@ class Order extends BaseController
                 return json(['code' => 401, 'message' => '请先登录']);
             }
             
-            // 超级管理员可以查看所有订单，其他管理员只能查看自己的订单
+            // 超级管理员、客服组长可查看所有订单，其他管理员只能查看自己的订单
             $query = ParentOrder::with([
                     'teacher' => function($query) {
                         $query->field('id,name,phone');
-                    },
-                    'admin' => function($query) {
-                        $query->field('id,username,nickname');
                     }
                 ])
                 ->where('id', $id);
             
-            if (!$this->isSuperAdmin()) {
+            if (!$this->canViewAllOrders()) {
                 $query->where('admin_id', $admin->id);
             }
             
@@ -294,10 +419,44 @@ class Order extends BaseController
                 return json(['code' => 404, 'message' => '订单不存在或无权访问']);
             }
             
+            $data = $order->toArray();
+            $rawAdminId = $order->getData('admin_id');
+            if ($rawAdminId > 0) {
+                $admin = Admin::field('id,username,nickname')->find($rawAdminId);
+                $data['admin'] = $admin ? $admin->toArray() : null;
+                $data['admin_id'] = (int) $rawAdminId;
+                $data['owner_display'] = ($data['admin'] && (($data['admin']['nickname'] ?? '') || ($data['admin']['username'] ?? '')))
+                    ? (($data['admin']['nickname'] ?? '') ?: ($data['admin']['username'] ?? ''))
+                    : '-';
+            } else {
+                $data['admin'] = null;
+                $data['admin_id'] = 0;
+                $data['owner_display'] = '-';
+
+                $uid = (int) ($order->getData('user_id') ?? 0);
+                if ($uid > 0) {
+                    $u = User::field('id,openid,superior_openid,phone,nickname')->find($uid);
+                    $so = trim((string) ($u->superior_openid ?? ''));
+                    if ($so !== '') {
+                        $a = Admin::queryByOpenidToken($so)
+                            ->field('id,username,nickname,openid')
+                            ->find();
+                        if ($a) {
+                            $data['owner_display'] = (string) (($a->nickname ?: '') ?: ($a->username ?: ''));
+                        } else {
+                            $su = User::field('id,openid,phone,nickname')->where('openid', $so)->find();
+                            if ($su) {
+                                $data['owner_display'] = (string) (($su->nickname ?: '') ?: ($su->phone ?: '') ?: ('用户#' . $su->id));
+                            }
+                        }
+                    }
+                }
+            }
+            
             return json([
                 'code' => 200,
                 'message' => '获取成功',
-                'data' => $order
+                'data' => $data
             ]);
             
         } catch (\Exception $e) {
@@ -318,10 +477,10 @@ class Order extends BaseController
                 return json(['code' => 401, 'message' => '请先登录']);
             }
             
-            // 查找订单（超级管理员可以操作所有订单）
+            // 查找订单（超级管理员、客服组长可以操作所有订单）
             $query = ParentOrder::where('id', $id);
             
-            if (!$this->isSuperAdmin()) {
+            if (!$this->canViewAllOrders()) {
                 $query->where('admin_id', $admin->id);
             }
             
@@ -334,10 +493,36 @@ class Order extends BaseController
             if ($order->status !== 'pending') {
                 return json(['code' => 400, 'message' => '订单状态不正确']);
             }
+
+            // 是否在审核通过时转换为家教单
+            // 兼容旧前端：未传参数时默认转换（保持原行为）
+            $convertToTutorRaw = $this->request->post('convert_to_tutor', 1);
+            $convertToTutor = in_array(
+                strtolower(trim((string) $convertToTutorRaw)),
+                ['1', 'true', 'yes', 'on'],
+                true
+            );
             
             // 开启事务
             Db::startTrans();
             try {
+                // 不转换：仅更新预约状态
+                if (!$convertToTutor) {
+                    $order->status = 'approved';
+                    $order->audit_time = date('Y-m-d H:i:s');
+                    $order->save();
+
+                    Db::commit();
+
+                    return json([
+                        'code' => 200,
+                        'message' => '审核通过，未生成家教单',
+                        'data' => [
+                            'tutor_id' => null
+                        ]
+                    ]);
+                }
+
                 // 获取下一个可用的ID（使用简单自增方式）
                 $maxId = TutorOrder::max('id') ?: 0;
                 $tutorId = $maxId + 1;
@@ -415,7 +600,8 @@ class Order extends BaseController
                 if ($order->admin_id > 0) {
                     $orderAdmin = \app\model\Admin::find($order->admin_id);
                     if ($orderAdmin && !empty($orderAdmin->openid)) {
-                        $tutorData['admin_openid'] = $orderAdmin->openid;
+                        $openidTokens = \app\model\Admin::splitOpenids($orderAdmin->openid);
+                        $tutorData['admin_openid'] = $openidTokens[0] ?? null;
                     }
                 }
                 
@@ -624,10 +810,10 @@ class Order extends BaseController
                 return json(['code' => 400, 'message' => '请输入拒绝原因']);
             }
             
-            // 查找订单（超级管理员可以操作所有订单）
+            // 查找订单（超级管理员、客服组长可以操作所有订单）
             $query = ParentOrder::where('id', $id);
             
-            if (!$this->isSuperAdmin()) {
+            if (!$this->canViewAllOrders()) {
                 $query->where('admin_id', $admin->id);
             }
             
@@ -682,34 +868,18 @@ class Order extends BaseController
                 return json(['code' => 404, 'message' => '订单不存在']);
             }
             
-            // 开启事务
-            Db::startTrans();
-            try {
-                // 如果订单已经转化为家教信息，也需要删除对应的家教信息
-                if ($order->tutor_id) {
-                    $tutorOrder = TutorOrder::find($order->tutor_id);
-                    if ($tutorOrder) {
-                        $tutorOrder->delete();
-                        trace('已删除关联的家教信息，ID: ' . $order->tutor_id, 'info');
-                    }
-                }
-                
-                // 删除预约订单
-                $order->delete();
-                
-                Db::commit();
-                
-                trace('订单删除成功，ID: ' . $id . '，操作员: ' . $admin->nickname, 'info');
-                
-                return json([
-                    'code' => 200,
-                    'message' => '订单删除成功'
-                ]);
-                
-            } catch (\Exception $e) {
-                Db::rollback();
-                throw $e;
-            }
+            // 软删除：不物理删除记录，只标记为已取消（status=cancelled），与已拒绝区分
+            $order->status = 'cancelled';
+            $order->reject_reason = '已由管理员取消';
+            $order->audit_time = date('Y-m-d H:i:s');
+            $order->save();
+            
+            trace('订单已标记为已取消（软删除），ID: ' . $id . '，操作员: ' . $admin->nickname, 'info');
+            
+            return json([
+                'code' => 200,
+                'message' => '订单已取消'
+            ]);
             
         } catch (\Exception $e) {
             trace('删除订单失败: ' . $e->getMessage(), 'error');
@@ -772,6 +942,15 @@ class Order extends BaseController
     {
         $admin = $this->getAdminInfo();
         return $admin && $admin->role === 'super_admin';
+    }
+    
+    /**
+     * 检查是否可以查看全部预约（超级管理员或客服组长，与前端 canViewAllOrders 一致）
+     */
+    private function canViewAllOrders()
+    {
+        $admin = $this->getAdminInfo();
+        return $admin && in_array($admin->role, ['super_admin', 'team_leader']);
     }
     
     /**
@@ -977,11 +1156,20 @@ class Order extends BaseController
             }
             
             $data = $this->request->post();
+            if (!is_array($data) || $data === []) {
+                $json = json_decode((string) $this->request->getContent(), true);
+                if (is_array($json)) {
+                    $data = $json;
+                }
+            }
+            if (!is_array($data)) {
+                $data = [];
+            }
             
-            // 查找订单（超级管理员可以操作所有订单）
+            // 查找订单（超级管理员、客服组长可编辑全部；普通客服仅能编辑归属自己的订单）
             $query = ParentOrder::where('id', $id);
             
-            if (!$this->isSuperAdmin()) {
+            if (!$this->canViewAllOrders()) {
                 $query->where('admin_id', $admin->id);
             }
             
@@ -1002,8 +1190,31 @@ class Order extends BaseController
                 ];
                 
                 foreach ($allowedFields as $field) {
-                    if (isset($data[$field])) {
+                    if (array_key_exists($field, $data)) {
                         $order->$field = $data[$field];
+                    }
+                }
+                
+                // 归属管理员：仅超级管理员、客服组长可修改
+                if ($this->canViewAllOrders() && array_key_exists('admin_id', $data)) {
+                    $newAid = (int) $data['admin_id'];
+                    if ($newAid <= 0) {
+                        $order->admin_id = 0;
+                    } else {
+                        $targetAdmin = Admin::where('id', $newAid)->where('status', 1)->find();
+                        if (!$targetAdmin) {
+                            Db::rollback();
+                            return json(['code' => 400, 'message' => '所选管理员不存在或已禁用']);
+                        }
+                        if ($admin->role === 'team_leader') {
+                            $allowedIds = Admin::where('leader_id', $admin->id)->where('status', 1)->column('id');
+                            $allowedIds[] = (int) $admin->id;
+                            if (!in_array($newAid, array_map('intval', $allowedIds), true)) {
+                                Db::rollback();
+                                return json(['code' => 403, 'message' => '仅能将订单归属给本组客服']);
+                            }
+                        }
+                        $order->admin_id = $newAid;
                     }
                 }
                 

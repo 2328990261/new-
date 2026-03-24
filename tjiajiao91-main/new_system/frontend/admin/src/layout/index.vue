@@ -39,6 +39,10 @@
             <el-icon><UserFilled /></el-icon>
             <template #title>教师管理</template>
           </el-menu-item>
+          <el-menu-item index="/applications">
+            <el-icon><DocumentCopy /></el-icon>
+            <template #title>投递管理</template>
+          </el-menu-item>
           <el-menu-item index="/admin">
             <el-icon><User /></el-icon>
             <template #title>管理员</template>
@@ -70,10 +74,6 @@
           <el-menu-item index="/payment-stats">
             <el-icon><TrendCharts /></el-icon>
             <template #title>支付统计</template>
-          </el-menu-item>
-          <el-menu-item index="/applications">
-            <el-icon><DocumentCopy /></el-icon>
-            <template #title>投递管理</template>
           </el-menu-item>
           <el-menu-item index="/city-lights">
             <el-icon><MapLocation /></el-icon>
@@ -120,6 +120,10 @@
           <el-icon><UserFilled /></el-icon>
           <template #title>教师管理</template>
         </el-menu-item>
+        <el-menu-item index="/applications">
+          <el-icon><DocumentCopy /></el-icon>
+          <template #title>投递管理</template>
+        </el-menu-item>
         <el-menu-item index="/admin">
           <el-icon><User /></el-icon>
           <template #title>管理员</template>
@@ -151,10 +155,6 @@
         <el-menu-item index="/payment-stats">
           <el-icon><TrendCharts /></el-icon>
           <template #title>支付统计</template>
-        </el-menu-item>
-        <el-menu-item index="/applications">
-          <el-icon><DocumentCopy /></el-icon>
-          <template #title>投递管理</template>
         </el-menu-item>
         <el-menu-item index="/city-lights">
           <el-icon><MapLocation /></el-icon>

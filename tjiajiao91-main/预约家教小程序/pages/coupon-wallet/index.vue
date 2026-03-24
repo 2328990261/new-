@@ -4,7 +4,7 @@
     <view class="custom-navbar" :style="{paddingTop: statusBarHeight + 'px'}">
       <view class="navbar-content">
         <view class="navbar-left" @click="goBack">
-          <text class="back-icon">←</text>
+          <text class="back-icon">‹</text>
         </view>
         <view class="navbar-title">我的卡包</view>
         <view class="navbar-right"></view>
@@ -31,20 +31,20 @@
         </view>
       </view>
 
-      <!-- 标签页 -->
+      <!-- 标签页（分享后自动领取，已去掉待领取） -->
       <view class="tabs">
         <view 
           class="tab-item" 
           :class="{ active: activeTab === 0 }"
           @click="switchTab(0)">
-          <text class="tab-text">待领取</text>
+          <text class="tab-text">已领取</text>
           <view v-if="activeTab === 0" class="tab-indicator"></view>
         </view>
         <view 
           class="tab-item" 
           :class="{ active: activeTab === 1 }"
           @click="switchTab(1)">
-          <text class="tab-text">已领取</text>
+          <text class="tab-text">待审核</text>
           <view v-if="activeTab === 1" class="tab-indicator"></view>
         </view>
         <view 
@@ -70,7 +70,8 @@
             class="coupon-item" 
             :class="getCouponClass(item.status)"
             v-for="item in couponList" 
-            :key="item.id">
+            :key="item.id"
+            @click="onCouponItemClick(item)">
             <view class="coupon-left">
               <view class="coupon-amount-wrapper">
                 <text class="coupon-currency">￥</text>
@@ -94,22 +95,24 @@
             <view class="coupon-right">
               <view class="coupon-info">
                 <text class="coupon-title">{{ getCouponTitle(item) }}</text>
+                <text class="coupon-code" v-if="item.coupon_code">券码：{{ item.coupon_code }}</text>
                 <text class="coupon-source">来源：{{ getSourceText(item.source) }}</text>
                 <text class="coupon-time">{{ getTimeText(item) }}</text>
                 <text class="coupon-expire" v-if="item.expire_time">
                   有效期至：{{ formatDate(item.expire_time) }}
                 </text>
+                <text class="coupon-redeem-note" v-if="item.redeem_note">
+                  审核备注：{{ item.redeem_note }}
+                </text>
+                <text class="coupon-use-tip" v-if="item.status === 1 && !teacherCertified">仅认证老师可用</text>
               </view>
               
-              <view class="coupon-action">
-                <button 
-                  v-if="item.status === 0" 
-                  class="receive-btn"
-                  @click="receiveCoupon(item.id)">
-                  立即领取
-                </button>
-                <view v-else-if="item.status === 1" class="status-badge received">
+              <view class="coupon-action" @click.stop>
+                <view v-if="item.status === 1" class="status-badge received">
                   <text>已领取</text>
+                </view>
+                <view v-else-if="item.status === 4" class="status-badge pending-review">
+                  <text>待审核</text>
                 </view>
                 <view v-else-if="item.status === 2" class="status-badge used">
                   <text>已使用</text>
@@ -139,7 +142,20 @@
         </view>
         
         <view v-else class="empty-state">
-          <view class="empty-icon">🎫</view>
+          <view class="empty-coupon-pic">
+            <view class="empty-coupon-left">
+              <text class="empty-coupon-currency">￥</text>
+              <text class="empty-coupon-amount">20</text>
+            </view>
+            <view class="empty-coupon-divider">
+              <view class="empty-circle top"></view>
+              <view class="empty-dashed"></view>
+              <view class="empty-circle bottom"></view>
+            </view>
+            <view class="empty-coupon-right">
+              <text class="empty-coupon-desc">优惠券</text>
+            </view>
+          </view>
           <text class="empty-text">{{ getEmptyText() }}</text>
           <button class="go-invite-btn" @click="goToInvitation">
             去邀请好友
@@ -157,14 +173,15 @@ export default {
   data() {
     return {
       statusBarHeight: 0,
-      activeTab: 0, // 0-待领取, 1-已领取, 2-已使用, 3-已过期
+      activeTab: 0, // 0-已领取, 1-待审核, 2-已使用, 3-已过期（分享后自动领取，已去掉待领取）
       stats: {
         totalCoupons: 0,
         availableCoupons: 0,
         usedCoupons: 0
       },
       couponList: [],
-      allCoupons: [] // 存储所有优惠券
+      allCoupons: [], // 存储所有优惠券
+      teacherCertified: false // 是否已通过简历认证成为老师（仅老师可使用优惠券）
     }
   },
   
@@ -208,7 +225,7 @@ export default {
           method: 'GET',
           data: {
             openid: openid,
-            status: this.activeTab === 0 ? '' : this.activeTab - 1
+            status: '' // 拉取全部，由前端按 tab 筛选，避免「已使用」等 tab 显示为空
           },
           header: {
             'Content-Type': 'application/json',
@@ -220,6 +237,7 @@ export default {
         
         if (res.data.code === 200) {
           this.allCoupons = res.data.data || []
+          this.teacherCertified = !!res.data.teacher_certified
           this.calculateStats()
           this.filterCoupons()
         } else {
@@ -240,7 +258,7 @@ export default {
     
     calculateStats() {
       this.stats.totalCoupons = this.allCoupons.length
-      this.stats.availableCoupons = this.allCoupons.filter(c => c.status === 0 || c.status === 1).length
+      this.stats.availableCoupons = this.allCoupons.filter(c => c.status === 1).length
       this.stats.usedCoupons = this.allCoupons.filter(c => c.status === 2).length
     },
     
@@ -250,9 +268,10 @@ export default {
     },
     
     filterCoupons() {
-      // 根据activeTab筛选优惠券
-      // 0-待领取(status=0), 1-已领取(status=1), 2-已使用(status=2), 3-已过期(status=3)
-      this.couponList = this.allCoupons.filter(c => c.status === this.activeTab)
+      // tab 与 status 对应：0 已领取(1), 1 待审核(4), 2 已使用(2), 3 已过期(3)
+      const statusByTab = [1, 4, 2, 3]
+      const s = statusByTab[this.activeTab]
+      this.couponList = this.allCoupons.filter(c => c.status === s)
     },
     
     async receiveCoupon(couponId) {
@@ -304,7 +323,8 @@ export default {
         0: 'status-pending',
         1: 'status-received',
         2: 'status-used',
-        3: 'status-expired'
+        3: 'status-expired',
+        4: 'status-pending-review'
       }
       return classes[status] || ''
     },
@@ -338,6 +358,8 @@ export default {
         return '创建时间：' + this.formatDate(item.create_time)
       } else if (item.status === 1) {
         return '领取时间：' + this.formatDate(item.receive_time)
+      } else if (item.status === 4) {
+        return '申请时间：' + this.formatDate(item.update_time || item.create_time)
       } else if (item.status === 2) {
         return '使用时间：' + this.formatDate(item.redeem_time)
       } else if (item.status === 3) {
@@ -357,8 +379,8 @@ export default {
     
     getEmptyText() {
       const texts = {
-        0: '暂无待领取的优惠券',
-        1: '暂无已领取的优惠券',
+        0: '暂无已领取的优惠券',
+        1: '暂无待审核的优惠券',
         2: '暂无已使用的优惠券',
         3: '暂无已过期的优惠券'
       }
@@ -369,6 +391,73 @@ export default {
       uni.navigateTo({
         url: '/pages/invitation/index'
       })
+    },
+
+    onCouponItemClick(item) {
+      if (item.status === 0) return
+      if (item.status === 2 || item.status === 3 || item.status === 4) return
+      if (item.status === 1) {
+        // 仅简历认证通过成为老师后才可使用优惠券
+        if (!this.teacherCertified) {
+          uni.showModal({
+            title: '无法使用',
+            content: '仅简历认证通过成为老师后可使用该优惠券。',
+            showCancel: false,
+            confirmText: '知道了'
+          })
+          return
+        }
+        uni.showModal({
+          title: '使用优惠券',
+          content: '是否使用该优惠券？',
+          confirmText: '是',
+          cancelText: '否',
+          success: (res) => {
+            if (res.confirm) {
+              this.useCoupon(item.id)
+            }
+          }
+        })
+      }
+    },
+
+    async useCoupon(couponId) {
+      try {
+        uni.showLoading({ title: '提交中...' })
+        const res = await uni.request({
+          url: envConfig.API_BASE_URL + '/api/invitation/use-coupon',
+          method: 'POST',
+          header: {
+            'Content-Type': 'application/json',
+            'token': uni.getStorageSync('token') || ''
+          },
+          data: { coupon_id: couponId }
+        })
+        uni.hideLoading()
+        if (res.data.code === 200) {
+          uni.showModal({
+            title: '已提交',
+            content: '已提交人工兑换申请，等待客服审核后即可完成使用。优惠券仅限本人使用，不得提现、转让。',
+            showCancel: false,
+            confirmText: '知道了',
+            success: () => {
+              this.loadCoupons()
+            }
+          })
+        } else {
+          uni.showToast({
+            title: res.data.message || '使用失败',
+            icon: 'none'
+          })
+        }
+      } catch (error) {
+        uni.hideLoading()
+        console.error('使用优惠券失败', error)
+        uni.showToast({
+          title: '使用失败',
+          icon: 'none'
+        })
+      }
     }
   }
 }
@@ -404,9 +493,9 @@ export default {
       align-items: center;
       
       .back-icon {
-        font-size: 44rpx;
-        color: #fff;
-        font-weight: bold;
+        font-size: 48rpx;
+        color: #FFFFFF;
+        font-weight: 300;
       }
     }
     
@@ -430,16 +519,16 @@ export default {
   padding-bottom: 40rpx;
 }
 
-// 统计卡片
+// 统计卡片（与小程序绿色主题一致）
 .stats-card {
-  background: linear-gradient(135deg, #FF8C42 0%, #FF6B35 100%);
+  background: linear-gradient(135deg, #7FDFB8 0%, #52C9A6 100%);
   border-radius: 24rpx;
   padding: 40rpx 30rpx;
   display: flex;
   align-items: center;
   justify-content: space-around;
   margin-bottom: 30rpx;
-  box-shadow: 0 8rpx 24rpx rgba(255, 107, 53, 0.25);
+  box-shadow: 0 8rpx 24rpx rgba(82, 201, 166, 0.3);
   
   .stats-item {
     display: flex;
@@ -453,7 +542,7 @@ export default {
       margin-bottom: 8rpx;
       
       &.highlight {
-        color: #FFE4B5;
+        color: rgba(255, 255, 255, 0.95);
       }
       
       &.used {
@@ -498,7 +587,7 @@ export default {
     
     &.active {
       .tab-text {
-        color: #FF6B35;
+        color: #52C9A6;
         font-weight: bold;
       }
     }
@@ -510,7 +599,7 @@ export default {
       transform: translateX(-50%);
       width: 40rpx;
       height: 6rpx;
-      background: linear-gradient(135deg, #FF8C42 0%, #FF6B35 100%);
+      background: linear-gradient(135deg, #7FDFB8 0%, #52C9A6 100%);
       border-radius: 3rpx;
     }
   }
@@ -531,39 +620,42 @@ export default {
     &.status-expired {
       opacity: 0.6;
     }
+    &.status-pending-review {
+      opacity: 0.85;
+    }
     
     .coupon-left {
-      width: 200rpx;
-      background: linear-gradient(135deg, #FF8C42 0%, #FF6B35 100%);
+      width: 180rpx;
+      background: linear-gradient(135deg, #7FDFB8 0%, #52C9A6 100%);
       display: flex;
       flex-direction: column;
       align-items: center;
       justify-content: center;
-      padding: 30rpx 20rpx;
+      padding: 20rpx 16rpx;
       position: relative;
       
       .coupon-amount-wrapper {
         display: flex;
         align-items: baseline;
-        margin-bottom: 8rpx;
+        margin-bottom: 4rpx;
         
         .coupon-currency {
-          font-size: 32rpx;
+          font-size: 28rpx;
           color: #fff;
           font-weight: bold;
         }
         
         .coupon-amount {
-          font-size: 56rpx;
+          font-size: 48rpx;
           color: #fff;
           font-weight: bold;
         }
       }
       
       .coupon-type {
-        font-size: 22rpx;
+        font-size: 20rpx;
         color: rgba(255, 255, 255, 0.9);
-        margin-bottom: 8rpx;
+        margin-bottom: 4rpx;
       }
       
       .coupon-tag {
@@ -623,7 +715,7 @@ export default {
     
     .coupon-right {
       flex: 1;
-      padding: 24rpx;
+      padding: 18rpx 20rpx;
       display: flex;
       flex-direction: column;
       justify-content: space-between;
@@ -631,59 +723,78 @@ export default {
       .coupon-info {
         .coupon-title {
           display: block;
-          font-size: 30rpx;
+          font-size: 28rpx;
           font-weight: bold;
           color: #303133;
-          margin-bottom: 8rpx;
+          margin-bottom: 6rpx;
+        }
+
+        .coupon-code {
+          display: block;
+          font-size: 20rpx;
+          color: #606266;
+          margin-bottom: 3rpx;
         }
         
         .coupon-source {
           display: block;
-          font-size: 24rpx;
+          font-size: 22rpx;
           color: #909399;
-          margin-bottom: 6rpx;
+          margin-bottom: 4rpx;
         }
         
         .coupon-time {
           display: block;
-          font-size: 22rpx;
+          font-size: 20rpx;
           color: #C0C4CC;
-          margin-bottom: 6rpx;
+          margin-bottom: 4rpx;
         }
         
         .coupon-expire {
           display: block;
-          font-size: 22rpx;
+          font-size: 20rpx;
           color: #F56C6C;
+        }
+        .coupon-redeem-note {
+          display: block;
+          font-size: 20rpx;
+          color: #606266;
+          margin-top: 4rpx;
+        }
+        .coupon-use-tip {
+          display: block;
+          font-size: 20rpx;
+          color: #52C9A6;
+          margin-top: 4rpx;
         }
       }
       
       .coupon-action {
-        margin-top: 16rpx;
+        margin-top: 12rpx;
         
         .receive-btn {
-          width: 160rpx;
-          height: 56rpx;
-          background: linear-gradient(135deg, #FF8C42 0%, #FF6B35 100%);
+          width: 140rpx;
+          height: 48rpx;
+          background: linear-gradient(135deg, #7FDFB8 0%, #52C9A6 100%);
           color: #fff;
-          font-size: 24rpx;
-          border-radius: 28rpx;
+          font-size: 22rpx;
+          border-radius: 24rpx;
           border: none;
           display: flex;
           align-items: center;
           justify-content: center;
-          box-shadow: 0 4rpx 12rpx rgba(255, 107, 53, 0.3);
+          box-shadow: 0 4rpx 12rpx rgba(82, 201, 166, 0.3);
         }
         
         .status-badge {
           display: inline-block;
-          padding: 8rpx 20rpx;
-          border-radius: 20rpx;
-          font-size: 22rpx;
+          padding: 6rpx 16rpx;
+          border-radius: 16rpx;
+          font-size: 20rpx;
           
           &.received {
-            background: #E1F3D8;
-            color: #67C23A;
+            background: #E8F8F2;
+            color: #52C9A6;
           }
           
           &.used {
@@ -719,15 +830,76 @@ export default {
   }
 }
 
-// 空状态
+// 空状态：用优惠券造型图（和列表里券卡一致）
 .empty-state {
-  padding: 120rpx 0;
+  padding: 80rpx 32rpx 60rpx;
   text-align: center;
   
-  .empty-icon {
-    font-size: 120rpx;
-    margin-bottom: 20rpx;
-    opacity: 0.3;
+  .empty-coupon-pic {
+    width: 360rpx;
+    height: 160rpx;
+    margin: 0 auto 32rpx;
+    display: flex;
+    border-radius: 16rpx;
+    overflow: hidden;
+    box-shadow: 0 8rpx 24rpx rgba(0, 0, 0, 0.08);
+    background: #fff;
+  }
+  
+  .empty-coupon-left {
+    width: 140rpx;
+    background: linear-gradient(135deg, #7FDFB8 0%, #52C9A6 100%);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    .empty-coupon-currency {
+      font-size: 28rpx;
+      color: rgba(255, 255, 255, 0.95);
+      font-weight: bold;
+    }
+    .empty-coupon-amount {
+      font-size: 48rpx;
+      color: #fff;
+      font-weight: bold;
+    }
+  }
+  
+  .empty-coupon-divider {
+    width: 16rpx;
+    position: relative;
+    background: #fff;
+    .empty-circle {
+      position: absolute;
+      width: 16rpx;
+      height: 16rpx;
+      background: #F5F7FA;
+      border-radius: 50%;
+      left: 0;
+      &.top { top: -8rpx; }
+      &.bottom { bottom: -8rpx; }
+    }
+    .empty-dashed {
+      position: absolute;
+      left: 50%;
+      top: 16rpx;
+      bottom: 16rpx;
+      width: 2rpx;
+      background-image: linear-gradient(to bottom, #E4E7ED 0%, #E4E7ED 50%, transparent 50%);
+      background-size: 2rpx 8rpx;
+      background-repeat: repeat-y;
+    }
+  }
+  
+  .empty-coupon-right {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: #FAFAFA;
+    .empty-coupon-desc {
+      font-size: 26rpx;
+      color: #909399;
+    }
   }
   
   .empty-text {
@@ -740,13 +912,21 @@ export default {
   .go-invite-btn {
     width: 240rpx;
     height: 72rpx;
-    background: linear-gradient(135deg, #FF8C42 0%, #FF6B35 100%);
+    background: linear-gradient(135deg, #7FDFB8 0%, #52C9A6 100%);
     color: #fff;
     font-size: 28rpx;
     border-radius: 36rpx;
     border: none;
     margin: 0 auto;
-    box-shadow: 0 8rpx 20rpx rgba(255, 107, 53, 0.25);
+    padding: 0;
+    box-shadow: 0 8rpx 20rpx rgba(82, 201, 166, 0.3);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    line-height: 1;
+  }
+  .go-invite-btn::after {
+    border: none;
   }
 }
 </style>

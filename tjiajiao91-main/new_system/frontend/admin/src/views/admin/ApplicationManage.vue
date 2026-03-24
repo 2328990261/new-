@@ -1,40 +1,26 @@
 <template>
   <div class="application-manage">
-    <!-- 统计卡片 -->
-    <el-row :gutter="16" class="stats-row">
-      <el-col :span="6">
-        <el-card shadow="hover" class="stat-card" @click="handleStatClick('')">
-          <div class="stat-content">
-            <div class="stat-label">全部投递</div>
-            <div class="stat-value">{{ statistics.total || 0 }}</div>
-          </div>
-        </el-card>
-      </el-col>
-      <el-col :span="6">
-        <el-card shadow="hover" class="stat-card pending" @click="handleStatClick('pending')">
-          <div class="stat-content">
-            <div class="stat-label">待审核</div>
-            <div class="stat-value">{{ statistics.pending || 0 }}</div>
-          </div>
-        </el-card>
-      </el-col>
-      <el-col :span="6">
-        <el-card shadow="hover" class="stat-card success" @click="handleStatClick('approved')">
-          <div class="stat-content">
-            <div class="stat-label">已通过</div>
-            <div class="stat-value">{{ statistics.approved || 0 }}</div>
-          </div>
-        </el-card>
-      </el-col>
-      <el-col :span="6">
-        <el-card shadow="hover" class="stat-card danger" @click="handleStatClick('rejected')">
-          <div class="stat-content">
-            <div class="stat-label">已拒绝</div>
-            <div class="stat-value">{{ statistics.rejected || 0 }}</div>
-          </div>
-        </el-card>
-      </el-col>
-    </el-row>
+    <!-- 主Tab：我的投递 / 全部投递（样式对齐线索管理） -->
+    <div class="scope-tabs">
+      <div
+        class="scope-tab-item"
+        :class="{ active: viewScope === 'mine' }"
+        @click="handleScopeClick('mine')"
+      >
+        <el-icon class="scope-tab-icon"><User /></el-icon>
+        <span class="scope-tab-text">我的投递</span>
+        <span class="scope-tab-badge">{{ statistics.mine || 0 }}</span>
+      </div>
+      <div
+        class="scope-tab-item"
+        :class="{ active: viewScope === 'all' }"
+        @click="handleScopeClick('all')"
+      >
+        <el-icon class="scope-tab-icon"><List /></el-icon>
+        <span class="scope-tab-text">全部投递</span>
+        <span class="scope-tab-badge">{{ statistics.total || 0 }}</span>
+      </div>
+    </div>
 
     <!-- 主内容卡片 -->
     <el-card class="main-card">
@@ -83,7 +69,7 @@
             <span class="tab-label">
               <el-icon><List /></el-icon>
               全部
-              <el-badge :value="statistics.total" :max="999" class="tab-badge" />
+              <el-badge :value="viewScope === 'mine' ? statistics.mine : statistics.total" :max="999" class="tab-badge" />
             </span>
           </template>
         </el-tab-pane>
@@ -92,7 +78,7 @@
             <span class="tab-label">
               <el-icon><Clock /></el-icon>
               待审核
-              <el-badge :value="statistics.pending" :max="999" class="tab-badge" type="warning" />
+              <el-badge :value="viewScope === 'mine' ? (statistics.mine_pending || 0) : statistics.pending" :max="999" class="tab-badge" type="warning" />
             </span>
           </template>
         </el-tab-pane>
@@ -101,7 +87,7 @@
             <span class="tab-label">
               <el-icon><CircleCheck /></el-icon>
               已通过
-              <el-badge :value="statistics.approved" :max="999" class="tab-badge" type="success" />
+              <el-badge :value="viewScope === 'mine' ? (statistics.mine_approved || 0) : statistics.approved" :max="999" class="tab-badge" type="success" />
             </span>
           </template>
         </el-tab-pane>
@@ -110,7 +96,7 @@
             <span class="tab-label">
               <el-icon><CircleClose /></el-icon>
               已拒绝
-              <el-badge :value="statistics.rejected" :max="999" class="tab-badge" type="danger" />
+              <el-badge :value="viewScope === 'mine' ? (statistics.mine_rejected || 0) : statistics.rejected" :max="999" class="tab-badge" type="danger" />
             </span>
           </template>
         </el-tab-pane>
@@ -315,7 +301,7 @@
           <el-descriptions-item label="微信号">{{ teacherResume.wechat_id || '' }}</el-descriptions-item>
           <el-descriptions-item label="微信昵称">{{ teacherResume.wechat_nickname || '' }}</el-descriptions-item>
           <el-descriptions-item label="籍贯">{{ teacherResume.hometown || '' }}</el-descriptions-item>
-          <el-descriptions-item label="出生年份">{{ teacherResume.birth_year || '' }}</el-descriptions-item>
+          <el-descriptions-item label="出生年月">{{ teacherResume.birth_date || '' }}</el-descriptions-item>
           <el-descriptions-item label="教龄">{{ teacherResume.teaching_years ? teacherResume.teaching_years + '年' : '' }}</el-descriptions-item>
         </el-descriptions>
 
@@ -957,7 +943,7 @@
 import { ref, reactive, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Search, RefreshLeft, Lock, Location, Plus, Close, List, Clock, CircleCheck, CircleClose } from '@element-plus/icons-vue'
+import { Search, RefreshLeft, Lock, Location, Plus, Close, List, User, Clock, CircleCheck, CircleClose } from '@element-plus/icons-vue'
 import { 
   getApplicationList, 
   getApplicationDetail, 
@@ -973,6 +959,7 @@ const router = useRouter()
 // 数据
 const loading = ref(false)
 const activeTab = ref('all')
+const viewScope = ref('mine') // mine=我的投递, all=全部投递（对齐家教信息“我的订单”筛选逻辑）
 const applicationList = ref([])
 const currentPage = ref(1)
 const pageSize = ref(20)
@@ -980,10 +967,14 @@ const total = ref(0)
 const selectedRows = ref([])
 
 const statistics = reactive({
+  mine: 0,
   total: 0,
   pending: 0,
   approved: 0,
-  rejected: 0
+  rejected: 0,
+  mine_pending: 0,
+  mine_approved: 0,
+  mine_rejected: 0
 })
 
 const searchForm = reactive({
@@ -1026,7 +1017,8 @@ const loadData = async () => {
     loading.value = true
     const params = {
       page: currentPage.value,
-      page_size: pageSize.value
+      page_size: pageSize.value,
+      view_scope: viewScope.value
     }
     
     // 添加筛选条件
@@ -1086,6 +1078,14 @@ const handleReset = () => {
   searchForm.dateRange = null
   currentPage.value = 1
   loadData()
+}
+
+// 顶部统计卡片：我的投递 / 全部投递
+const handleScopeClick = (scope) => {
+  viewScope.value = scope
+  currentPage.value = 1
+  loadData()
+  loadStatistics()
 }
 
 const handleView = (row) => {
@@ -1215,25 +1215,6 @@ const handleSelectionChange = (selection) => {
 
 const clearSelection = () => {
   selectedRows.value = []
-}
-
-// 统计卡片点击
-const handleStatClick = (status) => {
-  if (status === '') {
-    activeTab.value = 'all'
-    searchForm.status = ''
-  } else if (status === 'pending') {
-    activeTab.value = 'pending'
-    searchForm.status = 'pending'
-  } else if (status === 'approved') {
-    activeTab.value = 'approved'
-    searchForm.status = 'approved'
-  } else if (status === 'rejected') {
-    activeTab.value = 'rejected'
-    searchForm.status = 'rejected'
-  }
-  currentPage.value = 1
-  loadData()
 }
 
 // 查看简历
@@ -1570,45 +1551,69 @@ onMounted(() => {
   padding: 20px;
 }
 
-.stats-row {
+/* 主Tab：我的投递/全部投递（与线索管理 我的线索/全部线索 同款样式） */
+.scope-tabs {
+  display: flex;
+  gap: 12px;
   margin-bottom: 20px;
+  padding: 0;
 }
 
-.stat-card {
+.scope-tab-item {
+  flex: 1;
+  height: 48px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border-radius: 8px;
+  border: 2px solid #e4e7ed;
+  background: white;
   cursor: pointer;
-  transition: transform 0.2s;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  user-select: none;
 }
 
-.stat-card:hover {
+.scope-tab-item:hover {
+  border-color: #5B8FF9;
   transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(91, 143, 249, 0.2);
 }
 
-.stat-card.pending {
-  border-left: 4px solid #E6A23C;
+.scope-tab-item.active {
+  background: #5B8FF9;
+  border-color: #5B8FF9;
+  color: white;
+  box-shadow: 0 4px 16px rgba(91, 143, 249, 0.3);
+  transform: translateY(0);
 }
 
-.stat-card.success {
-  border-left: 4px solid #67C23A;
+.scope-tab-icon {
+  font-size: 20px;
+  transition: transform 0.3s;
 }
 
-.stat-card.danger {
-  border-left: 4px solid #F56C6C;
+.scope-tab-item.active .scope-tab-icon {
+  transform: scale(1.1);
 }
 
-.stat-content {
+.scope-tab-text {
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.scope-tab-badge {
+  padding: 2px 8px;
+  border-radius: 10px;
+  font-size: 12px;
+  font-weight: 600;
+  background: rgba(0, 0, 0, 0.1);
+  min-width: 24px;
   text-align: center;
 }
 
-.stat-label {
-  font-size: 14px;
-  color: #909399;
-  margin-bottom: 8px;
-}
-
-.stat-value {
-  font-size: 28px;
-  font-weight: 600;
-  color: #303133;
+.scope-tab-item.active .scope-tab-badge {
+  background: rgba(255, 255, 255, 0.3);
 }
 
 .main-card {

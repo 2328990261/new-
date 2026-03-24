@@ -35,8 +35,7 @@
 			"path": "pages/step-booking/index",
 			"style": {
 				"navigationBarTitleText": "预约家教",
-				"navigationBarBackgroundColor": "#ffffff",
-				"navigationBarTextStyle": "black",
+				"navigationStyle": "custom",
 				"backgroundColor": "#F5F7FA",
 				"backgroundColorTop": "#FFFFFF",
 				"backgroundColorBottom": "#F5F7FA"
@@ -219,6 +218,15 @@
 			}
 		},
 		{
+			"path": "pages/profile-settings/index",
+			"style": {
+				"navigationStyle": "custom",
+				"backgroundColor": "#7FDFB8",
+				"backgroundColorTop": "#7FDFB8",
+				"backgroundColorBottom": "#F5F7FA"
+			}
+		},
+		{
 			"path": "pages/teaching-info/index",
 			"style": {
 				"navigationStyle": "custom",
@@ -234,6 +242,17 @@
 				"backgroundColor": "#87CEEB",
 				"backgroundColorTop": "#87CEEB",
 				"backgroundColorBottom": "#F0F8FF"
+			}
+		},
+		{
+			"path": "pages/invite-landing/index",
+			"style": {
+				"navigationBarTitleText": "好友邀请",
+				"navigationBarBackgroundColor": "#7FDFB8",
+				"navigationBarTextStyle": "white",
+				"backgroundColor": "#F5F7FA",
+				"backgroundColorTop": "#7FDFB8",
+				"backgroundColorBottom": "#F5F7FA"
 			}
 		},
 		{

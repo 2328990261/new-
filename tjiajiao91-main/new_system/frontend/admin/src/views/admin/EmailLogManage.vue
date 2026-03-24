@@ -176,7 +176,22 @@
     </el-card>
 
     <!-- 详情对话框 -->
-    <el-dialog v-model="detailVisible" title="邮件日志详情" width="800px">
+    <el-dialog v-model="detailVisible" width="800px">
+      <template #header>
+        <div class="dialog-header">
+          <span>邮件日志详情</span>
+          <el-button
+            v-if="currentLog"
+            type="primary"
+            text
+            size="small"
+            @click="handleCopyDetail"
+          >
+            <el-icon><DocumentCopy /></el-icon>
+            复制
+          </el-button>
+        </div>
+      </template>
       <el-descriptions v-if="currentLog" :column="2" border>
         <el-descriptions-item label="日志ID">{{ currentLog.id }}</el-descriptions-item>
         <el-descriptions-item label="邮件类型">
@@ -218,7 +233,8 @@ import {
   Refresh, 
   Delete, 
   View,
-  RefreshRight
+  RefreshRight,
+  DocumentCopy
 } from '@element-plus/icons-vue'
 import {
   getEmailLogList,
@@ -334,6 +350,56 @@ const handleViewDetail = async (row) => {
     }
   } catch (error) {
     ElMessage.error('加载详情失败')
+  }
+}
+
+// 复制详情
+const stripHtml = (html) => {
+  if (!html) return ''
+  return html
+    .replace(/<[^>]+>/g, '')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&amp;/g, '&')
+}
+
+const handleCopyDetail = async () => {
+  if (!currentLog.value) return
+
+  const log = currentLog.value
+  const textParts = [
+    '邮件日志详情',
+    `邮件类型：${log.email_type_text ?? ''}`,
+    `收件人邮箱：${log.recipient_email ?? ''}`,
+    `收件人姓名：${log.recipient_name ?? ''}`,
+    `邮件主题：${log.subject ?? ''}`,
+    `发送状态：${log.status_text ?? ''}`,
+    `发送时间：${log.sent_at ?? ''}`,
+    `创建时间：${log.created_at ?? ''}`,
+    log.error_message ? `错误信息：${log.error_message}` : '',
+    '',
+    '邮件内容：',
+    stripHtml(log.body || '')
+  ].filter(Boolean)
+
+  const text = textParts.join('\n')
+
+  try {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      await navigator.clipboard.writeText(text)
+    } else {
+      const textarea = document.createElement('textarea')
+      textarea.value = text
+      textarea.style.position = 'fixed'
+      textarea.style.opacity = '0'
+      document.body.appendChild(textarea)
+      textarea.select()
+      document.execCommand('copy')
+      document.body.removeChild(textarea)
+    }
+    ElMessage.success('已复制到剪贴板')
+  } catch (error) {
+    console.error('复制失败', error)
+    ElMessage.error('复制失败，请手动选择文本')
   }
 }
 
@@ -572,6 +638,12 @@ onMounted(() => {
   padding: 10px;
   background: #f5f7fa;
   border-radius: 4px;
+}
+
+.dialog-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
 }
 
 @media (max-width: 768px) {

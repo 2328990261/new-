@@ -25,9 +25,11 @@
 				</view>
 			</view>
 			
-			<!-- 审核备注（仅在未通过时显示） -->
-			<view v-if="reviewStatus === 'rejected' && resumeData.review_note" class="review-note-card">
-				<text class="review-note-inline">审核备注：{{ resumeData.review_note }}</text>
+            <!-- 审核备注（只要有备注就显示，无论通过或拒绝） -->
+            <view v-if="resumeData.review_note" class="review-note-card">
+				<text class="review-note-inline">
+					审核备注：{{ resumeData.review_note }}
+				</text>
 			</view>
 
 			<!-- 个人信息 -->
@@ -301,7 +303,25 @@ export default {
 			this.loadError = ''
 			
 			try {
-				const res = await teacherRegisterApi.getTeacherDetail(teacherId)
+				const userInfo = uni.getStorageSync('userInfo') || {}
+				let res = null
+				
+				// 编辑/重提场景优先拉取完整资料（含联系方式）；
+				// 失败时回退到公开详情，避免页面完全不可用。
+				try {
+					res = await teacherRegisterApi.getMyProfile({
+						teacher_id: teacherId,
+						openid: userInfo.openid || '',
+						phone: userInfo.phone || ''
+					})
+				} catch (e) {
+					// ignore and fallback
+				}
+				
+				if (!res || !res.success || !res.data) {
+					res = await teacherRegisterApi.getTeacherDetail(teacherId)
+				}
+				
 				console.log('教师数据响应:', res)
 				
 				if (res.success && res.data) {
@@ -321,14 +341,21 @@ export default {
 						teaching_years: teacher.teaching_years || '',
 						hometown: teacher.hometown || '',
 						birth_date: teacher.birth_date || '',
+						location_province: teacher.location_province || '',
 						location_city: teacher.location_city || '',
 						location_district: teacher.location_district || '',
 						location_address: teacher.location_address || '',
+						location_longitude: teacher.location_longitude || '',
+						location_latitude: teacher.location_latitude || '',
 						self_intro: teacher.self_intro || '',
 						experiences: teacher.experiences || [],
 						personal_advantage: teacher.personal_advantage || '',
 						advantage_tags: teacher.advantage_tags || [],
 						teaching_photos: teacher.teaching_photos || [],
+						id_card_front: teacher.id_card_front || '',
+						id_card_back: teacher.id_card_back || '',
+						education_certificate: teacher.education_certificate || '',
+						teacher_certificate: teacher.teacher_certificate || '',
 						review_note: teacher.review_note || '' // 审核备注
 					}
 					console.log('简历数据已加载:', this.resumeData)
@@ -492,6 +519,7 @@ export default {
 			console.log('[预览页面] teacherId:', this.teacherId)
 			console.log('[预览页面] 当前简历数据:', JSON.stringify(this.resumeData).substring(0, 300))
 			
+			const certNote = '请在认证材料中身份证，学历证明，教师资格证三项中至少上传一项'
 			uni.showLoading({ title: '提交中...' })
 			
 			try {
@@ -549,13 +577,12 @@ const res = this.teacherId
 				console.log('[预览页面] 提交响应:', res)
 				
 				if (res.success) {
+					// 重新提交后一律为待审核，不再弹「已拒绝」；5 分钟后若三项仍为空由后端自动变为已拒绝
 					uni.showToast({
 						title: '提交成功，等待审核',
 						icon: 'success',
 						duration: 2000
 					})
-					
-					// 提交成功后跳转到首页
 					setTimeout(() => {
 						uni.reLaunch({
 							url: '/pages/tutor-list/index'

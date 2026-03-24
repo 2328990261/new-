@@ -28,10 +28,11 @@ export function getOrderStats(params) {
 }
 
 // 审核通过订单
-export function approveOrder(orderId) {
+export function approveOrder(orderId, data = {}) {
   return request({
     url: `/api/order/${orderId}/approve`,
-    method: 'post'
+    method: 'post',
+    data
   })
 }
 

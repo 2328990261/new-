@@ -30,15 +30,14 @@ class WechatMiniProgramService
     }
     
     /**
-     * 微信登录 - 获取openid和session_key
+     * 微信 code 换 openid/session_key（仅请求微信，不建用户）
      * @param string $code
-     * @return array
+     * @return array [openid, session_key]
      * @throws \Exception
      */
-    public function login($code)
+    private function getOpenidByCode($code)
     {
         $this->assertWechatMiniConfig();
-        // 调用微信接口获取openid和session_key
         $url = "https://api.weixin.qq.com/sns/jscode2session";
         $params = [
             'appid' => $this->appId,
@@ -46,44 +45,136 @@ class WechatMiniProgramService
             'js_code' => $code,
             'grant_type' => 'authorization_code'
         ];
-        
         $response = $this->httpGet($url, $params);
         $result = json_decode($response, true);
-        
         if (isset($result['errcode']) && $result['errcode'] != 0) {
             throw new \Exception($result['errmsg'] ?? '微信登录失败');
         }
-        
-        $openid = $result['openid'];
-        $sessionKey = $result['session_key'];
-        
-        // 缓存session_key，用于后续解密手机号
+        return [
+            'openid' => $result['openid'],
+            'session_key' => $result['session_key']
+        ];
+    }
+
+    /**
+     * 微信登录 - 获取 openid 和 session_key；已注册用户返回 token，未注册只返回 openid/session_key（需走手机号登录完成注册）
+     * @param string $code
+     * @return array
+     * @throws \Exception
+     */
+    public function login($code, $extraInfo = [])
+    {
+        $this->assertWechatMiniConfig();
+        $session = $this->getOpenidByCode($code);
+        $openid = $session['openid'];
+        $sessionKey = $session['session_key'];
+
+        // 缓存 session_key，用于后续解密手机号
         Cache::set('wechat_session_' . $openid, $sessionKey, 7200);
-        
-        // 检查用户是否已注册
+
         $user = User::where('openid', $openid)->find();
-        
+
         if ($user) {
-            // 已注册，生成token并返回
+            // superior_openid：登录时分享的管理员 openid，仅当用户表为空时补写
+            $superiorOpenid = trim((string)($extraInfo['superior_openid'] ?? ''));
+            if ($superiorOpenid !== '' && $superiorOpenid !== $openid) {
+                $currentSuperior = trim((string)($user->superior_openid ?? ''));
+                if ($currentSuperior === '') {
+                    $user->superior_openid = $superiorOpenid;
+                    $user->update_time = date('Y-m-d H:i:s');
+                    $user->save();
+                }
+            }
+            if ($superiorOpenid !== '') {
+                try {
+                    \think\facade\Log::info('[superior_bind] login(code) 老用户（请求带了 superior）', [
+                        'incoming_superior_openid' => $superiorOpenid,
+                        'users.superior_openid_now' => trim((string)($user->superior_openid ?? '')) ?: '(empty)',
+                    ]);
+                } catch (\Throwable $e) {
+                    // ignore
+                }
+            }
+
             $token = $this->generateToken($user);
-            
+            $userType = $this->getUserTypeFromWechatUsers($openid);
             return [
                 'openid' => $openid,
                 'session_key' => $sessionKey,
                 'token' => $token,
                 'userInfo' => [
                     'id' => $user->id,
-                    'phone' => $user->phone,
+                    'phone' => $user->phone ?? '',
                     'nickname' => $user->nickname ?? '用户',
-                    'avatar' => $user->avatar ?? ''
+                    'avatar' => $user->avatar ?? '',
+                    'openid' => $openid,
+                    'user_type' => $userType
                 ]
             ];
         }
-        
-        // 未注册，只返回openid和session_key
+
+        // 未注册：只返回 openid 和 session_key，需通过手机号登录接口完成注册
         return [
             'openid' => $openid,
             'session_key' => $sessionKey
+        ];
+    }
+
+    /**
+     * 从 fa_wechat_users 读取 user_type
+     */
+    private function getUserTypeFromWechatUsers($openid)
+    {
+        try {
+            $row = Db::name('wechat_users')->where('openid', $openid)->find();
+            return ($row && in_array($row['user_type'] ?? '', ['teacher', 'parent'], true))
+                ? $row['user_type'] : 'parent';
+        } catch (\Throwable $e) {
+            return 'parent';
+        }
+    }
+
+    /**
+     * 使用 openid 静默登录（已注册用户免手机号验证，用于再次打开小程序）
+     * @param string $code 本次微信 login 的 code
+     * @param string $openid 本地保存的 openid，用于校验与 code 一致
+     * @return array token + userInfo
+     * @throws \Exception
+     */
+    public function loginWithOpenid($code, $openid, $extraInfo = [])
+    {
+        $session = $this->getOpenidByCode($code);
+        if ($session['openid'] !== $openid) {
+            throw new \Exception('openid 与本次登录不一致，请重新登录');
+        }
+        $user = User::where('openid', $openid)->find();
+        if (!$user) {
+            throw new \Exception('用户不存在，请先完成登录');
+        }
+
+        // superior_openid：登录时分享的管理员 openid，仅当用户表为空时写入一次，永不覆盖
+        $superiorOpenid = trim((string)($extraInfo['superior_openid'] ?? ''));
+        if ($superiorOpenid !== '' && $superiorOpenid !== $openid) {
+            $current = trim((string)($user->superior_openid ?? ''));
+            if ($current === '') {
+                $user->superior_openid = $superiorOpenid;
+                $user->update_time = date('Y-m-d H:i:s');
+                $user->save();
+            }
+        }
+
+        $userType = $this->getUserTypeFromWechatUsers($openid);
+        $token = $this->generateToken($user);
+        return [
+            'token' => $token,
+            'userInfo' => [
+                'id' => $user->id,
+                'phone' => $user->phone ?? '',
+                'nickname' => $user->nickname ?? '用户',
+                'avatar' => $user->avatar ?? '',
+                'openid' => $openid,
+                'user_type' => $userType
+            ]
         ];
     }
     
@@ -213,6 +304,7 @@ class WechatMiniProgramService
         // 如果没有指定用户类型，默认为家长
         $userType = $extraInfo['user_type'] ?? 'parent';
         $inviterOpenid = $extraInfo['inviter_openid'] ?? '';
+        $superiorOpenid = trim((string)($extraInfo['superior_openid'] ?? ''));
         
         $isNewUser = false;
         
@@ -220,6 +312,7 @@ class WechatMiniProgramService
             // 新用户，创建
             $user = User::create([
                 'openid' => $openid,
+                'superior_openid' => ($superiorOpenid && $superiorOpenid !== $openid) ? $superiorOpenid : null,
                 'phone' => $phone,
                 'nickname' => $nickname,
                 'avatar' => $avatar,
@@ -244,6 +337,13 @@ class WechatMiniProgramService
             
             // 更新手机号和其他信息
             $user->phone = $phone;
+            // superior_openid：仅为空时写入一次（不覆盖）
+            if ($superiorOpenid !== '' && $superiorOpenid !== $openid) {
+                $currentSuperior = trim((string)($user->superior_openid ?? ''));
+                if ($currentSuperior === '') {
+                    $user->superior_openid = $superiorOpenid;
+                }
+            }
             if (!empty($nickname)) {
                 $user->nickname = $nickname;
             }
@@ -252,6 +352,21 @@ class WechatMiniProgramService
             }
             $user->update_time = date('Y-m-d H:i:s');
             $user->save();
+        }
+
+        // [superior_bind] 调试：新用户首登或请求带了 superior 时记一条，避免老用户反复手机号校验刷日志
+        if ($isNewUser || $superiorOpenid !== '') {
+            try {
+                $storedSuperior = trim((string)($user->superior_openid ?? ''));
+                \think\facade\Log::info('[superior_bind] registerOrUpdateUser', [
+                    'is_new_user' => $isNewUser,
+                    'incoming_superior_openid' => $superiorOpenid !== '' ? $superiorOpenid : '(empty)',
+                    'same_as_self_ignored' => ($superiorOpenid !== '' && $superiorOpenid === $openid),
+                    'users.superior_openid_after' => $storedSuperior !== '' ? $storedSuperior : '(empty)',
+                ]);
+            } catch (\Throwable $e) {
+                // ignore
+            }
         }
         
         // 同步保存到 fa_wechat_users 表
@@ -565,59 +680,22 @@ class WechatMiniProgramService
             Db::startTrans();
             
             try {
-                // 1. 创建邀请记录
-                $invitationId = Db::name('user_invitations')->insertGetId([
+                // 1. 仅创建邀请记录；优惠券在「简历认证并通过审核」后由审核通过逻辑发放
+                Db::name('user_invitations')->insert([
                     'inviter_user_id' => $inviter['id'],
                     'inviter_openid' => $inviterOpenid,
                     'invitee_user_id' => $inviteeUserId,
                     'invitee_openid' => $inviteeOpenid,
-                    'invitation_code' => '', // 简化流程，不使用邀请码
-                    'status' => 1, // 直接设为已认证
-                    'is_rewarded' => 1,
+                    'invitation_code' => '',
+                    'status' => 0, // 待认证，审核通过后改为 1
+                    'is_rewarded' => 0, // 审核通过发券后改为 1
                     'create_time' => date('Y-m-d H:i:s'),
-                    'verify_time' => date('Y-m-d H:i:s'),
-                    'reward_time' => date('Y-m-d H:i:s')
+                    'verify_time' => null,
+                    'reward_time' => null
                 ]);
-                
-                // 2. 给邀请人发放优惠券
-                $inviterCouponId = Db::name('user_coupons')->insertGetId([
-                    'user_id' => $inviter['id'],
-                    'openid' => $inviterOpenid,
-                    'coupon_type' => 'invitation',
-                    'coupon_amount' => 20.00,
-                    'source' => 'inviter',
-                    'related_invitation_id' => $invitationId,
-                    'status' => 1, // 直接设为已领取
-                    'expire_time' => date('Y-m-d H:i:s', strtotime('+30 days')),
-                    'create_time' => date('Y-m-d H:i:s'),
-                    'receive_time' => date('Y-m-d H:i:s')
-                ]);
-                
-                // 3. 给被邀请人发放优惠券
-                $inviteeCouponId = Db::name('user_coupons')->insertGetId([
-                    'user_id' => $inviteeUserId,
-                    'openid' => $inviteeOpenid,
-                    'coupon_type' => 'invitation',
-                    'coupon_amount' => 20.00,
-                    'source' => 'invitee',
-                    'related_invitation_id' => $invitationId,
-                    'status' => 1, // 直接设为已领取
-                    'expire_time' => date('Y-m-d H:i:s', strtotime('+30 days')),
-                    'create_time' => date('Y-m-d H:i:s'),
-                    'receive_time' => date('Y-m-d H:i:s')
-                ]);
-                
-                // 4. 更新邀请记录，关联优惠券ID
-                Db::name('user_invitations')
-                    ->where('id', $invitationId)
-                    ->update([
-                        'inviter_coupon_id' => $inviterCouponId,
-                        'invitee_coupon_id' => $inviteeCouponId
-                    ]);
                 
                 Db::commit();
-                
-                \think\facade\Log::info('邀请奖励发放成功: 邀请人=' . $inviterOpenid . ', 被邀请人=' . $inviteeOpenid);
+                \think\facade\Log::info('邀请记录已创建(待审核通过后发券): 邀请人=' . $inviterOpenid . ', 被邀请人=' . $inviteeOpenid);
                 
             } catch (\Exception $e) {
                 Db::rollback();

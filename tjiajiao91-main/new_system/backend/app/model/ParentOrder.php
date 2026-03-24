@@ -116,7 +116,8 @@ class ParentOrder extends Model
         $status = [
             'pending' => '待审核',
             'approved' => '已通过',
-            'rejected' => '已拒绝'
+            'rejected' => '已拒绝',
+            'cancelled' => '已取消'
         ];
         return $status[$data['status']] ?? '未知';
     }

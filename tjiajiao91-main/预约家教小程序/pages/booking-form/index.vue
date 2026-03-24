@@ -1,10 +1,10 @@
-﻿<template>
+<template>
 	<view class="booking-form-container">
 		<!-- 自定义导航栏 -->
 		<view class="custom-navbar" :style="{ paddingTop: statusBarHeight + 'px' }">
 			<view class="navbar-content">
 				<view class="navbar-back" @click="goBack">
-					<text class="back-icon">←</text>
+					<text class="back-icon">‹</text>
 				</view>
 				<text class="navbar-title">预约家教</text>
 				<view class="navbar-placeholder"></view>
@@ -273,6 +273,8 @@ export default {
 			navbarHeight: 0,
 			teacherId: null, // 选中的教师ID
 			teacherInfo: null, // 教师信息
+			adminOpenid: null, // 从URL获取的管理员openid（小程序内分享使用）
+			adminId: null, // 从URL获取的管理员ID（管理后台复制的链接使用）
 			formData: {
 				studentName: '',
 				gender: '',
@@ -323,6 +325,28 @@ export default {
 		if (options.teacherId) {
 			this.teacherId = parseInt(options.teacherId)
 			this.loadTeacherInfo()
+		}
+		
+		// 获取URL参数：优先拿上一级分享者 superior_openid，其次 admin_openid（小程序内分享）或 admin_id（管理后台复制链接）
+		if (options.superior_openid) {
+			this.adminOpenid = options.superior_openid
+			uni.setStorageSync('booking_share_admin_openid', options.superior_openid)
+		} else if (options.admin_openid) {
+			this.adminOpenid = options.admin_openid
+			// 登录跳转/重新打开页面时兜底：缓存分享参数
+			uni.setStorageSync('booking_share_admin_openid', options.admin_openid)
+		} else if (options.admin_id) {
+			this.adminId = options.admin_id
+			uni.setStorageSync('booking_share_admin_id', options.admin_id)
+		}
+		// URL 不带时，从缓存恢复（避免登录跳转丢参数）
+		if (!this.adminOpenid) {
+			const cachedOpenid = uni.getStorageSync('booking_share_admin_openid')
+			if (cachedOpenid) this.adminOpenid = cachedOpenid
+		}
+		if (!this.adminId) {
+			const cachedAdminId = uni.getStorageSync('booking_share_admin_id')
+			if (cachedAdminId) this.adminId = cachedAdminId
 		}
 		
 		this.loadSubjects()
@@ -624,9 +648,15 @@ export default {
 					icon: 'none'
 				})
 				setTimeout(() => {
-					uni.navigateTo({
-						url: '/pages/login/index'
-					})
+					// 记录回跳目标与管理员参数，登录成功后回到本预约页
+					try {
+						uni.setStorageSync('booking_redirect_target', 'booking-form')
+						uni.setStorageSync('booking_redirect_admin', {
+							admin_openid: this.adminOpenid || uni.getStorageSync('booking_share_admin_openid') || '',
+							admin_id: this.adminId || uni.getStorageSync('booking_share_admin_id') || ''
+						})
+					} catch (e) {}
+					auth.navigateToLogin({ extraQuery: 'from=booking-form' })
 				}, 1500)
 				return
 			}
@@ -671,9 +701,15 @@ export default {
 					teacher_id: this.teacherId || null // 添加教师ID
 				}
 
-				// 调用后端API
+				// 调用后端API（传递管理员信息以便后台显示归属管理员）
 				const res = await bookingApi.createBooking({
 					user_id: userId,
+					// admin_id 在提交时由后端根据 users.superior_openid 回填；
+					// 这里仍透传 openid/id（兼容旧逻辑 + 首次绑定 superior_openid）
+					admin_openid: this.adminOpenid || uni.getStorageSync('booking_share_admin_openid') || '',
+					admin_id: (this.adminId || uni.getStorageSync('booking_share_admin_id'))
+						? parseInt((this.adminId || uni.getStorageSync('booking_share_admin_id')), 10)
+						: undefined,
 					booking_data: bookingData
 				})
 
@@ -720,20 +756,39 @@ export default {
 	
 	// 分享给好友/群聊
 	onShareAppMessage() {
-		return {
-			title: '快速预约家教，找到适合孩子的好老师！',
-			path: '/pages/booking-form/index',
-			imageUrl: '/static/share-booking.png'
+		const userInfo = uni.getStorageSync('userInfo')
+		const sharerOpenid = this.getSharerOpenid ? this.getSharerOpenid() : (userInfo?.openid || '')
+		const superiorOpenid = sharerOpenid
+		const nickname = userInfo?.nickName || userInfo?.nickname || userInfo?.wechat_nickname || ''
+		let sharePath = '/pages/booking-form/index'
+		if (sharerOpenid) {
+			sharePath += '?admin_openid=' + sharerOpenid + '&superior_openid=' + encodeURIComponent(superiorOpenid)
 		}
+		const imageUrl = '/static/tabbar/applications.png'
+		const payload = {
+			title: nickname ? `${nickname}推荐你预约家教，快速找到适合孩子的好老师！` : '快速预约家教，找到适合孩子的好老师！',
+			path: sharePath
+		}
+		if (imageUrl && !imageUrl.startsWith('/static/tabbar/')) {
+			payload.imageUrl = imageUrl
+		}
+		return payload
 	},
 	
 	// 分享到朋友圈
 	onShareTimeline() {
-		return {
-			title: '快速预约家教，找到适合孩子的好老师！',
-			query: '',
-			imageUrl: '/static/share-booking.png'
+		const userInfo = uni.getStorageSync('userInfo')
+		const sharerOpenid = this.getSharerOpenid ? this.getSharerOpenid() : (userInfo?.openid || '')
+		const nickname = userInfo?.nickName || userInfo?.nickname || userInfo?.wechat_nickname || ''
+		const imageUrl = '/static/tabbar/applications.png'
+		const payload = {
+			title: nickname ? `${nickname}推荐你预约家教，快速找到适合孩子的好老师！` : '快速预约家教，找到适合孩子的好老师！',
+			query: sharerOpenid ? ('admin_openid=' + sharerOpenid + '&superior_openid=' + encodeURIComponent(sharerOpenid)) : ''
 		}
+		if (imageUrl && !imageUrl.startsWith('/static/tabbar/')) {
+			payload.imageUrl = imageUrl
+		}
+		return payload
 	}
 }
 </script>
@@ -779,9 +834,9 @@ export default {
 }
 
 .back-icon {
-	font-size: 36rpx;
-	color: #fff;
-	font-weight: bold;
+	font-size: 48rpx;
+	color: #303133;
+	font-weight: 300;
 }
 
 .navbar-title {

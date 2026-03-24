@@ -107,9 +107,11 @@ class EmailService
             $mail->isHTML(true);
             $mail->Subject = '新的家教需求预约通知 - ' . $order->order_no;
             
-            // 构建邮件内容
-            $body = self::renderBookingTemplate($order);
-            $mail->Body = $body;
+            // 构建邮件内容（HTML + 纯文本副本）
+            $tutorContent = self::generateTutorContent($order);
+            $htmlBody = self::renderBookingEmailHtml($order, $tutorContent);
+            $mail->Body = $htmlBody;
+            $mail->AltBody = self::buildBookingEmailPlain($order, $tutorContent);
             
             $mail->send();
             
@@ -119,7 +121,7 @@ class EmailService
                 'recipient_email' => $admin->email,
                 'recipient_name' => isset($admin->nickname) ? $admin->nickname : null,
                 'subject' => $mail->Subject,
-                'body' => $body,
+                'body' => $htmlBody,
                 'related_id' => $order->id,
                 'status' => EmailLog::STATUS_SENT,
                 'send_time' => date('Y-m-d H:i:s')
@@ -171,15 +173,48 @@ class EmailService
     }
     
     /**
-     * 渲染预约通知邮件模板
+     * 预约通知邮件纯文本（支持「显示纯文本」时整封复制）
      */
-    private static function renderBookingTemplate($order)
+    private static function buildBookingEmailPlain($order, $tutorContent)
+    {
+        $teacherName = '';
+        if ($order->teacher_id) {
+            try {
+                $t = \app\model\Teacher::find($order->teacher_id);
+                if ($t) {
+                    $teacherName = $t->name;
+                }
+            } catch (\Exception $e) {
+            }
+        }
+        $lines = [
+            '【新的家教需求预约】',
+            '订单号：' . ($order->order_no ?: ''),
+            '称呼：' . ($order->parent_name ?: ''),
+            '学生昵称：' . ($order->student_name ?: ''),
+            '联系电话：' . ($order->parent_contact ?: ''),
+            '预约教师：' . ($teacherName ?: '-'),
+            '预约渠道：' . ($order->booking_channel ?: 'H5'),
+            '提交时间：' . ($order->create_time ?: date('Y-m-d H:i:s')),
+            '',
+            '【家教单内容】',
+            $tutorContent,
+        ];
+        if (!empty($order->remark)) {
+            $lines[] = '';
+            $lines[] = '备注：' . $order->remark;
+        }
+        $lines[] = '';
+        $lines[] = '请登录管理后台「我的预约」查看并审核。';
+        return implode("\n", $lines);
+    }
+
+    /**
+     * 渲染预约通知邮件 HTML
+     */
+    private static function renderBookingEmailHtml($order, $tutorContent)
     {
         try {
-            // 生成家教单内容（与前端格式一致）
-            $tutorContent = self::generateTutorContent($order);
-            
-            // 获取预约教师信息
             $teacherName = '';
             if ($order->teacher_id) {
                 try {
@@ -188,24 +223,29 @@ class EmailService
                         $teacherName = $teacher->name;
                     }
                 } catch (\Exception $e) {
-                    // 忽略教师查询错误
                 }
             }
-            
-            $html = '<div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">';
+
+            $phone = trim((string) ($order->parent_contact ?: ''));
+            $orderNo = trim((string) ($order->order_no ?: ''));
+            $html = '<div style="font-family: Arial, \'PingFang SC\', \'Microsoft YaHei\', sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">';
             $html .= '<h2 style="color: #333; border-bottom: 2px solid #667eea; padding-bottom: 10px;">新的家教需求预约</h2>';
             $html .= '<div style="background: #f5f5f5; padding: 15px; border-radius: 5px; margin: 20px 0;">';
-            $html .= '<p style="margin: 5px 0;"><strong>订单号：</strong>' . htmlspecialchars($order->order_no ?: '') . '</p>';
+            $html .= '<p style="margin: 5px 0;"><strong>订单号：</strong>' . htmlspecialchars($orderNo) . '</p>';
             $html .= '<p style="margin: 5px 0;"><strong>称呼：</strong>' . htmlspecialchars($order->parent_name ?: '') . '</p>';
             $html .= '<p style="margin: 5px 0;"><strong>学生昵称：</strong>' . htmlspecialchars($order->student_name ?: '') . '</p>';
-            $html .= '<p style="margin: 5px 0;"><strong>联系电话：</strong>' . htmlspecialchars($order->parent_contact ?: '') . '</p>';
+            if ($phone !== '') {
+                $html .= '<p style="margin: 5px 0;"><strong>联系电话：</strong><a href="tel:' . htmlspecialchars(preg_replace('/\s+/', '', $phone)) . '" style="color:#2563eb;">' . htmlspecialchars($phone) . '</a></p>';
+            } else {
+                $html .= '<p style="margin: 5px 0;"><strong>联系电话：</strong>-</p>';
+            }
             $html .= '<p style="margin: 5px 0;"><strong>预约教师：</strong>' . htmlspecialchars($teacherName ?: '-') . '</p>';
             $html .= '<p style="margin: 5px 0;"><strong>预约渠道：</strong>' . htmlspecialchars($order->booking_channel ?: 'H5') . '</p>';
             $html .= '<p style="margin: 5px 0;"><strong>提交时间：</strong>' . ($order->create_time ?: date('Y-m-d H:i:s')) . '</p>';
             $html .= '</div>';
             $html .= '<h3 style="color: #666;">家教单内容</h3>';
             $html .= '<div style="background: #fff; border: 1px solid #ddd; padding: 15px; border-radius: 5px;">';
-            $html .= '<pre style="font-family: -apple-system, BlinkMacSystemFont, \'Segoe UI\', Roboto, \'Helvetica Neue\', Arial, sans-serif; font-size: 14px; line-height: 1.8; white-space: pre-wrap; word-break: break-all; color: #303133; margin: 0;">' . htmlspecialchars($tutorContent) . '</pre>';
+            $html .= '<pre style="font-family: -apple-system, BlinkMacSystemFont, \'Segoe UI\', Roboto, \'Helvetica Neue\', Arial, sans-serif; font-size: 14px; line-height: 1.8; white-space: pre-wrap; word-break: break-all; color: #303133; margin: 0;-webkit-user-select:text;user-select:text;">' . htmlspecialchars($tutorContent) . '</pre>';
             $html .= '</div>';
             if (!empty($order->remark)) {
                 $html .= '<div style="margin-top: 20px; padding: 15px; background: #f0f9ff; border-left: 4px solid #3b82f6; border-radius: 3px;">';
@@ -213,33 +253,59 @@ class EmailService
                 $html .= '</div>';
             }
             $html .= '<div style="margin-top: 30px; padding: 15px; background: #fff3cd; border-left: 4px solid #ffc107; border-radius: 3px;">';
-            $html .= '<p style="margin: 0; color: #856404;">请登录管理后台的"我的订单"模块查看并审核此订单。</p>';
+            $html .= '<p style="margin: 0; color: #856404;">请登录管理后台的「我的预约」模块查看并审核此订单。</p>';
             $html .= '</div>';
             $html .= '<div style="margin-top: 20px; text-align: center; color: #999; font-size: 12px;">';
             $html .= '<p>此邮件由系统自动发送，请勿回复。</p>';
             $html .= '</div>';
             $html .= '</div>';
-            
+
             return $html;
         } catch (\Exception $e) {
             trace('渲染邮件模板失败: ' . $e->getMessage(), 'error');
-            // 返回简单的HTML模板
             return '<div style="font-family: Arial, sans-serif; padding: 20px;"><h2>新的家教需求预约</h2><p>订单号：' . htmlspecialchars($order->order_no ?: '') . '</p><p>请登录管理后台查看详情。</p></div>';
         }
     }
     
     /**
-     * 生成家教单内容（与前端格式一致）
+     * 合并城市区域与详细地址，避免标题里「省市区 + 整段地址」重复一段
+     */
+    private static function mergeCityAreaAndAddress($cityArea, $address)
+    {
+        $a = trim(preg_replace('/\s+/u', ' ', (string) $cityArea));
+        $b = trim(preg_replace('/\s+/u', ' ', (string) $address));
+        if ($b === '') {
+            return $a !== '' ? $a : '';
+        }
+        if ($a === '') {
+            return $b;
+        }
+        if (mb_strpos($b, $a) === 0) {
+            return $b;
+        }
+        $ac = preg_replace('/\s+/u', '', $a);
+        $bc = preg_replace('/\s+/u', '', $b);
+        if ($ac !== '' && mb_strpos($bc, $ac) === 0) {
+            return $b;
+        }
+
+        return trim($a . ' ' . $b);
+    }
+
+    /**
+     * 生成家教单内容（与前端管理端展示逻辑一致）
      */
     private static function generateTutorContent($order)
     {
         try {
-            // 获取城市区域
-            $cityArea = '';
+            // 仅从省市区 ID 解析城市区域（不再用地址首段冒充城市区，避免与整段地址重复）
+            $cityAreaDb = '';
             if ($order->city_id) {
                 try {
                     $city = \app\model\City::find($order->city_id);
-                    if ($city) $cityArea .= $city->name;
+                    if ($city) {
+                        $cityAreaDb .= $city->name;
+                    }
                 } catch (\Exception $e) {
                     trace('获取城市信息失败: ' . $e->getMessage(), 'warning');
                 }
@@ -247,18 +313,24 @@ class EmailService
             if ($order->district_id) {
                 try {
                     $district = \app\model\District::find($order->district_id);
-                    if ($district) $cityArea .= ' ' . $district->name;
+                    if ($district) {
+                        $cityAreaDb .= ($cityAreaDb !== '' ? ' ' : '') . $district->name;
+                    }
                 } catch (\Exception $e) {
                     trace('获取区域信息失败: ' . $e->getMessage(), 'warning');
                 }
             }
-            if (empty($cityArea) && $order->address) {
-                // 从地址中提取城市区域（取第一部分）
-                $addressParts = explode(' ', $order->address);
-                $cityArea = isset($addressParts[0]) ? $addressParts[0] : '';
+
+            $address = trim(preg_replace('/\s+/u', ' ', (string) ($order->address ?: '')));
+            if ($cityAreaDb === '') {
+                $locationLine = $address !== '' ? $address : '';
+            } else {
+                $locationLine = self::mergeCityAreaAndAddress($cityAreaDb, $address);
             }
-            
-            $address = $order->address ?: '';
+            if ($locationLine === '') {
+                $locationLine = '-';
+            }
+
             $grade = $order->grade ?: '';
             $subject = $order->subject ?: '';
             
@@ -280,10 +352,7 @@ class EmailService
             $teacherType = $order->teacher_type ?: '';
             $teacherGender = $order->teacher_gender ?: '';
             
-            // 构建地址部分
-            $addressPart = $address ? ' ' . $address : '';
-            
-            $content = "【{$cityArea}{$addressPart} {$grade} {$subject}】\n";
+            $content = "【{$locationLine} {$grade} {$subject}】\n";
             $content .= "【学生情况】{$studentGender}" . ($studentGender && $studentInfo ? '，' : '') . "{$studentInfo}\n";
             $content .= "【时间频率】{$frequency}" . ($frequency && $duration ? '，' : '') . "{$duration}\n";
             $content .= "【时薪范围】{$salary}\n";

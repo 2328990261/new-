@@ -135,6 +135,56 @@ export function refreshTokenExpire(expireDays = 30) {
 	}
 }
 
+/** 登录成功后要回到的页面（完整路径含参数，如 /pages/step-booking/index?admin_openid=xx） */
+export const LOGIN_RETURN_URL_KEY = 'login_return_url'
+/** 新用户选完身份后要去的页面 */
+export const POST_ROLE_REDIRECT_KEY = 'post_role_redirect_url'
+
+/**
+ * 将当前页（含 URL 参数）存为登录成功后的返回地址（勿在登录页内调用）
+ */
+export function saveLoginReturnUrl() {
+	try {
+		const pages = getCurrentPages()
+		if (!pages || !pages.length) return
+		const p = pages[pages.length - 1]
+		const route = (p.route || '').replace(/^\//, '')
+		if (!route || route.indexOf('pages/login/index') === 0) return
+		let url = '/' + route
+		const opt = p.options || {}
+		const keys = Object.keys(opt)
+		if (keys.length) {
+			const qs = keys
+				.map((k) => `${encodeURIComponent(k)}=${encodeURIComponent(opt[k] == null ? '' : String(opt[k]))}`)
+				.join('&')
+			url += '?' + qs
+		}
+		uni.setStorageSync(LOGIN_RETURN_URL_KEY, url)
+	} catch (e) {
+		console.error('saveLoginReturnUrl', e)
+	}
+}
+
+/**
+ * 去登录页：默认记住当前页，登录成功后 reLaunch 回来
+ * @param {{ extraQuery?: string, returnUrl?: string }} options
+ *   extraQuery 不含问号，如 from=step-booking 或 inviter=xxx
+ *   returnUrl 若指定则覆盖「当前页」作为登录后返回地址
+ */
+export function navigateToLogin(options = {}) {
+	const { extraQuery = '', returnUrl = '' } = options || {}
+	if (returnUrl) {
+		uni.setStorageSync(LOGIN_RETURN_URL_KEY, returnUrl)
+	} else {
+		saveLoginReturnUrl()
+	}
+	let url = '/pages/login/index'
+	if (extraQuery) {
+		url += '?' + String(extraQuery).replace(/^\?/, '')
+	}
+	uni.navigateTo({ url })
+}
+
 /**
  * 检查并跳转到登录页
  * @param {string} redirectUrl - 登录成功后的跳转地址（可选）
@@ -147,10 +197,12 @@ export function checkLoginAndRedirect(redirectUrl = '') {
 		})
 		
 		setTimeout(() => {
-			const url = redirectUrl ? `/pages/login/index?redirect=${encodeURIComponent(redirectUrl)}` : '/pages/login/index'
-			uni.navigateTo({
-				url: url
-			})
+			if (redirectUrl) {
+				uni.setStorageSync(LOGIN_RETURN_URL_KEY, redirectUrl)
+			} else {
+				saveLoginReturnUrl()
+			}
+			uni.navigateTo({ url: '/pages/login/index' })
 		}, 1500)
 		
 		return false
@@ -222,6 +274,8 @@ export default {
 	clearLoginInfo,
 	refreshTokenExpire,
 	checkLoginAndRedirect,
+	saveLoginReturnUrl,
+	navigateToLogin,
 	updateUserInfo,
 	getLoginStatus
 }

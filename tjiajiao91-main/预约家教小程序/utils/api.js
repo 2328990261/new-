@@ -4,12 +4,12 @@ import envConfig from '@/config/env.js'
 
 // 微信登录相关接口
 export const wechatLogin = {
-	// 微信登录 - 获取openid和session_key
-	login(code) {
+	// 微信登录 - 获取 openid 和 session_key
+	login(code, extra = {}) {
 		return request({
 			url: '/api/wechat/login',
 			method: 'POST',
-			data: { code }
+			data: { code, ...extra }
 		})
 	},
 	
@@ -180,15 +180,30 @@ export const teacherRegisterApi = {
 	},
 	
 	// 检查手机号是否已注册
-	checkPhone(phone) {
+	checkPhone(phone, options = {}) {
+		const params = { phone }
+		// 编辑场景下，前端可以传入 exclude_teacher_id，避免把自己算作重复
+		if (options.excludeTeacherId) {
+			params.exclude_teacher_id = options.excludeTeacherId
+		}
 		return request({
 			url: '/api/teacher-register/check-phone',
 			method: 'GET',
-			data: { phone }
+			data: params
 		})
 	},
 	
-	// 获取教师详情（用于编辑）
+	// 获取当前教师完整资料（用于本人编辑简历）
+	getMyProfile(params) {
+		return request({
+			url: '/api/teacher-register/my-profile',
+			method: 'GET',
+			data: params
+		})
+	},
+
+	// 兼容旧用法：根据教师ID获取公开详情（脱敏版）
+	// 目前 teacher-resume-preview 等页面仍在使用
 	getTeacherDetail(teacherId) {
 		return request({
 			url: `/api/teacher/detail/${teacherId}`,

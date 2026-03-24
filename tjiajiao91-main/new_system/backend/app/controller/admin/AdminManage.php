@@ -280,6 +280,11 @@ class AdminManage extends BaseController
         
         try {
             $data = $this->request->post();
+            $role = $data['role'] ?? 'customer_service';
+            $normalizedCityIds = $this->normalizeDispatcherCityIds($data['city_id'] ?? null);
+            $data['city_id'] = ($role === 'dispatcher' && !empty($normalizedCityIds))
+                ? implode(',', $normalizedCityIds)
+                : null;
             
             // 验证必填字段
             if (empty($data['username']) || empty($data['password']) || empty($data['nickname'])) {
@@ -287,10 +292,13 @@ class AdminManage extends BaseController
             }
             
             // 客服组邮箱必填验证
-            if (isset($data['role']) && $data['role'] === 'customer_service') {
+            if ($role === 'customer_service') {
                 if (empty($data['email'])) {
                     return json(['success' => false, 'error' => '客服组角色必须填写邮箱']);
                 }
+            }
+            if ($role === 'dispatcher' && empty($normalizedCityIds)) {
+                return json(['success' => false, 'error' => '派单组角色必须选择归属城市']);
             }
             
             // 检查用户名是否已存在
@@ -298,9 +306,9 @@ class AdminManage extends BaseController
                 return json(['success' => false, 'error' => '用户名已存在']);
             }
             
-            // 如果提供了openid，检查是否已被绑定
+            // 如果提供了openid，检查是否已被绑定（支持逗号分隔多个openid）
             if (isset($data['openid']) && !empty($data['openid'])) {
-                if (Admin::where('openid', $data['openid'])->find()) {
+                if (Admin::hasOpenidConflict($data['openid'])) {
                     return json(['success' => false, 'error' => '该OpenID已被其他管理员绑定']);
                 }
             }
@@ -356,6 +364,24 @@ class AdminManage extends BaseController
                     return json(['success' => false, 'error' => '客服组角色必须填写邮箱']);
                 }
             }
+            if ($role === 'dispatcher') {
+                $cityIdsForValidate = array_key_exists('city_id', $data)
+                    ? $this->normalizeDispatcherCityIds($data['city_id'])
+                    : $this->normalizeDispatcherCityIds($admin->city_id ?? null);
+                if (empty($cityIdsForValidate)) {
+                    return json(['success' => false, 'error' => '派单组角色必须选择归属城市']);
+                }
+            }
+
+            // 归属城市：仅派单组生效，其他角色强制清空
+            if (array_key_exists('city_id', $data) || array_key_exists('role', $data)) {
+                $cityIds = isset($data['city_id'])
+                    ? $this->normalizeDispatcherCityIds($data['city_id'])
+                    : $this->normalizeDispatcherCityIds($admin->city_id ?? null);
+                $data['city_id'] = ($role === 'dispatcher' && !empty($cityIds))
+                    ? implode(',', $cityIds)
+                    : null;
+            }
             
             // 密码处理：为空表示不修改密码
             if (isset($data['password'])) {
@@ -373,9 +399,9 @@ class AdminManage extends BaseController
                 }
             }
             
-            // 如果修改了openid，检查是否重复
+            // 如果修改了openid，检查是否重复（支持逗号分隔多个openid）
             if (isset($data['openid']) && !empty($data['openid']) && $data['openid'] != $admin->openid) {
-                if (Admin::where('openid', $data['openid'])->find()) {
+                if (Admin::hasOpenidConflict($data['openid'], (int) $admin->id)) {
                     return json(['success' => false, 'error' => '该OpenID已被其他管理员绑定']);
                 }
             }
@@ -650,8 +676,12 @@ class AdminManage extends BaseController
                 ]);
             }
             
-            // 查询绑定的用户信息
-            $user = \think\facade\Db::name('users')->where('openid', $admin->openid)->find();
+            // 查询绑定的用户信息（兼容管理员配置多个openid时取第一个）
+            $openidTokens = \app\model\Admin::splitOpenids($admin->openid);
+            $primaryOpenid = $openidTokens[0] ?? '';
+            $user = $primaryOpenid !== ''
+                ? \think\facade\Db::name('users')->where('openid', $primaryOpenid)->find()
+                : null;
             
             if (!$user) {
                 return json([
@@ -681,6 +711,23 @@ class AdminManage extends BaseController
             trace('获取绑定用户信息失败: ' . $e->getMessage(), 'error');
             return json(['success' => false, 'error' => '获取失败：' . $e->getMessage()]);
         }
+    }
+
+    /**
+     * 归一化派单员归属城市（支持数组或逗号分隔字符串）
+     */
+    private function normalizeDispatcherCityIds($cityValue): array
+    {
+        if (is_array($cityValue)) {
+            $raw = $cityValue;
+        } else {
+            $raw = explode(',', (string)($cityValue ?? ''));
+        }
+        $ids = array_map('intval', $raw);
+        $ids = array_filter($ids, function ($id) {
+            return $id > 0;
+        });
+        return array_values(array_unique($ids));
     }
 }
 

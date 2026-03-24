@@ -1,5 +1,30 @@
 <template>
   <div class="teacher-detail-page" v-loading="loading">
+    <!-- 右侧固定悬浮：上一老师 / 下一老师（上下按钮） -->
+    <div v-if="teacher" class="teacher-switch-float">
+      <el-button
+        :icon="ArrowUp"
+        circle
+        size="small"
+        :plain="true"
+        :type="prevTeacherId ? 'primary' : 'info'"
+        :disabled="!prevTeacherId"
+        title="上一个老师"
+        class="switch-btn"
+        @click="goToTeacher(prevTeacherId)"
+      />
+      <el-button
+        :icon="ArrowDown"
+        circle
+        size="small"
+        :plain="true"
+        :type="nextTeacherId ? 'primary' : 'info'"
+        :disabled="!nextTeacherId"
+        title="下一个老师"
+        class="switch-btn"
+        @click="goToTeacher(nextTeacherId)"
+      />
+    </div>
     <el-card v-if="teacher">
       <!-- 页面头部 -->
       <div class="page-header">
@@ -18,7 +43,7 @@
             <el-icon><Lock v-if="!showContactInfo" /><View v-else /></el-icon>
             {{ showContactInfo ? '隐藏' : '显示' }}联系方式
           </el-button>
-          <el-button type="primary" @click="handleEdit">编辑</el-button>
+          <el-button v-if="activeTab === 'resume'" type="primary" @click="handleEdit">编辑</el-button>
         </div>
       </div>
 
@@ -30,7 +55,7 @@
           <el-divider content-position="left">基本信息</el-divider>
           <el-descriptions :column="2" border>
             <el-descriptions-item label="头像" :span="2">
-              <el-avatar :src="getImageUrl(teacher.avatar)" :size="80">
+              <el-avatar :src="getImageUrl(teacher.avatar || teacher.user_avatar)" :size="80">
                 {{ teacher.name?.charAt(0) || '?' }}
               </el-avatar>
             </el-descriptions-item>
@@ -41,14 +66,14 @@
             <el-descriptions-item label="性别">{{ teacher.gender }}</el-descriptions-item>
             <el-descriptions-item label="籍贯">{{ teacher.hometown }}</el-descriptions-item>
             <el-descriptions-item label="出生年月">
-              {{ teacher.birth_date || (teacher.birth_year ? teacher.birth_year + '年' : '') || '未填写' }}
+              {{ teacher.birth_date || '未填写' }}
             </el-descriptions-item>
             <el-descriptions-item label="教龄">{{ teacher.teaching_years ? teacher.teaching_years + '年' : '' }}</el-descriptions-item>
             <el-descriptions-item label="微信昵称">
               <div style="display: flex; align-items: center; gap: 8px;">
                 <el-avatar
-                  v-if="teacher.avatar"
-                  :src="getImageUrl(teacher.avatar)"
+                  v-if="(teacher.user_avatar || teacher.avatar)"
+                  :src="getImageUrl(teacher.user_avatar || teacher.avatar)"
                   :size="32"
                 />
                 <span>{{ teacher.wechat_nickname || '未绑定' }}</span>
@@ -63,9 +88,24 @@
             <el-descriptions-item label="邮箱">
               <span style="display: inline-block; min-width: 180px;">{{ showContactInfo ? teacher.email : '***' }}</span>
             </el-descriptions-item>
-            <el-descriptions-item label="OpenID">{{ teacher.openid || '未绑定' }}</el-descriptions-item>
             <el-descriptions-item label="详细地址" :span="2">
               {{ [teacher.location_province, teacher.location_city, teacher.location_district, teacher.location_address].filter(Boolean).join(' ') || '未填写' }}
+            </el-descriptions-item>
+            <el-descriptions-item label="OpenID">{{ teacher.openid || '未绑定' }}</el-descriptions-item>
+            <el-descriptions-item label="分享者">
+              <div class="basic-info-sharer-cell">
+                <div class="basic-info-sharer-row">
+                  <span class="basic-info-sharer-sublabel">昵称</span>
+                  <span>{{ teacher.sharer_nickname || '-' }}</span>
+                </div>
+                <div class="basic-info-sharer-row basic-info-sharer-row--avatar">
+                  <span class="basic-info-sharer-sublabel">头像</span>
+                  <template v-if="teacher.sharer_avatar">
+                    <el-avatar :src="getImageUrl(teacher.sharer_avatar)" :size="32" />
+                  </template>
+                  <span v-else>-</span>
+                </div>
+              </div>
             </el-descriptions-item>
           </el-descriptions>
 
@@ -183,68 +223,241 @@
           <div v-else style="color: #909399; text-align: center; padding: 20px;">暂无教学风采照片</div>
         </div>
 
-        <!-- 认证信息 -->
+        <!-- 认证信息：直接可编辑，无需点击编辑 -->
         <div v-show="activeTab === 'certification'">
-          <el-divider content-position="left">认证审核</el-divider>
-          
-          <!-- 实名认证 -->
-          <div style="margin-bottom: 24px;">
-            <div style="margin-bottom: 12px;">
-              <span style="font-weight: 500;">实名认证</span>
-              <el-tag :type="teacher.real_name_verified ? 'success' : 'info'" size="small" style="margin-left: 10px;">
-                {{ teacher.real_name_verified ? '已认证' : '未认证' }}
-              </el-tag>
-            </div>
-            <div v-if="teacher.id_card_front || teacher.id_card_back" style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px;">
-              <div v-if="teacher.id_card_front">
-                <div style="margin-bottom: 6px;">身份证正面</div>
-                <el-image :src="getImageUrl(teacher.id_card_front)" :preview-src-list="[getImageUrl(teacher.id_card_front)]" fit="cover" style="width: 100%; height: 160px;" />
+          <el-form :model="certForm" label-width="120px">
+            <el-divider content-position="left">实名认证</el-divider>
+            <el-form-item label="实名认证">
+              <div style="display: block; width: 100%;">
+                <div style="margin-bottom: 12px;">
+                  <el-switch
+                    v-model="certForm.real_name_verified"
+                    :active-value="1"
+                    :inactive-value="0"
+                    :disabled="!certForm.id_card_front && !certForm.id_card_back"
+                    active-text="已认证"
+                    inactive-text="未认证"
+                    active-color="#67c23a"
+                  />
+                  <el-tag v-if="!certForm.id_card_front && !certForm.id_card_back" type="warning" size="small" style="margin-left: 8px;">
+                    未上传证明材料
+                  </el-tag>
+                </div>
+                <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px;">
+                  <div>
+                    <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px;">
+                      <div style="font-size: 13px; color: #909399;">身份证正面</div>
+                      <el-upload
+                        :show-file-list="false"
+                        :on-success="(response) => handleCertUploadSuccess('id_card_front', response, '身份证正面上传成功')"
+                        :before-upload="beforeCertUpload"
+                        action="/api/admin/upload/image"
+                        :headers="{ Authorization: 'Bearer ' + getToken() }"
+                        :data="{ type: 'teacher' }"
+                        accept="image/*"
+                      >
+                        <el-button size="small" type="primary" plain>上传</el-button>
+                      </el-upload>
+                    </div>
+                    <div v-if="certForm.id_card_front" style="position: relative;">
+                      <el-image
+                        :src="getImageUrl(certForm.id_card_front)"
+                        :preview-src-list="[getImageUrl(certForm.id_card_front)]"
+                        fit="cover"
+                        style="width: 100%; height: 150px; border-radius: 8px; cursor: pointer; border: 2px solid #e4e7ed;"
+                      />
+                      <el-button
+                        type="danger"
+                        size="small"
+                        circle
+                        :icon="Close"
+                        style="position: absolute; top: -8px; right: -8px; width: 20px; height: 20px; padding: 0; font-size: 12px;"
+                        @click="clearCertField('id_card_front')"
+                      />
+                    </div>
+                    <div v-else style="color: #909399; font-size: 13px; padding: 12px; background: #f5f7fa; border-radius: 6px;">未上传</div>
+                  </div>
+                  <div>
+                    <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px;">
+                      <div style="font-size: 13px; color: #909399;">身份证反面</div>
+                      <el-upload
+                        :show-file-list="false"
+                        :on-success="(response) => handleCertUploadSuccess('id_card_back', response, '身份证反面上传成功')"
+                        :before-upload="beforeCertUpload"
+                        action="/api/admin/upload/image"
+                        :headers="{ Authorization: 'Bearer ' + getToken() }"
+                        :data="{ type: 'teacher' }"
+                        accept="image/*"
+                      >
+                        <el-button size="small" type="primary" plain>上传</el-button>
+                      </el-upload>
+                    </div>
+                    <div v-if="certForm.id_card_back" style="position: relative;">
+                      <el-image
+                        :src="getImageUrl(certForm.id_card_back)"
+                        :preview-src-list="[getImageUrl(certForm.id_card_back)]"
+                        fit="cover"
+                        style="width: 100%; height: 150px; border-radius: 8px; cursor: pointer; border: 2px solid #e4e7ed;"
+                      />
+                      <el-button
+                        type="danger"
+                        size="small"
+                        circle
+                        :icon="Close"
+                        style="position: absolute; top: -8px; right: -8px; width: 20px; height: 20px; padding: 0; font-size: 12px;"
+                        @click="clearCertField('id_card_back')"
+                      />
+                    </div>
+                    <div v-else style="color: #909399; font-size: 13px; padding: 12px; background: #f5f7fa; border-radius: 6px;">未上传</div>
+                  </div>
+                </div>
               </div>
-              <div v-if="teacher.id_card_back">
-                <div style="margin-bottom: 6px;">身份证反面</div>
-                <el-image :src="getImageUrl(teacher.id_card_back)" :preview-src-list="[getImageUrl(teacher.id_card_back)]" fit="cover" style="width: 100%; height: 160px;" />
-              </div>
-            </div>
-            <div v-else style="color: #909399;">暂无身份证明材料</div>
-          </div>
-
-          <!-- 学历认证 -->
-          <div style="margin-bottom: 24px;">
-            <div style="margin-bottom: 12px;">
-              <span style="font-weight: 500;">学历认证</span>
-              <el-tag :type="teacher.education_verified ? 'success' : 'info'" size="small" style="margin-left: 10px;">
-                {{ teacher.education_verified ? '已认证' : '未认证' }}
-              </el-tag>
-            </div>
-            <div v-if="teacher.education_certificate">
-              <el-image :src="getImageUrl(teacher.education_certificate)" :preview-src-list="[getImageUrl(teacher.education_certificate)]" fit="cover" style="width: 100%; max-width: 400px; height: 160px;" />
-            </div>
-            <div v-else style="color: #909399;">暂无学历证明材料</div>
-          </div>
-
-          <!-- 教师认证 -->
-          <div style="margin-bottom: 24px;">
-            <div style="margin-bottom: 12px;">
-              <span style="font-weight: 500;">教师认证</span>
-              <el-tag :type="teacher.teacher_verified ? 'success' : 'info'" size="small" style="margin-left: 10px;">
-                {{ teacher.teacher_verified ? '已认证' : '未认证' }}
-              </el-tag>
-            </div>
-            <div v-if="teacher.teacher_certificate">
-              <el-image :src="getImageUrl(teacher.teacher_certificate)" :preview-src-list="[getImageUrl(teacher.teacher_certificate)]" fit="cover" style="width: 100%; max-width: 400px; height: 160px;" />
-            </div>
-            <div v-else style="color: #909399;">暂无教师资格证材料</div>
-          </div>
-
-          <!-- 审核状态 -->
-          <el-divider content-position="left">审核状态</el-divider>
-          <el-form label-width="120px">
-            <el-form-item label="当前审核状态">
-              <el-tag v-if="teacher.review_status === 'pending'" type="warning" size="large">待审核</el-tag>
-              <el-tag v-else-if="teacher.review_status === 'approved'" type="success" size="large">审核通过</el-tag>
-              <el-tag v-else-if="teacher.review_status === 'rejected'" type="danger" size="large">审核拒绝</el-tag>
             </el-form-item>
+
+            <el-divider content-position="left">学历认证</el-divider>
+            <el-form-item label="学历认证">
+              <div style="display: block; width: 100%;">
+                <div style="margin-bottom: 12px;">
+                  <el-switch
+                    v-model="certForm.education_verified"
+                    :active-value="1"
+                    :inactive-value="0"
+                    :disabled="!certForm.education_certificate"
+                    active-text="已认证"
+                    inactive-text="未认证"
+                    active-color="#67c23a"
+                  />
+                  <el-tag v-if="!certForm.education_certificate" type="warning" size="small" style="margin-left: 8px;">未上传证明材料</el-tag>
+                </div>
+                <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px;">
+                  <div style="font-size: 13px; color: #909399;">学历证明</div>
+                  <el-upload
+                    :show-file-list="false"
+                    :on-success="(response) => handleCertUploadSuccess('education_certificate', response, '学历证明上传成功')"
+                    :before-upload="beforeCertUpload"
+                    action="/api/admin/upload/image"
+                    :headers="{ Authorization: 'Bearer ' + getToken() }"
+                    :data="{ type: 'teacher' }"
+                    accept="image/*"
+                  >
+                    <el-button size="small" type="primary" plain>上传</el-button>
+                  </el-upload>
+                </div>
+                <div v-if="certForm.education_certificate" style="position: relative; max-width: 520px;">
+                  <el-image
+                    :src="getImageUrl(certForm.education_certificate)"
+                    :preview-src-list="[getImageUrl(certForm.education_certificate)]"
+                    fit="cover"
+                    style="width: 100%; height: 160px; border-radius: 8px; cursor: pointer; border: 2px solid #e4e7ed;"
+                  />
+                  <el-button
+                    type="danger"
+                    size="small"
+                    circle
+                    :icon="Close"
+                    style="position: absolute; top: -8px; right: -8px; width: 20px; height: 20px; padding: 0; font-size: 12px;"
+                    @click="clearCertField('education_certificate')"
+                  />
+                </div>
+                <div v-else style="color: #909399; font-size: 13px; padding: 12px; background: #f5f7fa; border-radius: 6px;">未上传</div>
+              </div>
+            </el-form-item>
+
+            <el-divider content-position="left">教师认证</el-divider>
+            <el-form-item label="教师认证">
+              <div style="display: block; width: 100%;">
+                <div style="margin-bottom: 12px;">
+                  <el-switch
+                    v-model="certForm.teacher_verified"
+                    :active-value="1"
+                    :inactive-value="0"
+                    :disabled="!certForm.teacher_certificate"
+                    active-text="已认证"
+                    inactive-text="未认证"
+                    active-color="#67c23a"
+                  />
+                  <el-tag v-if="!certForm.teacher_certificate" type="warning" size="small" style="margin-left: 8px;">未上传证明材料</el-tag>
+                </div>
+                <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px;">
+                  <div style="font-size: 13px; color: #909399;">教师资格证</div>
+                  <el-upload
+                    :show-file-list="false"
+                    :on-success="(response) => handleCertUploadSuccess('teacher_certificate', response, '教师资格证上传成功')"
+                    :before-upload="beforeCertUpload"
+                    action="/api/admin/upload/image"
+                    :headers="{ Authorization: 'Bearer ' + getToken() }"
+                    :data="{ type: 'teacher' }"
+                    accept="image/*"
+                  >
+                    <el-button size="small" type="primary" plain>上传</el-button>
+                  </el-upload>
+                </div>
+                <div v-if="certForm.teacher_certificate" style="position: relative; max-width: 520px;">
+                  <el-image
+                    :src="getImageUrl(certForm.teacher_certificate)"
+                    :preview-src-list="[getImageUrl(certForm.teacher_certificate)]"
+                    fit="cover"
+                    style="width: 100%; height: 160px; border-radius: 8px; cursor: pointer; border: 2px solid #e4e7ed;"
+                  />
+                  <el-button
+                    type="danger"
+                    size="small"
+                    circle
+                    :icon="Close"
+                    style="position: absolute; top: -8px; right: -8px; width: 20px; height: 20px; padding: 0; font-size: 12px;"
+                    @click="clearCertField('teacher_certificate')"
+                  />
+                </div>
+                <div v-else style="color: #909399; font-size: 13px; padding: 12px; background: #f5f7fa; border-radius: 6px;">未上传</div>
+              </div>
+            </el-form-item>
+
+            <el-divider content-position="left">审核状态</el-divider>
+            <el-form-item label="当前审核状态">
+              <div style="min-width: 80px; display: inline-block;">
+                <el-tag v-if="certForm.current_status === 'pending'" type="warning">待审核</el-tag>
+                <el-tag v-else-if="certForm.current_status === 'approved'" type="success">审核通过</el-tag>
+                <el-tag v-else-if="certForm.current_status === 'rejected'" type="danger">审核拒绝</el-tag>
+              </div>
+              <span style="margin-left: 12px; color: #909399; font-size: 13px;">（至少一项认证通过即为审核通过）</span>
+            </el-form-item>
+            <el-form-item label="设置审核状态">
+              <el-radio-group v-model="certForm.review_status">
+                <el-radio label="pending">待审核</el-radio>
+                <el-radio label="approved">审核通过</el-radio>
+                <el-radio label="rejected">审核拒绝</el-radio>
+              </el-radio-group>
+            </el-form-item>
+            <el-form-item label="审核备注">
+              <el-input
+                v-model="certForm.review_note"
+                type="textarea"
+                :rows="3"
+                placeholder="请输入审核备注（选填）"
+                maxlength="200"
+                show-word-limit
+              />
+            </el-form-item>
+            <el-alert
+              title="审核说明"
+              type="info"
+              :closable="false"
+              show-icon
+              style="margin-top: 10px;"
+            >
+              <template #default>
+                <div style="font-size: 13px; line-height: 1.6;">
+                  <p style="margin: 0 0 8px 0;">• 认证开关：控制各项认证状态，只有上传了对应证明材料才能开启认证</p>
+                  <p style="margin: 0 0 8px 0;">• 审核状态：控制教师的整体审核结果，小程序端会展示审核拒绝备注</p>
+                  <p style="margin: 0;">• 至少一项认证通过即可设置为"审核通过"</p>
+                </div>
+              </template>
+            </el-alert>
           </el-form>
+          <div style="margin-top: 16px; padding-top: 16px; border-top: 1px solid #ebeef5;">
+            <el-button @click="cancelCertEdit">取消</el-button>
+            <el-button type="primary" @click="saveCertEdit" :loading="loading">保存</el-button>
+          </div>
         </div>
       </div>
     </el-card>
@@ -374,8 +587,8 @@
         
         <el-row :gutter="20">
           <el-col :span="12">
-            <el-form-item label="出生年月" prop="birth_year">
-              <el-input v-model="editForm.birth_year" placeholder="例如：1995" />
+            <el-form-item label="出生年月" prop="birth_date">
+              <el-input v-model="editForm.birth_date" placeholder="例如：1995-05" />
             </el-form-item>
           </el-col>
           <el-col :span="12">
@@ -544,311 +757,6 @@
       </template>
     </el-dialog>
 
-    <!-- 认证信息编辑对话框（在“认证信息”Tab点编辑时打开） -->
-    <el-dialog
-      v-model="certEditDialogVisible"
-      width="900px"
-      :close-on-click-modal="false"
-      top="5vh"
-    >
-      <template #header>
-        <div class="dialog-header-content">
-          <div class="nav-buttons">
-            <el-button
-              :icon="ArrowLeft"
-              circle
-              size="small"
-              @click="switchEditTab('resume')"
-              title="上一个"
-            />
-            <el-button
-              :icon="ArrowRight"
-              circle
-              size="small"
-              disabled
-              title="下一个"
-            />
-          </div>
-          <span class="dialog-title">
-            {{ teacher ? `编辑认证信息 (${displayTeacherNo})` : '编辑认证信息' }}
-          </span>
-        </div>
-      </template>
-      <el-form :model="certForm" label-width="120px">
-        <el-divider content-position="left">实名认证</el-divider>
-        <el-form-item label="实名认证">
-          <div style="display: block; width: 100%;">
-            <div style="margin-bottom: 12px;">
-              <el-switch
-                v-model="certForm.real_name_verified"
-                :active-value="1"
-                :inactive-value="0"
-                :disabled="!certForm.id_card_front && !certForm.id_card_back"
-                active-text="已认证"
-                inactive-text="未认证"
-                active-color="#67c23a"
-              />
-              <el-tag v-if="!certForm.id_card_front && !certForm.id_card_back" type="warning" size="small" style="margin-left: 8px;">
-                未上传证明材料
-              </el-tag>
-            </div>
-
-            <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px;">
-              <div>
-                <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px;">
-                  <div style="font-size: 13px; color: #909399;">身份证正面</div>
-                  <el-upload
-                    :show-file-list="false"
-                    :on-success="(response) => handleCertUploadSuccess('id_card_front', response, '身份证正面上传成功')"
-                    :before-upload="beforeCertUpload"
-                    action="/api/admin/upload/image"
-                    :headers="{ Authorization: 'Bearer ' + getToken() }"
-                    :data="{ type: 'teacher' }"
-                    accept="image/*"
-                  >
-                    <el-button size="small" type="primary" plain>上传</el-button>
-                  </el-upload>
-                </div>
-                <div v-if="certForm.id_card_front" style="position: relative;">
-                  <el-image
-                    :src="getImageUrl(certForm.id_card_front)"
-                    :preview-src-list="[getImageUrl(certForm.id_card_front)]"
-                    fit="cover"
-                    style="width: 100%; height: 150px; border-radius: 8px; cursor: pointer; border: 2px solid #e4e7ed;"
-                  />
-                  <el-button
-                    type="danger"
-                    size="small"
-                    circle
-                    :icon="Close"
-                    style="position: absolute; top: -8px; right: -8px; width: 20px; height: 20px; padding: 0; font-size: 12px;"
-                    @click="clearCertField('id_card_front')"
-                  />
-                </div>
-                <div v-else style="color: #909399; font-size: 13px; padding: 12px; background: #f5f7fa; border-radius: 6px;">
-                  未上传
-                </div>
-              </div>
-
-              <div>
-                <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px;">
-                  <div style="font-size: 13px; color: #909399;">身份证反面</div>
-                  <el-upload
-                    :show-file-list="false"
-                    :on-success="(response) => handleCertUploadSuccess('id_card_back', response, '身份证反面上传成功')"
-                    :before-upload="beforeCertUpload"
-                    action="/api/admin/upload/image"
-                    :headers="{ Authorization: 'Bearer ' + getToken() }"
-                    :data="{ type: 'teacher' }"
-                    accept="image/*"
-                  >
-                    <el-button size="small" type="primary" plain>上传</el-button>
-                  </el-upload>
-                </div>
-                <div v-if="certForm.id_card_back" style="position: relative;">
-                  <el-image
-                    :src="getImageUrl(certForm.id_card_back)"
-                    :preview-src-list="[getImageUrl(certForm.id_card_back)]"
-                    fit="cover"
-                    style="width: 100%; height: 150px; border-radius: 8px; cursor: pointer; border: 2px solid #e4e7ed;"
-                  />
-                  <el-button
-                    type="danger"
-                    size="small"
-                    circle
-                    :icon="Close"
-                    style="position: absolute; top: -8px; right: -8px; width: 20px; height: 20px; padding: 0; font-size: 12px;"
-                    @click="clearCertField('id_card_back')"
-                  />
-                </div>
-                <div v-else style="color: #909399; font-size: 13px; padding: 12px; background: #f5f7fa; border-radius: 6px;">
-                  未上传
-                </div>
-              </div>
-            </div>
-          </div>
-        </el-form-item>
-
-        <el-divider content-position="left">学历认证</el-divider>
-        <el-form-item label="学历认证">
-          <div style="display: block; width: 100%;">
-            <div style="margin-bottom: 12px;">
-              <el-switch
-                v-model="certForm.education_verified"
-                :active-value="1"
-                :inactive-value="0"
-                :disabled="!certForm.education_certificate"
-                active-text="已认证"
-                inactive-text="未认证"
-                active-color="#67c23a"
-              />
-              <el-tag v-if="!certForm.education_certificate" type="warning" size="small" style="margin-left: 8px;">
-                未上传证明材料
-              </el-tag>
-            </div>
-
-            <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px;">
-              <div style="font-size: 13px; color: #909399;">学历证明</div>
-              <el-upload
-                :show-file-list="false"
-                :on-success="(response) => handleCertUploadSuccess('education_certificate', response, '学历证明上传成功')"
-                :before-upload="beforeCertUpload"
-                action="/api/admin/upload/image"
-                :headers="{ Authorization: 'Bearer ' + getToken() }"
-                :data="{ type: 'teacher' }"
-                accept="image/*"
-              >
-                <el-button size="small" type="primary" plain>上传</el-button>
-              </el-upload>
-            </div>
-
-            <div v-if="certForm.education_certificate" style="position: relative; max-width: 520px;">
-              <el-image
-                :src="getImageUrl(certForm.education_certificate)"
-                :preview-src-list="[getImageUrl(certForm.education_certificate)]"
-                fit="cover"
-                style="width: 100%; height: 160px; border-radius: 8px; cursor: pointer; border: 2px solid #e4e7ed;"
-              />
-              <el-button
-                type="danger"
-                size="small"
-                circle
-                :icon="Close"
-                style="position: absolute; top: -8px; right: -8px; width: 20px; height: 20px; padding: 0; font-size: 12px;"
-                @click="clearCertField('education_certificate')"
-              />
-            </div>
-            <div v-else style="color: #909399; font-size: 13px; padding: 12px; background: #f5f7fa; border-radius: 6px;">
-              未上传
-            </div>
-          </div>
-        </el-form-item>
-
-        <el-divider content-position="left">教师认证</el-divider>
-        <el-form-item label="教师认证">
-          <div style="display: block; width: 100%;">
-            <div style="margin-bottom: 12px;">
-              <el-switch
-                v-model="certForm.teacher_verified"
-                :active-value="1"
-                :inactive-value="0"
-                :disabled="!certForm.teacher_certificate"
-                active-text="已认证"
-                inactive-text="未认证"
-                active-color="#67c23a"
-              />
-              <el-tag v-if="!certForm.teacher_certificate" type="warning" size="small" style="margin-left: 8px;">
-                未上传证明材料
-              </el-tag>
-            </div>
-
-            <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px;">
-              <div style="font-size: 13px; color: #909399;">教师资格证</div>
-              <el-upload
-                :show-file-list="false"
-                :on-success="(response) => handleCertUploadSuccess('teacher_certificate', response, '教师资格证上传成功')"
-                :before-upload="beforeCertUpload"
-                action="/api/admin/upload/image"
-                :headers="{ Authorization: 'Bearer ' + getToken() }"
-                :data="{ type: 'teacher' }"
-                accept="image/*"
-              >
-                <el-button size="small" type="primary" plain>上传</el-button>
-              </el-upload>
-            </div>
-
-            <div v-if="certForm.teacher_certificate" style="position: relative; max-width: 520px;">
-              <el-image
-                :src="getImageUrl(certForm.teacher_certificate)"
-                :preview-src-list="[getImageUrl(certForm.teacher_certificate)]"
-                fit="cover"
-                style="width: 100%; height: 160px; border-radius: 8px; cursor: pointer; border: 2px solid #e4e7ed;"
-              />
-              <el-button
-                type="danger"
-                size="small"
-                circle
-                :icon="Close"
-                style="position: absolute; top: -8px; right: -8px; width: 20px; height: 20px; padding: 0; font-size: 12px;"
-                @click="clearCertField('teacher_certificate')"
-              />
-            </div>
-            <div v-else style="color: #909399; font-size: 13px; padding: 12px; background: #f5f7fa; border-radius: 6px;">
-              未上传
-            </div>
-          </div>
-        </el-form-item>
-
-        <el-divider content-position="left">审核状态</el-divider>
-
-        <el-form-item label="当前审核状态">
-          <div style="min-width: 80px; display: inline-block;">
-            <el-tag
-              v-if="certForm.current_status === 'pending'"
-              type="warning"
-            >
-              待审核
-            </el-tag>
-            <el-tag
-              v-else-if="certForm.current_status === 'approved'"
-              type="success"
-            >
-              审核通过
-            </el-tag>
-            <el-tag
-              v-else-if="certForm.current_status === 'rejected'"
-              type="danger"
-            >
-              审核拒绝
-            </el-tag>
-          </div>
-          <span style="margin-left: 12px; color: #909399; font-size: 13px;">
-            （至少一项认证通过即为审核通过）
-          </span>
-        </el-form-item>
-
-        <el-form-item label="设置审核状态">
-          <el-radio-group v-model="certForm.review_status">
-            <el-radio label="pending">待审核</el-radio>
-            <el-radio label="approved">审核通过</el-radio>
-            <el-radio label="rejected">审核拒绝</el-radio>
-          </el-radio-group>
-        </el-form-item>
-
-        <el-form-item label="审核备注">
-          <el-input
-            v-model="certForm.review_note"
-            type="textarea"
-            :rows="3"
-            placeholder="请输入审核备注（选填）"
-            maxlength="200"
-            show-word-limit
-          />
-        </el-form-item>
-
-        <el-alert
-          title="审核说明"
-          type="info"
-          :closable="false"
-          show-icon
-          style="margin-top: 10px;"
-        >
-          <template #default>
-            <div style="font-size: 13px; line-height: 1.6;">
-              <p style="margin: 0 0 8px 0;">• 认证开关：控制各项认证状态，只有上传了对应证明材料才能开启认证</p>
-              <p style="margin: 0 0 8px 0;">• 审核状态：控制教师的整体审核结果，小程序端会展示审核拒绝备注</p>
-              <p style="margin: 0;">• 至少一项认证通过即可设置为"审核通过"</p>
-            </div>
-          </template>
-        </el-alert>
-      </el-form>
-
-      <template #footer>
-        <el-button @click="cancelCertEdit">取消</el-button>
-        <el-button type="primary" @click="saveCertEdit" :loading="loading">保存</el-button>
-      </template>
-    </el-dialog>
-    
     <!-- 小程序海报弹窗 -->
     <el-dialog
       v-model="posterDialogVisible"
@@ -988,11 +896,11 @@
 </template>
 
 <script setup>
-import { ref, onMounted, computed } from 'vue'
+import { ref, onMounted, computed, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import { Lock, View, ArrowLeft, ArrowRight, DocumentCopy, Plus, Download, Close } from '@element-plus/icons-vue'
-import { getTeacherDetail, updateTeacher, generateTeacherPoster, reviewTeacher } from '@/api/teacher'
+import { Lock, View, ArrowLeft, ArrowRight, ArrowUp, ArrowDown, DocumentCopy, Plus, Download, Close } from '@element-plus/icons-vue'
+import { getTeacherDetail, getTeacherPrevNext, updateTeacher, generateTeacherPoster, reviewTeacher } from '@/api/teacher'
 import { useTabsStore } from '@/store/modules/tabs'
 
 const route = useRoute()
@@ -1007,7 +915,6 @@ const editDialogVisible = ref(false)
 const editForm = ref({})
 const editFormRef = ref(null)
 const editFormExperiences = ref([])
-const certEditDialogVisible = ref(false)
 const certForm = ref({
   real_name_verified: 0,
   education_verified: 0,
@@ -1020,12 +927,20 @@ const certForm = ref({
   review_status: 'pending',
   review_note: ''
 })
+// 各审核状态对应的默认审核备注
+const defaultReviewNotes = {
+  pending: '您的认证资料已提交，请耐心等待管理员审核结果。',
+  approved: '请开始您的家教之旅，继续完善您的简历将获得更多简历曝光哦',
+  rejected: '您的提交认证资料不齐全，请重新上传完整且有效的证件信息重新审核。'
+}
 const posterDialogVisible = ref(false)
 const posterLoading = ref(false)
 const posterData = ref(null)
 const resumePosterDialogVisible = ref(false)
 const resumePosterLoading = ref(false)
 const resumePosterUrl = ref(null)
+const prevTeacherId = ref(null)
+const nextTeacherId = ref(null)
 
 const displayTeacherNo = computed(() => {
   if (!teacher.value) return ''
@@ -1047,23 +962,42 @@ const getImageUrl = (path) => {
 }
 
 const fetchTeacherDetail = async () => {
+  const routeId = route.params.id
+  const numId = routeId != null && routeId !== '' ? Number(routeId) : 0
+  if (numId > 0) {
+    fetchPrevNext(numId)
+  }
   try {
     loading.value = true
-    const res = await getTeacherDetail(route.params.id)
+    const res = await getTeacherDetail(routeId)
+    // 非对象（如 304 返回或 HTML 错误页）按失败处理
+    if (!res || typeof res !== 'object') {
+      ElMessage.error(res?.message || '获取详情失败')
+      return
+    }
     // 兼容多种返回格式，只要有教师数据（含 id 或 name）即视为成功
-    const data = res.data || null
+    const data = res.data ?? null
     const hasTeacherData = data && typeof data === 'object' && (data.id != null || data.name != null)
-    const ok = (res.success && data) || (res.code === 200 && data) || hasTeacherData
+    const ok = (res.success === true && data) || (res.code === 200 && data) || hasTeacherData
     if (ok && hasTeacherData) {
       teacher.value = data
       const displayId = (data.teacher_no != null && data.teacher_no !== '') ? `T${data.teacher_no}` : `T${data.id}`
       const title = `${displayId}：${data.name || '教师'}`
-      tabsStore.updateTabTitle(route.path, title)
-    } else {
-      ElMessage.error(res.error || res.message || '获取详情失败')
+      if (typeof tabsStore.updateTabTitle === 'function') {
+        tabsStore.updateTabTitle(route.path, title)
+      }
+    }
+    // 始终用当前路由 id 请求上一/下一老师（不依赖详情结构），便于按钮可用
+    const tid = Number(data?.id) || Number(route.params.id) || route.params.id
+    if (tid && tid > 0) {
+      fetchPrevNext(tid)
+    }
+    if (!ok || !hasTeacherData) {
+      const msg = res.error || res.message || (res.data == null && res.code === 200 ? '暂无数据或缓存' : '') || '获取详情失败'
+      ElMessage.error(msg)
     }
   } catch (error) {
-    ElMessage.error('获取详情失败')
+    ElMessage.error(error?.response?.data?.error || error?.message || '获取详情失败')
   } finally {
     loading.value = false
   }
@@ -1073,25 +1007,98 @@ const goBack = () => {
   router.push('/teachers')
 }
 
-const handleEdit = () => {
-  // 在“认证信息”tab：打开认证编辑；否则打开教师信息编辑
-  if (activeTab.value === 'certification') {
-    certEditDialogVisible.value = true
-    certForm.value = {
-      real_name_verified: teacher.value.real_name_verified || 0,
-      education_verified: teacher.value.education_verified || 0,
-      teacher_verified: teacher.value.teacher_verified || 0,
-      id_card_front: teacher.value.id_card_front || '',
-      id_card_back: teacher.value.id_card_back || '',
-      education_certificate: teacher.value.education_certificate || '',
-      teacher_certificate: teacher.value.teacher_certificate || '',
-      current_status: teacher.value.review_status || 'pending',
-      review_status: teacher.value.review_status || 'pending',
-      review_note: teacher.value.review_note || ''
+const fetchPrevNext = async (teacherId) => {
+  const id = teacherId != null && teacherId !== '' ? Number(teacherId) : (route.params.id != null ? Number(route.params.id) : null)
+  if (!id || id <= 0) return
+  try {
+    const res = await getTeacherPrevNext(id)
+    const ok = res && (res.success === true || res.code === 200)
+    const payload = res?.data != null ? res.data : res
+    if (ok && payload != null) {
+      const prev = payload.prev_id != null && payload.prev_id !== '' ? Number(payload.prev_id) : null
+      const next = payload.next_id != null && payload.next_id !== '' ? Number(payload.next_id) : null
+      prevTeacherId.value = (prev != null && prev > 0) ? prev : null
+      nextTeacherId.value = (next != null && next > 0) ? next : null
+    } else {
+      prevTeacherId.value = null
+      nextTeacherId.value = null
     }
-    return
+  } catch (e) {
+    console.warn('获取上一/下一老师失败:', e)
+    prevTeacherId.value = null
+    nextTeacherId.value = null
   }
+}
 
+const goToTeacher = (id) => {
+  if (!id) return
+  const currentTab = activeTab.value
+  router.push({ path: `/teachers/${id}`, query: { tab: currentTab } })
+}
+
+// 从教师数据同步到认证表单（切到认证 tab 或取消时用）
+const syncCertFormFromTeacher = () => {
+  if (!teacher.value) return
+  const status = teacher.value.review_status || 'pending'
+  const noteFromServer = teacher.value.review_note && teacher.value.review_note.trim()
+  const defaultNote = defaultReviewNotes[status] || ''
+  certForm.value = {
+    real_name_verified: teacher.value.real_name_verified || 0,
+    education_verified: teacher.value.education_verified || 0,
+    teacher_verified: teacher.value.teacher_verified || 0,
+    id_card_front: teacher.value.id_card_front || '',
+    id_card_back: teacher.value.id_card_back || '',
+    education_certificate: teacher.value.education_certificate || '',
+    teacher_certificate: teacher.value.teacher_certificate || '',
+    current_status: status,
+    review_status: status,
+    review_note: noteFromServer || defaultNote
+  }
+}
+
+// 切到认证信息 tab 时，用当前教师数据填充表单
+watch(activeTab, (tab) => {
+  if (tab === 'certification' && teacher.value) syncCertFormFromTeacher()
+})
+watch(teacher, (t) => {
+  if (t && activeTab.value === 'certification') syncCertFormFromTeacher()
+}, { deep: true })
+
+// 监听三个认证开关：任一开启则自动将审核状态设为“审核通过”，全部关闭则为“审核拒绝”
+watch(
+  () => [
+    certForm.value.real_name_verified,
+    certForm.value.education_verified,
+    certForm.value.teacher_verified
+  ],
+  (vals) => {
+    const hasAnyVerified = vals.some(v => Number(v) === 1)
+    const targetStatus = hasAnyVerified ? 'approved' : 'rejected'
+    if (certForm.value.review_status !== targetStatus) {
+      certForm.value.review_status = targetStatus
+    }
+  }
+)
+
+// 审核状态变化时自动填充对应的默认备注（若当前备注为空或仍是旧的默认备注）
+const ensureReviewNoteForStatus = (status) => {
+  if (!status) return
+  const note = (certForm.value.review_note || '').trim()
+  const allDefaultNotes = Object.values(defaultReviewNotes)
+  if (!note || allDefaultNotes.includes(note)) {
+    certForm.value.review_note = defaultReviewNotes[status] || ''
+  }
+}
+
+watch(
+  () => certForm.value.review_status,
+  (status) => {
+    ensureReviewNoteForStatus(status)
+  }
+)
+
+const handleEdit = () => {
+  // 仅教师简历 tab 显示编辑按钮，打开教师信息编辑对话框
   editDialogVisible.value = true
   // 复制教师数据到表单
   editForm.value = {
@@ -1102,7 +1109,7 @@ const handleEdit = () => {
     wechat_id: teacher.value.wechat_id || '',
     email: teacher.value.email || '',
     hometown: teacher.value.hometown || '',
-    birth_year: teacher.value.birth_year || '',
+    birth_date: teacher.value.birth_date || '',
     teaching_years: teacher.value.teaching_years || 0,
     location_province: teacher.value.location_province || '',
     location_city: teacher.value.location_city || '',
@@ -1135,44 +1142,15 @@ const handleEdit = () => {
   }
 }
 
-const ensureCertFormInitialized = () => {
-  if (!teacher.value) return
-  if (!certForm.value) return
-  // 如果已经有 id_card 字段或 review_status，认为已初始化（避免切换时覆盖未保存输入）
-  if (
-    certForm.value.id_card_front ||
-    certForm.value.id_card_back ||
-    certForm.value.education_certificate ||
-    certForm.value.teacher_certificate ||
-    certForm.value.review_status ||
-    certForm.value.review_note
-  ) return
-
-  certForm.value = {
-    real_name_verified: teacher.value.real_name_verified || 0,
-    education_verified: teacher.value.education_verified || 0,
-    teacher_verified: teacher.value.teacher_verified || 0,
-    id_card_front: teacher.value.id_card_front || '',
-    id_card_back: teacher.value.id_card_back || '',
-    education_certificate: teacher.value.education_certificate || '',
-    teacher_certificate: teacher.value.teacher_certificate || '',
-    current_status: teacher.value.review_status || 'pending',
-    review_status: teacher.value.review_status || 'pending',
-    review_note: teacher.value.review_note || ''
-  }
-}
-
 const switchEditTab = (target) => {
   if (target === 'certification') {
-    activeTab.value = 'certification'
-    ensureCertFormInitialized()
     editDialogVisible.value = false
-    certEditDialogVisible.value = true
+    activeTab.value = 'certification'
+    syncCertFormFromTeacher()
     return
   }
   if (target === 'resume') {
     activeTab.value = 'resume'
-    certEditDialogVisible.value = false
     editDialogVisible.value = true
   }
 }
@@ -1240,7 +1218,6 @@ const saveCertEdit = async () => {
 
     if (reviewRes.success) {
       ElMessage.success('保存成功')
-      certEditDialogVisible.value = false
       await fetchTeacherDetail()
     } else {
       ElMessage.error(reviewRes.error || '保存失败')
@@ -1253,7 +1230,7 @@ const saveCertEdit = async () => {
 }
 
 const cancelCertEdit = () => {
-  certEditDialogVisible.value = false
+  syncCertFormFromTeacher()
 }
 
 // 复制教师简历为文字格式
@@ -1273,7 +1250,7 @@ const copyTeacherResume = () => {
     resume += `教师类型：${getTeacherTypeLabel(t.teacher_type, t.grade_level, t.education_level)}\n`
   }
   resume += `籍贯：${t.hometown || ''}\n`
-  if (t.birth_year) resume += `出生年月：${t.birth_year}\n`
+  if (t.birth_date) resume += `出生年月：${t.birth_date}\n`
   if (t.teaching_years) resume += `教龄：${t.teaching_years}年\n`
   
   // 教育信息
@@ -1760,10 +1737,11 @@ const generateResumePoster = async () => {
       const secondRowY = infoY + 50
       const tags = []
       
-      // 计算年龄
-      if (teacher.value.birth_year) {
+      // 计算年龄（优先从 birth_date YYYY-MM 取年）
+      const birthYearSrc = teacher.value.birth_date || teacher.value.birth_year
+      if (birthYearSrc) {
         const currentYear = new Date().getFullYear()
-        const birthYear = parseInt(teacher.value.birth_year)
+        const birthYear = parseInt(String(birthYearSrc).substring(0, 4), 10)
         if (!isNaN(birthYear)) {
           const age = currentYear - birthYear
           tags.push(`${age}岁`)
@@ -2228,13 +2206,30 @@ const copyResumePoster = async () => {
 }
 
 onMounted(() => {
+  const tabFromQuery = route.query.tab
+  if (tabFromQuery === 'certification' || tabFromQuery === 'resume') {
+    activeTab.value = tabFromQuery
+  }
   fetchTeacherDetail()
+})
+
+watch(() => route.params.id, (newId, oldId) => {
+  // 仅在实际切换教师时拉取（首次加载由 onMounted 处理，避免重复请求导致一次 304/异常就报错）
+  if (newId && oldId !== undefined && newId !== oldId) {
+    const tabFromQuery = route.query.tab
+    if (tabFromQuery === 'certification' || tabFromQuery === 'resume') {
+      activeTab.value = tabFromQuery
+    }
+    fetchTeacherDetail()
+  }
 })
 </script>
 
 <style scoped>
 .teacher-detail-page {
   padding: 20px;
+  /* 给右侧悬浮按钮留空，避免挡住正文 */
+  padding-right: 72px;
 }
 
 .page-header {
@@ -2248,6 +2243,54 @@ onMounted(() => {
   display: flex;
   align-items: center;
   gap: 20px;
+}
+
+/* 右侧中部固定悬浮：框内两个按钮严格居中 */
+.teacher-switch-float {
+  position: fixed;
+  top: 50%;
+  right: 56px;
+  transform: translateY(-50%);
+  z-index: 100;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  width: 52px;
+  padding: 8px;
+  box-sizing: border-box;
+  background: #fff;
+  border: 1px solid var(--el-border-color-lighter);
+  border-radius: 10px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+}
+.teacher-switch-float :deep(.el-button.switch-btn) {
+  flex-shrink: 0;
+  width: 36px !important;
+  height: 36px !important;
+  min-width: 36px !important;
+  min-height: 36px !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+}
+.teacher-switch-float :deep(.el-button.switch-btn .el-icon) {
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  line-height: 1 !important;
+}
+.teacher-switch-float :deep(.el-button.switch-btn .el-icon svg) {
+  display: block;
+  vertical-align: middle;
+}
+.teacher-switch-float :deep(.el-button.switch-btn:not(.is-disabled):hover) {
+  transform: scale(1.08);
 }
 
 .header-actions {
@@ -2287,5 +2330,27 @@ onMounted(() => {
   display: flex;
   align-items: center;
   gap: 8px;
+}
+
+/* 基本信息：分享者昵称与头像同一单元格纵向排列 */
+.basic-info-sharer-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  align-items: flex-start;
+}
+.basic-info-sharer-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.basic-info-sharer-row--avatar {
+  align-items: center;
+}
+.basic-info-sharer-sublabel {
+  color: var(--el-text-color-secondary);
+  font-size: 12px;
+  min-width: 28px;
 }
 </style>

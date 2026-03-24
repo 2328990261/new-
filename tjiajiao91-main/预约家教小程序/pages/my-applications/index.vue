@@ -95,6 +95,7 @@
 <script setup>
 import { ref, onMounted, computed } from 'vue'
 import { getMyApplications } from '../../utils/api.js'
+import auth from '@/utils/auth.js'
 import CustomTabbar from '@/components/custom-tabbar/index.vue'
 
 const statusBarHeight = ref(0)
@@ -139,9 +140,7 @@ const loadData = async () => {
         icon: 'none'
       })
       setTimeout(() => {
-        uni.navigateTo({
-          url: '/pages/login/index'
-        })
+        auth.navigateToLogin()
       }, 1500)
       return
     }

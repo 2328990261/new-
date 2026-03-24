@@ -255,6 +255,24 @@
           <el-input v-model="form.contact" placeholder="请输入联系方式，用于显示给用户" />
           <div class="form-tip">派单组成员需要填写联系方式，用于家教订单派单</div>
         </el-form-item>
+        <el-form-item label="归属城市" prop="city_id" v-if="form.role === 'dispatcher'">
+          <el-select
+            v-model="form.city_id"
+            placeholder="请选择归属城市"
+            clearable
+            filterable
+            multiple
+            style="width: 100%"
+          >
+            <el-option
+              v-for="city in cityOptions"
+              :key="city.id"
+              :label="city.name"
+              :value="String(city.id)"
+            />
+          </el-select>
+          <div class="form-tip">支持多选，保存为逗号分隔；家教信息单城市命中任一归属城市时，会出现在该派单员“我的订单”中</div>
+        </el-form-item>
         <el-form-item label="邮箱地址" prop="email" :required="form.role === 'customer_service'">
           <el-input v-model="form.email" placeholder="请输入邮箱地址" />
           <div class="form-tip">
@@ -326,6 +344,7 @@ import { ref, reactive, onMounted, computed, h } from 'vue'
 import { Plus, CopyDocument } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { getAdminList, addAdmin, updateAdmin, deleteAdmin, updateAdminWechatQrcode, getTeamLeaders, batchUpdateLeader } from '@/api/admin'
+import { getAllCities } from '@/api/city'
 import { uploadImage } from '@/api/upload'
 import { useUserStore } from '@/store'
 
@@ -363,6 +382,7 @@ const form = reactive({
   nickname: '',
   role: 'customer_service',
   leader_id: null,
+  city_id: [],
   contact: '',
   email: '',
   openid: '',
@@ -371,6 +391,7 @@ const form = reactive({
 
 // 组长列表
 const teamLeaders = ref([])
+const cityOptions = ref([])
 
 const rules = {
   username: [
@@ -415,12 +436,29 @@ const rules = {
   ],
   contact: [
     { required: function() { return form.role === 'dispatcher' }, message: '请输入联系方式', trigger: 'blur' }
+  ],
+  city_id: [
+    {
+      validator: (rule, value, callback) => {
+        if (form.role !== 'dispatcher') {
+          callback()
+          return
+        }
+        if (Array.isArray(value) && value.length > 0) {
+          callback()
+          return
+        }
+        callback(new Error('请选择归属城市'))
+      },
+      trigger: 'change'
+    }
   ]
 }
 
 onMounted(() => {
   loadData()
   loadTeamLeaders()
+  loadCities()
 })
 
 const loadData = async () => {
@@ -469,6 +507,7 @@ const resetForm = () => {
   form.nickname = ''
   form.role = 'customer_service'
   form.leader_id = null
+  form.city_id = []
   form.contact = ''
   form.email = ''
   form.openid = ''
@@ -485,11 +524,23 @@ const loadTeamLeaders = async () => {
   }
 }
 
+const loadCities = async () => {
+  try {
+    const res = await getAllCities()
+    cityOptions.value = res.data || []
+  } catch (error) {
+    cityOptions.value = []
+  }
+}
+
 // 角色变更处理
 const handleRoleChange = (role) => {
   // 如果不是客服角色，清空组长选择
   if (role !== 'customer_service') {
     form.leader_id = null
+  }
+  if (role !== 'dispatcher') {
+    form.city_id = []
   }
 }
 
@@ -570,6 +621,12 @@ const showAddDialog = () => {
 }
 
 const showEditDialog = (row) => {
+  const parsedCityIds = row.city_id
+    ? String(row.city_id)
+      .split(',')
+      .map(id => String(id).trim())
+      .filter(id => id !== '')
+    : []
   dialogTitle.value = '编辑管理员'
   Object.assign(form, { 
     id: row.id,
@@ -578,6 +635,7 @@ const showEditDialog = (row) => {
     nickname: row.nickname,
     role: row.role,
     leader_id: row.leader_id || null,
+    city_id: parsedCityIds,
     contact: row.contact || '',
     email: row.email || '',
     openid: row.openid || '',
@@ -597,6 +655,16 @@ const handleSubmit = async () => {
         // 编辑模式下，如果密码为空，则删除password字段
         if (form.id && (!submitData.password || submitData.password.trim() === '')) {
           delete submitData.password
+        }
+        if (submitData.role === 'dispatcher') {
+          submitData.city_id = Array.isArray(submitData.city_id)
+            ? submitData.city_id
+              .map(id => String(id).trim())
+              .filter(id => id !== '')
+              .join(',')
+            : ''
+        } else {
+          submitData.city_id = null
         }
         
         if (form.id) {

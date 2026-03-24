@@ -138,12 +138,12 @@
                 <el-icon class="section-icon" color="#909399"><InfoFilled /></el-icon>
                 <span class="section-title-inline">管理信息</span>
               </div>
-              <div class="info-item" v-if="order.admin">
+              <div class="info-item">
                 <span class="label">
                   <el-icon><UserFilled /></el-icon>
-                  归属管理员
+                  分享者
                 </span>
-                <span class="value">{{ order.admin.nickname || order.admin.username || '-' }}</span>
+                <span class="value">{{ (order.admin_id != null && order.admin_id !== '' && Number(order.admin_id) > 0) ? (order.admin?.nickname || order.admin?.username || '-') : '-' }}</span>
               </div>
               <div class="info-item" v-if="order.create_time">
                 <span class="label">
@@ -191,6 +191,12 @@
                 <el-button type="success" @click="handleApprove" :loading="submitLoading" style="width: 100%">
                   <el-icon><Check /></el-icon> 通过审核
                 </el-button>
+                <div class="approve-option">
+                  <el-checkbox v-model="convertToTutor" label="勾选后：审核通过时自动转换为家教单" />
+                  <div class="approve-option-tip">
+                    不勾选将仅把预约标记为“已通过”，家教单需在家教单管理中手动生成/发布。
+                  </div>
+                </div>
                 <el-button type="danger" @click="handleReject" :loading="submitLoading" style="width: 100%">
                   <el-icon><Close /></el-icon> 拒绝审核
                 </el-button>
@@ -308,6 +314,7 @@ const order = ref({})
 const submitLoading = ref(false)
 const rejectVisible = ref(false)
 const rejectForm = ref({ reason: '' })
+const convertToTutor = ref(false) // 是否在审核通过时自动生成家教单
 const orderList = ref([])  // 订单列表，用于导航
 const editVisible = ref(false)
 const editForm = ref({})
@@ -329,6 +336,8 @@ const loadData = async () => {
     // 后端返回格式为 {success: true, data: {...}, message: '...'}
     if (res && res.success && res.data) {
       order.value = res.data
+      // 默认不勾选：仅通过审核不自动转换家教单
+      convertToTutor.value = false
       console.log('Order data:', order.value)
       
       // 更新标签标题
@@ -552,16 +561,22 @@ const confirmEdit = async () => {
 }
 
 const handleApprove = () => {
-  ElMessageBox.confirm('确认通过该预约审核？审核通过后将发布为家教信息', '提示', {
+  const confirmText = convertToTutor.value
+    ? '确认通过该预约审核？审核通过后将自动转换为家教单并派单'
+    : '确认通过该预约审核？仅将预约标记为“已通过”，不生成家教单'
+
+  ElMessageBox.confirm(confirmText, '提示', {
     confirmButtonText: '确定',
     cancelButtonText: '取消',
     type: 'success'
   }).then(async () => {
     submitLoading.value = true
     try {
-      const res = await approveOrderAPI(order.value.id)
+      const res = await approveOrderAPI(order.value.id, {
+        convert_to_tutor: convertToTutor.value ? 1 : 0
+      })
       if (res && res.success) {
-        ElMessage.success(res.message || '审核通过，家教信息已发布')
+        ElMessage.success(res.message || (convertToTutor.value ? '审核通过，家教信息已发布' : '审核通过'))
         loadData()
       } else {
         ElMessage.error(res.message || '操作失败，请重试')
@@ -856,6 +871,32 @@ const confirmReject = async () => {
 .action-buttons {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 10px;
+}
+
+.approve-option {
+  width: auto;
+  max-width: 360px;
+  padding: 0 0 2px;
+  margin-top: -2px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  align-self: flex-start;
+}
+
+.approve-option-tip {
+  font-size: 12px;
+  color: #909399;
+  margin-top: 2px;
+  line-height: 1.4;
+  width: 100%;
+  display: block;
+}
+
+/* 强制勾选块在窄列内换行/占满，避免它的内部 inline 布局把宽度撑大 */
+.approve-option :deep(.el-checkbox) {
+  display: block;
+  width: 100%;
 }
 </style>

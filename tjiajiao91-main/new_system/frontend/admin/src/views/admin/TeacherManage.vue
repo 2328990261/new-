@@ -312,7 +312,7 @@
           <el-descriptions-item label="微信昵称">{{ currentTeacher.wechat_nickname }}</el-descriptions-item>
           <el-descriptions-item label="OpenID">{{ currentTeacher.openid }}</el-descriptions-item>
           <el-descriptions-item label="籍贯">{{ currentTeacher.hometown }}</el-descriptions-item>
-          <el-descriptions-item label="出生年份">{{ currentTeacher.birth_year }}</el-descriptions-item>
+          <el-descriptions-item label="出生年月">{{ currentTeacher.birth_date || '' }}</el-descriptions-item>
           <el-descriptions-item label="教龄">{{ currentTeacher.teaching_years ? currentTeacher.teaching_years + '年' : '' }}</el-descriptions-item>
         </el-descriptions>
 
@@ -1297,8 +1297,9 @@
             （至少一项认证通过即为审核通过）
           </span>
         </el-form-item>
-        
-        <el-form-item label="设置审核状态" prop="review_status">
+
+        <!-- 设置审核状态的三个按钮，跟教师详情里的认证信息保持一致 -->
+        <el-form-item label="设置审核状态">
           <el-radio-group v-model="reviewForm.review_status">
             <el-radio label="pending">待审核</el-radio>
             <el-radio label="approved">审核通过</el-radio>
@@ -1306,12 +1307,20 @@
           </el-radio-group>
         </el-form-item>
         
+        <el-form-item label="审核结果说明">
+          <div style="font-size: 13px; color: #606266; line-height: 1.8;">
+            系统会根据上方三个认证开关自动判定整体审核结果：
+            <br />- 任意一项认证开关为“已认证”时，整体审核结果为 <span style="color:#67c23a;font-weight:600;">审核通过</span>；
+            <br />- 三项认证均未开启时，整体审核结果为 <span style="color:#f56c6c;font-weight:600;">审核拒绝</span>，且如未填写备注会使用统一默认备注。
+          </div>
+        </el-form-item>
+        
         <el-form-item label="审核备注" prop="review_note">
           <el-input 
             v-model="reviewForm.review_note" 
             type="textarea" 
             :rows="3"
-            placeholder="请输入审核备注（选填）"
+            placeholder="可填写具体原因；若留空且三项认证均未开启，将自动使用默认备注：您的提交认证资料不齐全，请重新上传完整且有效的证件信息重新审核。"
             maxlength="200"
             show-word-limit
           />
@@ -1349,7 +1358,7 @@ export default {
 </script>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { useRouter } from 'vue-router'
 import { List, CircleCheck, Clock, CircleClose, Lock, Delete, DocumentDelete, Search, Setting, Location, Plus, Close, DocumentCopy, Picture, Refresh } from '@element-plus/icons-vue'
@@ -1406,6 +1415,13 @@ const editFormExperiences = ref([])
 const editFormPhotos = ref({ avatar: '', teaching_photos: [] })
 
 const selectedRows = ref([])
+
+// 审核结果默认备注文案（教师审核）
+const defaultReviewNotes = {
+  pending: '您的认证资料已提交，请耐心等待管理员审核结果。',
+  approved: '请开始您的家教之旅，继续完善您的简历将获得更多简历曝光哦',
+  rejected: '您的提交认证资料不齐全，请重新上传完整且有效的证件信息重新审核。'
+}
 
 // 列显示配置
 const columnOptions = [
@@ -1886,8 +1902,23 @@ const handleReview = (row) => {
     real_name_verified: row.real_name_verified || 0,
     education_verified: row.education_verified || 0,
     teacher_verified: row.teacher_verified || 0,
-    review_note: ''
+    review_note: row.review_note || ''
   }
+
+  // 打开弹窗时，根据三项认证自动推导当前审核结果，并填充默认备注
+  const hasAnyCertification =
+    !!reviewForm.value.real_name_verified ||
+    !!reviewForm.value.education_verified ||
+    !!reviewForm.value.teacher_verified
+  const status = hasAnyCertification ? 'approved' : 'rejected'
+  reviewForm.value.current_status = status
+  reviewForm.value.review_status = status
+  const note = (reviewForm.value.review_note || '').trim()
+  const allDefaultNotes = Object.values(defaultReviewNotes)
+  if (!note || allDefaultNotes.includes(note)) {
+    reviewForm.value.review_note = defaultReviewNotes[status] || ''
+  }
+
   reviewVisible.value = true
 }
 
@@ -1959,12 +1990,27 @@ const handleSaveEdit = async () => {
 const handleSaveReview = async () => {
   try {
     saveLoading.value = true
-    
+    const defaultRejectNote = '您的提交认证资料不齐全，请重新上传完整且有效的证件信息重新审核。'
+
+    // 根据认证开关自动判定审核结果
+    const hasAnyCertification = !!(
+      reviewForm.value.real_name_verified ||
+      reviewForm.value.education_verified ||
+      reviewForm.value.teacher_verified
+    )
+    const finalStatus = hasAnyCertification ? 'approved' : 'rejected'
+
+    // 若为拒绝且未填写备注，则使用默认备注
+    let finalReviewNote = (reviewForm.value.review_note || '').trim()
+    if (finalStatus === 'rejected' && !finalReviewNote) {
+      finalReviewNote = defaultRejectNote
+    }
+
     // 使用专门的审核接口，传递所有认证字段
     const res = await reviewTeacher(
       reviewForm.value.id, 
-      reviewForm.value.review_status,
-      reviewForm.value.review_note || '',
+      finalStatus,
+      finalReviewNote,
       {
         real_name_verified: reviewForm.value.real_name_verified,
         education_verified: reviewForm.value.education_verified,
@@ -1975,6 +2021,7 @@ const handleSaveReview = async () => {
     if (res.success) {
       ElMessage.success('审核状态更新成功')
       reviewVisible.value = false
+      reviewForm.value.current_status = finalStatus
       // 重新加载数据
       await loadData()
       await loadStatistics()
@@ -1988,6 +2035,45 @@ const handleSaveReview = async () => {
     saveLoading.value = false
   }
 }
+
+// 审核弹窗中：监听三个认证开关，自动联动整体审核状态，并根据状态设置默认备注
+watch(
+  () => [
+    reviewForm.value?.real_name_verified,
+    reviewForm.value?.education_verified,
+    reviewForm.value?.teacher_verified
+  ].filter(v => v !== undefined),
+  (vals) => {
+    // 组件初始挂载时，reviewForm 还未通过 handleReview 填充，此时不做任何处理
+    if (!reviewVisible.value || !reviewForm.value || !reviewForm.value.id) return
+    if (!vals || vals.length === 0) return
+
+    const hasAny = vals.some(v => Number(v) === 1)
+    const targetStatus = hasAny ? 'approved' : 'rejected'
+    reviewForm.value.current_status = targetStatus
+    reviewForm.value.review_status = targetStatus
+
+    const note = (reviewForm.value.review_note || '').trim()
+    const allDefaultNotes = Object.values(defaultReviewNotes)
+    if (!note || allDefaultNotes.includes(note)) {
+      reviewForm.value.review_note = defaultReviewNotes[targetStatus] || ''
+    }
+  }
+)
+
+// 审核弹窗中：监听“设置审核状态”单选切换，同步更新审核备注为对应状态的默认文案
+watch(
+  () => reviewForm.value?.review_status,
+  (newStatus) => {
+    if (!reviewVisible.value || !reviewForm.value || !reviewForm.value.id) return
+    if (!newStatus) return
+    const note = (reviewForm.value.review_note || '').trim()
+    const allDefaultNotes = Object.values(defaultReviewNotes)
+    if (!note || allDefaultNotes.includes(note)) {
+      reviewForm.value.review_note = defaultReviewNotes[newStatus] || ''
+    }
+  }
+)
 
 // 切换状态
 const handleToggleStatus = async (row, newStatus) => {
@@ -2239,7 +2325,7 @@ const handleCopyResume = async () => {
       resume += `教师类型：${getTeacherTypeLabel(t.teacher_type, t.grade_level, t.education_level)}\n`
     }
     resume += `籍贯：${t.hometown || ''}\n`
-    if (t.birth_year) resume += `出生年月：${t.birth_year}\n`
+    if (t.birth_date) resume += `出生年月：${t.birth_date}\n`
     if (t.teaching_years) resume += `教龄：${t.teaching_years}年\n`
     
     // 教育信息

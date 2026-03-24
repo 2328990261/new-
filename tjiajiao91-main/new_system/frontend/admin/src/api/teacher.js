@@ -1,4 +1,4 @@
-﻿import request from '@/utils/request'
+import request from '@/utils/request'
 
 /**
  * 获取教师列表
@@ -17,6 +17,16 @@ export function getTeacherList(params) {
 export function getTeacherDetail(id) {
   return request({
     url: `/teachers/${id}`,
+    method: 'get'
+  })
+}
+
+/**
+ * 获取上一老师/下一老师 ID（用于详情页切换）
+ */
+export function getTeacherPrevNext(id) {
+  return request({
+    url: `/teachers/prev-next/${id}`,
     method: 'get'
   })
 }

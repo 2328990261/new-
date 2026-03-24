@@ -3,11 +3,24 @@
 
 console.log('=== 环境配置文件已加载 ===')
 
+// ========== 强制环境开关（优先于自动判断） ==========
+// 设为 true 时始终使用下方 FORCE_ENV；设为 false 时按小程序版本自动判断
+const USE_FORCE_ENV = true
+// 强制环境：'development' = 本地/开发，'production' = 线上
+const FORCE_ENV = 'production'
+// ====================================================
+
 /**
  * 判断当前运行环境
- * @returns {string} 'development' | 'production'
+ * @returns {string} 'development' | 'production' | 'trial'
  */
 const getEnvironment = () => {
+	// 优先使用强制开关，确保改这里一定能切换
+	if (USE_FORCE_ENV && FORCE_ENV) {
+		console.log('使用强制环境:', FORCE_ENV)
+		return FORCE_ENV
+	}
+
 	// 小程序环境判断
 	// #ifdef MP-WEIXIN
 	try {
@@ -18,15 +31,16 @@ const getEnvironment = () => {
 		
 		// develop: 开发版, trial: 体验版, release: 正式版
 		if (envVersion === 'develop') {
-			return 'development'            //切换线上版本是  production  开发是  development
+			return 'development'
 		} else if (envVersion === 'trial') {
-			return 'trial' // 体验版可以单独处理
+			return 'trial'
+		} else if (envVersion === 'release') {
+			return 'production'
 		} else {
 			return 'production'
 		}
 	} catch (e) {
-		console.log('获取环境信息失败，强制使用生产环境:', e)
-		// 获取环境信息失败，强制使用生产环境进行测试
+		console.log('获取环境信息失败，默认使用生产环境:', e)
 		return 'production'
 	}
 	// #endif
@@ -54,7 +68,7 @@ const getEnvironment = () => {
 // 环境配置
 const envConfig = {
 	development: {
-		// 开发环境配置 - 使用本地API
+		// 开发环境配置（与后端 .env 的 APP_DOMAIN 一致，本地一般为 8000 端口）
 		API_BASE_URL: 'http://localhost:8000',
 		WS_BASE_URL: 'ws://localhost:8000',
 		DEBUG: true,

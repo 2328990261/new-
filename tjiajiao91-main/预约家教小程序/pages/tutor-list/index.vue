@@ -1,4 +1,4 @@
-﻿<template>
+<template>
 	<view class="tutor-list-container">
 		<!-- 自定义导航栏 -->
 		<view class="nav-bar" :style="{paddingTop: statusBarHeight + 'px'}">
@@ -100,6 +100,20 @@
 						@click="handleTypeChange('online')"
 					>线上</view>
 				</view>
+
+				<!-- 二级筛选：精选/时间/城市 -->
+				<view class="sub-filter-row">
+					<view class="sub-filter-item" :class="{ active: sortMode === 'top' }" @click="setSortMode('top')">
+						<text>精选排序</text>
+					</view>
+					<view class="sub-filter-item" :class="{ active: sortMode === 'time' }" @click="setSortMode('time')">
+						<text>时间排序</text>
+					</view>
+					<view class="sub-filter-item" :class="{ active: !!filters.city_id }" @click="openCityPicker">
+						<text>{{ selectedCityName || '城市筛选' }}</text>
+						<text class="arrow">▼</text>
+					</view>
+				</view>
 			</view>
 
 			<view class="list-hint">
@@ -135,7 +149,7 @@
 					<view class="item-header">
 						<view class="title-box">
 							<text class="grade">{{ tutor.grade || '年级' }}</text>
-							<text class="subject">{{ tutor.subject_name || tutor.subject?.name || '科目' }}</text>
+							<text class="subject">{{ tutor.subject_name || (tutor.subject && tutor.subject.name) || '科目' }}</text>
 						</view>
 						<text class="salary">{{ extractSalary(tutor.salary, tutor) }}</text>
 					</view>
@@ -143,8 +157,8 @@
 					<!-- 第二行：标签组 -->
 					<view class="item-tags">
 						<view class="info-tag city-tag">
-							{{ tutor.city_name || tutor.city?.name || '城市' }}
-							<text v-if="tutor.district_name || tutor.district?.name">·{{ tutor.district_name || tutor.district?.name }}</text>
+							{{ tutor.city_name || (tutor.city && tutor.city.name) || '城市' }}
+							<text v-if="tutor.district_name || (tutor.district && tutor.district.name)">·{{ tutor.district_name || (tutor.district && tutor.district.name) }}</text>
 						</view>
 						<view class="info-tag type-tag" v-if="tutor.teacher_type">
 							{{ tutor.teacher_type === 'student' ? '大学生' : (tutor.teacher_type === 'professional' ? '专职老师' : '其他') }}
@@ -443,6 +457,7 @@
 </template>
 
 <script>
+import auth from '@/utils/auth.js'
 import envConfig from '@/config/env.js'
 import shareMixin from '@/mixins/share.js'
 import { teacherRegisterApi, bannerApi } from '@/utils/api.js'
@@ -479,6 +494,8 @@ export default {
 				teacher_type: '',
 				teacher_gender: ''
 			},
+			// 排序：top=精选优先（置顶优先），time=时间倒序
+			sortMode: 'top',
 			showCityPicker: false,
 			showGradePicker: false,
 			showSubjectPicker: false,
@@ -532,7 +549,7 @@ export default {
 			return '性别'
 		},
 		hasActiveFilter() {
-			return this.filters.teacher_type || this.searchKeyword
+			return this.filters.teacher_type || this.searchKeyword || this.filters.city_id || this.sortMode !== 'top'
 		},
 		isAllSelected() {
 			return this.tutorList.length > 0 && this.selectedTutors.length === this.tutorList.length
@@ -667,7 +684,7 @@ export default {
 					method: 'GET'
 				})
 				const provinceResponse = provinceRes[1] || provinceRes
-				const provinceData = provinceResponse?.data
+				const provinceData = provinceResponse ? provinceResponse.data : undefined
 				const provinceOk = provinceData && (provinceData.code === 200 || provinceData.success === true)
 				const provinceList = provinceOk ? (provinceData.data || []) : []
 
@@ -676,14 +693,19 @@ export default {
 					method: 'GET'
 				})
 				const cityResponse = cityRes[1] || cityRes
-				const cityData = cityResponse?.data
+				const cityData = cityResponse ? cityResponse.data : undefined
 				const cityOk = cityData && (cityData.code === 200 || cityData.success === true)
 				if (cityOk) {
 					const allCities = cityData.data || []
 					this.cities = allCities
 
 					const getCityProvinceId = (city) => {
-						return Number(city?.province_id ?? city?.provinceId ?? city?.provinceID ?? city?.province?.id ?? 0)
+						const v1 = city && city.province_id !== undefined && city.province_id !== null ? city.province_id : null
+						const v2 = city && city.provinceId !== undefined && city.provinceId !== null ? city.provinceId : null
+						const v3 = city && city.provinceID !== undefined && city.provinceID !== null ? city.provinceID : null
+						const v4 = (city && city.province && city.province.id !== undefined && city.province.id !== null) ? city.province.id : null
+						const provinceId = v1 !== null ? v1 : (v2 !== null ? v2 : (v3 !== null ? v3 : (v4 !== null ? v4 : 0)))
+						return Number(provinceId)
 					}
 					const hasProvinceInfo = allCities.some(c => getCityProvinceId(c) > 0)
 					// 如果城市数据没有 province_id（导致全部进“其他”），回退到 /api/search/cities（包含province关联）
@@ -693,14 +715,14 @@ export default {
 							method: 'GET'
 						})
 						const fallbackResponse = fallbackRes[1] || fallbackRes
-						const fallbackData = fallbackResponse?.data
+						const fallbackData = fallbackResponse ? fallbackResponse.data : undefined
 						const fallbackOk = fallbackData && (fallbackData.success === true || fallbackData.code === 200)
 						if (fallbackOk) {
 							const flatCities = fallbackData.data || []
 							this.cities = flatCities
 							const provinceMap = {}
 							flatCities.forEach(city => {
-								const pname = city?.province?.name || '其他'
+								const pname = (city && city.province && city.province.name) || '其他'
 								if (!provinceMap[pname]) provinceMap[pname] = { name: pname, cities: [] }
 								provinceMap[pname].cities.push(city)
 							})
@@ -712,7 +734,8 @@ export default {
 							})
 							this.provinces = provinces
 							const firstNormal = provinces.find(p => p.name !== '其他')
-							this.selectedProvince = (firstNormal || provinces[0])?.name || ''
+							const selectedProvinceObj = firstNormal || provinces[0]
+							this.selectedProvince = selectedProvinceObj && selectedProvinceObj.name ? selectedProvinceObj.name : ''
 						}
 						return
 					}
@@ -755,7 +778,8 @@ export default {
 
 					// 默认选中第一个非“其他”的省份
 					const firstNormal = provinces.find(p => p.name !== '其他')
-					this.selectedProvince = (firstNormal || provinces[0])?.name || ''
+					const selectedProvinceObj = firstNormal || provinces[0]
+					this.selectedProvince = selectedProvinceObj && selectedProvinceObj.name ? selectedProvinceObj.name : ''
 				}
 			} catch (error) {
 				console.error('加载城市列表失败:', error)
@@ -821,7 +845,12 @@ export default {
 			}
 			
 			const getCityProvinceId = (city) => {
-				return Number(city?.province_id ?? city?.provinceId ?? city?.provinceID ?? city?.province?.id ?? 0)
+				const v1 = city && city.province_id !== undefined && city.province_id !== null ? city.province_id : null
+				const v2 = city && city.provinceId !== undefined && city.provinceId !== null ? city.provinceId : null
+				const v3 = city && city.provinceID !== undefined && city.provinceID !== null ? city.provinceID : null
+				const v4 = (city && city.province && city.province.id !== undefined && city.province.id !== null) ? city.province.id : null
+				const provinceId = v1 !== null ? v1 : (v2 !== null ? v2 : (v3 !== null ? v3 : (v4 !== null ? v4 : 0)))
+				return Number(provinceId)
 			}
 			const provinceMap = {}
 			cities.forEach(city => {
@@ -877,7 +906,8 @@ export default {
 			try {
 				const params = {
 					page: this.page,
-					limit: this.pageSize
+					limit: this.pageSize,
+					sort: this.sortMode
 				}
 
 				// 顶部筛选仅保留：搜索关键词 + 老师类型 Tab（全部/大学生/专职老师/线上）
@@ -892,6 +922,11 @@ export default {
 				} else {
 					if (this.searchKeyword) params.keyword = this.searchKeyword
 				}
+
+				// 城市筛选
+				if (this.filters.city_id) {
+					params.city_id = this.filters.city_id
+				}
 				
 				const res = await uni.request({
 					url: envConfig.API_BASE_URL + '/api/tutor/list',
@@ -903,7 +938,7 @@ export default {
 				if (response && response.data) {
 					// 后端返回格式: { success: true, data: [...], total: 总数, page: 页码, limit: 每页数量 }
 					const responseData = response.data
-					const list = Array.isArray(responseData.data) ? responseData.data : (responseData.data?.list || [])
+					const list = Array.isArray(responseData.data) ? responseData.data : ((responseData.data && responseData.data.list) ? responseData.data.list : [])
 					
 					if (append) {
 						this.tutorList = [...this.tutorList, ...list]
@@ -986,6 +1021,7 @@ export default {
 				teacher_type: '',
 				teacher_gender: ''
 			}
+			this.sortMode = 'top'
 			this.searchKeyword = ''
 			this.searchInput = ''
 			this.resetAndReload()
@@ -1001,12 +1037,20 @@ export default {
 		// 切换教师类型 Tab
 		handleTypeChange(type) {
 			this.filters.teacher_type = type
-			// 顶部筛选只保留“搜索+类型”，避免旧筛选值仍影响请求
-			this.filters.city_id = ''
-			this.filters.grade = ''
-			this.filters.subject = ''
-			this.filters.teacher_gender = ''
 			this.resetAndReload()
+		},
+
+		// 设置排序
+		setSortMode(mode) {
+			if (mode !== 'top' && mode !== 'time') return
+			if (this.sortMode === mode) return
+			this.sortMode = mode
+			this.resetAndReload()
+		},
+
+		// 打开城市选择
+		openCityPicker() {
+			this.showCityPicker = true
 		},
 
 		selectTeacherGender(gender) {
@@ -1066,7 +1110,7 @@ export default {
 		// 复制家教信息
 		copyTutorInfo(tutor) {
 			const dispatcher = tutor.dispatcher || tutor.admin
-			const content = `${tutor.city_name || tutor.city?.name || ''} ${tutor.district_name || tutor.district?.name || ''} | ${tutor.grade || ''} ${tutor.subject_name || tutor.subject?.name || ''} | ${tutor.salary || ''}
+			const content = `${tutor.city_name || (tutor.city && tutor.city.name) || ''} ${tutor.district_name || (tutor.district && tutor.district.name) || ''} | ${tutor.grade || ''} ${tutor.subject_name || (tutor.subject && tutor.subject.name) || ''} | ${tutor.salary || ''}
 
 ${tutor.content || ''}
 
@@ -1148,7 +1192,7 @@ ${dispatcher ? `派单员：${dispatcher.nickname || dispatcher.username}${dispa
 			// 格式化为文本
 			const content = selectedTutorList.map((tutor, index) => {
 				const dispatcher = tutor.dispatcher || tutor.admin
-				return `【${index + 1}】${tutor.city_name || tutor.city?.name || ''} ${tutor.district_name || tutor.district?.name || ''} | ${tutor.grade || ''} ${tutor.subject_name || tutor.subject?.name || ''} | ${tutor.salary || ''}
+				return `【${index + 1}】${tutor.city_name || (tutor.city && tutor.city.name) || ''} ${tutor.district_name || (tutor.district && tutor.district.name) || ''} | ${tutor.grade || ''} ${tutor.subject_name || (tutor.subject && tutor.subject.name) || ''} | ${tutor.salary || ''}
 
 ${tutor.content || ''}
 
@@ -1187,9 +1231,7 @@ ${dispatcher ? `派单员：${dispatcher.nickname || dispatcher.username}${dispa
 					confirmText: '去登录',
 					success: (res) => {
 						if (res.confirm) {
-							uni.redirectTo({
-								url: '/pages/login/index'
-							})
+							auth.navigateToLogin()
 						}
 					}
 				})
@@ -1219,7 +1261,7 @@ ${dispatcher ? `派单员：${dispatcher.nickname || dispatcher.username}${dispa
 					return
 				}
 
-				const status = statusData.data?.status
+				const status = (statusData && statusData.data) ? statusData.data.status : undefined
 				
 				if (status === 'pending') {
 					// 待审核
@@ -1361,9 +1403,7 @@ this.isTeacherRegistered = false
 					duration: 2000
 				})
 				setTimeout(() => {
-					uni.navigateTo({
-						url: '/pages/login/index'
-					})
+					auth.navigateToLogin()
 				}, 2000)
 				return
 			}
@@ -1377,31 +1417,48 @@ this.isTeacherRegistered = false
 	// 分享给好友/群聊
 	// 分享给好友/群聊
 	onShareAppMessage() {
+		const sharerOpenid = this.getSharerOpenid ? this.getSharerOpenid() : ''
 		// 获取当前日期
 		const now = new Date()
 		const month = now.getMonth() + 1
 		const day = now.getDate()
 		const dateStr = `${month}月${day}日`
 		
-		return {
+		const imageUrl = '/static/tabbar/tutor-list.png'
+		const payload = {
 			title: `${dateStr} | 全国家教信息，优质高薪`,
-			path: '/pages/tutor-list/index',
-			imageUrl: '/static/share-tutor.png'
+			path: '/pages/tutor-list/index'
 		}
+		if (sharerOpenid) {
+			payload.path +=
+				(payload.path.indexOf('?') >= 0 ? '&' : '?') + 'superior_openid=' + encodeURIComponent(sharerOpenid)
+		}
+		if (imageUrl && !imageUrl.startsWith('/static/tabbar/')) {
+			payload.imageUrl = imageUrl
+		}
+		return payload
 	},
 	// 分享到朋友圈
 	onShareTimeline() {
+		const sharerOpenid = this.getSharerOpenid ? this.getSharerOpenid() : ''
 		// 获取当前日期
 		const now = new Date()
 		const month = now.getMonth() + 1
 		const day = now.getDate()
 		const dateStr = `${month}月${day}日`
 		
-		return {
+		const imageUrl = '/static/tabbar/tutor-list.png'
+		const payload = {
 			title: `${dateStr} | 全国家教信息，优质高薪`,
-			query: '',
-			imageUrl: '/static/share-tutor.png'
+			query: ''
 		}
+		if (sharerOpenid) {
+			payload.query = 'superior_openid=' + encodeURIComponent(sharerOpenid)
+		}
+		if (imageUrl && !imageUrl.startsWith('/static/tabbar/')) {
+			payload.imageUrl = imageUrl
+		}
+		return payload
 	}
 }
 </script>
@@ -1618,6 +1675,39 @@ this.isTeacherRegistered = false
 	height: 6rpx;
 	background: linear-gradient(135deg, #52C9A6 0%, #3BA888 100%);
 	border-radius: 3rpx;
+}
+
+/* 二级筛选行 */
+.sub-filter-row {
+	display: flex;
+	padding: 0 24rpx 18rpx;
+	gap: 16rpx;
+	align-items: center;
+}
+
+.sub-filter-item {
+	flex: 1;
+	height: 64rpx;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	gap: 8rpx;
+	background: #f2f4f7;
+	border-radius: 10rpx;
+	font-size: 26rpx;
+	color: #606266;
+}
+
+.sub-filter-item .arrow {
+	font-size: 20rpx;
+	color: #c0c4cc;
+	transition: transform 0.2s;
+}
+
+.sub-filter-item.active {
+	background: rgba(82, 201, 166, 0.12);
+	color: #52C9A6;
+	font-weight: 600;
 }
 
 /* 筛选标签栏 */

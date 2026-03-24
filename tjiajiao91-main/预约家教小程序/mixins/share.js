@@ -6,7 +6,8 @@ export default {
       shareConfig: {
         title: '优质家教服务平台 - 专业教师一对一辅导',
         path: '/pages/ai-booking/index',
-        imageUrl: '/static/share-logo.png', // 需要添加分享图片
+        // 之前的 /static/share-logo.png 在工程内不存在，安卓端分享会无封面
+        imageUrl: '/static/tabbar/tutor-list.png',
         query: ''
       }
     }
@@ -14,33 +15,65 @@ export default {
   
   // 分享给好友或群聊
   onShareAppMessage(res) {
-    // 如果是从按钮触发，可以自定义分享内容
-    if (res.from === 'button') {
-      return {
-        title: this.getShareTitle(),
-        path: this.getSharePath(),
-        imageUrl: this.getShareImage()
-      }
-    }
-    
-    // 默认分享
-    return {
+    const imageUrl = this.getShareImage()
+    const payload = {
       title: this.getShareTitle(),
-      path: this.getSharePath(),
-      imageUrl: this.getShareImage()
+      path: this.getSharePath()
     }
+    // 不返回 imageUrl 时，微信会用“页面缩略图”（避免 imageUrl 指向不可用资源导致空白）
+    if (this.isValidShareImage(imageUrl)) {
+      payload.imageUrl = imageUrl
+    }
+    return payload
   },
   
   // 分享到朋友圈
   onShareTimeline() {
-    return {
+    const imageUrl = this.getShareImage()
+    const payload = {
       title: this.getShareTitle(),
-      query: this.getShareQuery(),
-      imageUrl: this.getShareImage()
+      query: this.getShareQuery()
     }
+    if (this.isValidShareImage(imageUrl)) {
+      payload.imageUrl = imageUrl
+    }
+    return payload
   },
   
   methods: {
+    isValidShareImage(url) {
+      const u = (url || '').trim()
+      if (!u) return false
+      // 这些“伪 png（svg data uri 文本）”在分享封面里容易失效，直接让微信走页面缩略图
+      if (u.startsWith('/static/tabbar/')) return false
+      if (u.startsWith('data:image')) return false
+      return true
+    },
+    getSharerOpenid() {
+      try {
+        const u = uni.getStorageSync('userInfo') || {}
+        if (u && u.openid) return String(u.openid)
+      } catch (e) {
+        return ''
+      }
+      // 兼容：部分页面只存了单独的 openid
+      try {
+        const oid = uni.getStorageSync('openid') || ''
+        return oid ? String(oid) : ''
+      } catch (e) {}
+      return ''
+    },
+
+    buildQueryString(params) {
+      const parts = []
+      Object.keys(params || {}).forEach((k) => {
+        const v = params[k]
+        if (v === undefined || v === null || v === '') return
+        parts.push(`${encodeURIComponent(k)}=${encodeURIComponent(String(v))}`)
+      })
+      return parts.join('&')
+    },
+
     // 获取分享标题
     getShareTitle() {
       // 根据页面类型返回不同的标题
@@ -79,14 +112,24 @@ export default {
     getSharePath() {
       const pages = getCurrentPages()
       const currentPage = pages[pages.length - 1]
-      let route = currentPage.route
-      
-      // 添加参数
-      if (route === 'pages/teacher-detail/index' && this.teacherId) {
-        route += `?id=${this.teacherId}`
+      const route = currentPage.route
+
+      // 合并当前页面已存在参数（确保“分享任何页面”都能把参数带上）
+      const params = { ...(currentPage.options || {}) }
+
+      // 兼容个别页面没有写进 options 的 id
+      if (route === 'pages/teacher-detail/index' && this.teacherId && !params.id) {
+        params.id = this.teacherId
       }
-      
-      return '/' + route
+
+      // 分享归属：把分享者 openid 带到所有分享页面
+      const sharerOpenid = this.getSharerOpenid()
+      if (sharerOpenid) {
+        params.superior_openid = sharerOpenid
+      }
+
+      const qs = this.buildQueryString(params)
+      return '/' + route + (qs ? `?${qs}` : '')
     },
     
     // 获取分享查询参数（朋友圈用）
@@ -94,12 +137,17 @@ export default {
       const pages = getCurrentPages()
       const currentPage = pages[pages.length - 1]
       const route = currentPage.route
-      
-      if (route === 'pages/teacher-detail/index' && this.teacherId) {
-        return `id=${this.teacherId}`
+
+      const params = { ...(currentPage.options || {}) }
+      if (route === 'pages/teacher-detail/index' && this.teacherId && !params.id) {
+        params.id = this.teacherId
       }
-      
-      return ''
+      const sharerOpenid = this.getSharerOpenid()
+      if (sharerOpenid) {
+        params.superior_openid = sharerOpenid
+      }
+
+      return this.buildQueryString(params)
     },
     
     // 获取分享图片
@@ -109,7 +157,7 @@ export default {
       // 根据页面返回不同的分享图片
       switch (route) {
         case 'pages/teacher-detail/index':
-          return this.teacherInfo?.avatar || '/static/share-teacher.png'
+          return this.teacherInfo?.avatar || '/static/tabbar/tutor-list.png'
           
         default:
           return this.shareConfig.imageUrl

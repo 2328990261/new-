@@ -3,7 +3,7 @@
 		<!-- 自定义导航栏 -->
 		<view class="nav-bar" :style="{paddingTop: statusBarHeight + 'px'}">
 			<view class="nav-left" @click="goBack">
-				<text class="back-icon">←</text>
+				<text class="back-icon">‹</text>
 			</view>
 			<view class="nav-title">{{ pageTitle }}</view>
 			<view class="nav-right" @click="showShareMenu">
@@ -49,7 +49,7 @@
 					<view class="item-header">
 						<view class="title-box">
 							<text class="grade">{{ tutor.grade || '年级' }}</text>
-							<text class="subject">{{ tutor.subject_name || tutor.subject?.name || '科目' }}</text>
+							<text class="subject">{{ tutor.subject_name || (tutor.subject && tutor.subject.name) || '科目' }}</text>
 						</view>
 						<text class="salary">{{ extractSalary(tutor.salary, tutor) }}</text>
 					</view>
@@ -57,8 +57,8 @@
 					<!-- 第二行：标签组 -->
 					<view class="item-tags">
 						<view class="info-tag city-tag">
-							{{ tutor.city_name || tutor.city?.name || '城市' }}
-							<text v-if="tutor.district_name || tutor.district?.name">·{{ tutor.district_name || tutor.district?.name }}</text>
+							{{ tutor.city_name || (tutor.city && tutor.city.name) || '城市' }}
+							<text v-if="tutor.district_name || (tutor.district && tutor.district.name)">·{{ tutor.district_name || (tutor.district && tutor.district.name) }}</text>
 						</view>
 						<view class="info-tag type-tag" v-if="tutor.teacher_type">
 							{{ tutor.teacher_type === 'student' ? '大学生' : (tutor.teacher_type === 'professional' ? '专职老师' : '其他') }}
@@ -137,7 +137,7 @@ export default {
 			tutorList: [],
 			total: 0,
 			page: 1,
-			pageSize: 20,
+			pageSize: 30,
 			hasMore: true,
 			isLoading: false,
 			loadingMore: false,
@@ -189,20 +189,24 @@ export default {
 				})
 				
 				const response = res[1] || res
-				const data = response?.data
+				const data = response ? response.data : undefined
 				const isOk = data && (data.code === 200 || data.success === true)
 				
 				if (isOk) {
-					const list = data.data?.list || data.data || []
-					this.total = data.data?.total || list.length
+					const inner = data && data.data ? data.data : null
+					const list = (inner && inner.list !== undefined && inner.list !== null) ? inner.list : (inner || [])
+					
+					const innerTotal = (inner && inner.total !== undefined && inner.total !== null) ? inner.total : undefined
+					const fallbackTotal = (data && data.total !== undefined && data.total !== null) ? data.total : list.length
+					this.total = innerTotal !== undefined ? innerTotal : fallbackTotal
 					
 					if (this.page === 1) {
 						this.tutorList = list
 					} else {
 						this.tutorList = [...this.tutorList, ...list]
 					}
-					
-					this.hasMore = list.length >= this.pageSize
+					// 用已加载数量与总数判断是否还有更多，避免只显示一页
+					this.hasMore = this.tutorList.length < this.total
 				}
 			} catch (error) {
 				console.error('加载家教列表失败:', error)
@@ -224,6 +228,7 @@ export default {
 		onRefresh() {
 			this.isRefreshing = true
 			this.page = 1
+			this.hasMore = true
 			this.loadTutorList()
 		},
 		
@@ -264,7 +269,8 @@ export default {
 		},
 		
 		copyTutorInfo(tutor) {
-			const info = `${tutor.grade || ''} ${tutor.subject_name || tutor.subject?.name || ''}\n${tutor.content || ''}\n薪资：${this.extractSalary(tutor.salary, tutor)}`
+			const subjectName = tutor.subject_name || (tutor.subject && tutor.subject.name) || ''
+			const info = `${tutor.grade || ''} ${subjectName}\n${tutor.content || ''}\n薪资：${this.extractSalary(tutor.salary, tutor)}`
 			uni.setClipboardData({
 				data: info,
 				success: () => {
@@ -282,19 +288,31 @@ export default {
 	
 	// 分享给好友
 	onShareAppMessage() {
+		const sharerOpenid = this.getSharerOpenid ? this.getSharerOpenid() : ''
 		return {
 			title: `${this.searchKeyword}-家教信息汇总`,
-			path: `/pages/tutor-search-result/index?keyword=${encodeURIComponent(this.searchKeyword)}`,
-			imageUrl: ''
+			path: (() => {
+				let path = `/pages/tutor-search-result/index?keyword=${encodeURIComponent(this.searchKeyword)}`
+				if (sharerOpenid) {
+					path += '&superior_openid=' + encodeURIComponent(sharerOpenid)
+				}
+				return path
+			})()
 		}
 	},
 	
 	// 分享到朋友圈
 	onShareTimeline() {
+		const sharerOpenid = this.getSharerOpenid ? this.getSharerOpenid() : ''
 		return {
 			title: `${this.searchKeyword}-家教信息汇总`,
-			query: `keyword=${encodeURIComponent(this.searchKeyword)}`,
-			imageUrl: ''
+			query: (() => {
+				let query = `keyword=${encodeURIComponent(this.searchKeyword)}`
+				if (sharerOpenid) {
+					query += '&superior_openid=' + encodeURIComponent(sharerOpenid)
+				}
+				return query
+			})()
 		}
 	}
 }
@@ -330,8 +348,8 @@ export default {
 }
 
 .back-icon {
-	font-size: 40rpx;
-	color: #fff;
+	font-size: 48rpx;
+	color: #303133;
 	font-weight: 300;
 }
 
@@ -350,9 +368,10 @@ export default {
 	letter-spacing: 2rpx;
 }
 
-/* 主滚动区域 */
+/* 主滚动区域：必须固定高度，scroll-view 才能正确触底加载更多 */
 .main-scroll {
-	min-height: calc(100vh - 44px);
+	height: calc(100vh - 44px);
+	box-sizing: border-box;
 	padding-bottom: 120rpx;
 }
 

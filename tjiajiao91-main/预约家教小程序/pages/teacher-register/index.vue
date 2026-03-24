@@ -541,17 +541,24 @@
 			</view>
 		</scroll-view>
 
-		<!-- 籍贯选择器 -->
+		<!-- 籍贯选择器：遮罩仅点击关闭；选择器内容区阻止触摸穿透，避免安卓无法滑动 -->
 		<view v-if="showHometownPicker" class="picker-overlay" @click="showHometownPicker = false">
-			<view class="picker-content hometown-picker" @click.stop>
+			<view class="picker-content hometown-picker" @click.stop @touchmove.stop>
 				<view class="picker-header">
 					<text class="picker-cancel" @click="showHometownPicker = false">取消</text>
 					<text class="picker-title">选择籍贯</text>
 					<text class="picker-confirm" @click="confirmHometown">确定</text>
 				</view>
-				<view class="picker-body hometown-body">
-					<!-- 省份列表 -->
-					<scroll-view scroll-y class="province-list">
+				<view class="picker-body hometown-body" :style="{ height: hometownPickerScrollHeight + 'px' }">
+					<!-- 省份列表：安卓需明确高度+enhanced+阻止冒泡才能滑动 -->
+					<scroll-view 
+						scroll-y 
+						:enhanced="true"
+						:show-scrollbar="true"
+						class="province-list" 
+						:style="{ height: hometownPickerScrollHeight + 'px' }"
+						@touchmove.stop
+					>
 						<view v-if="provinces.length === 0" class="empty-tip">
 							<text>加载中...</text>
 						</view>
@@ -566,8 +573,15 @@
 						</view>
 					</scroll-view>
 					
-					<!-- 城市列表 -->
-					<scroll-view scroll-y class="city-list">
+					<!-- 城市列表：安卓需明确高度+enhanced+阻止冒泡才能滑动 -->
+					<scroll-view 
+						scroll-y 
+						:enhanced="true"
+						:show-scrollbar="true"
+						class="city-list" 
+						:style="{ height: hometownPickerScrollHeight + 'px' }"
+						@touchmove.stop
+					>
 						<view v-if="hometownCities.length === 0" class="empty-tip">
 							<text>请在左边省份区域滑动选择省份</text>
 						</view>
@@ -726,6 +740,8 @@ export default {
 			locationPickerValue: [0, 0, 0], // 当前选中的索引
 			// 选择器显示控制
 			showHometownPicker: false,
+			// 籍贯选择器内列表的明确高度（px），安卓上 scroll-view 必须用固定高度才能滑动
+			hometownPickerScrollHeight: 360,
 			// 当前年份（用于出生年份验证）
 			currentYear: new Date().getFullYear()
 		}
@@ -846,10 +862,31 @@ export default {
 			await this.checkRegistrationStatus()
 			uni.hideLoading()
 		}
+
+		// 邀请链接进入：保存邀请人 openid（提交或跳转登录时使用），并弹窗提示
+		if (options.inviter) {
+			uni.setStorageSync('inviterOpenid', options.inviter)
+		}
+		if (options.fromInvite === '1' || options.fromInvite === 'true') {
+			setTimeout(() => {
+				uni.showModal({
+					title: '邀请有礼',
+					content: '完成简历认证并成为老师后，您与邀请人将各获得￥20优惠券，快去完善资料吧～',
+					showCancel: false,
+					confirmText: '知道了'
+				})
+			}, 300)
+		}
 		
 		this.loadAdvantageTags()
 		this.loadCities() // 加载城市数据（用于籍贯）
 		this.loadProvinces() // 加载省份数据（用于所在地）
+		// 籍贯选择器列表高度：安卓上 scroll-view 必须用明确 px 高度才能正常滑动
+		try {
+			const sys = uni.getSystemInfoSync()
+			const h = (sys.windowHeight || 600) * 0.55
+			this.hometownPickerScrollHeight = Math.max(320, Math.floor(h))
+		} catch (e) {}
 		
 		// 监听简历预览页面的确认提交事件
 		uni.$on('confirmSubmit', () => {
@@ -1011,7 +1048,13 @@ export default {
 			})
 			
 			try {
-				const res = await teacherRegisterApi.getTeacherDetail(teacherId)
+				// 从本地获取登录用户信息，用于服务端校验身份
+				const userInfo = uni.getStorageSync('userInfo') || {}
+				const res = await teacherRegisterApi.getMyProfile({
+					teacher_id: teacherId,
+					openid: userInfo.openid || '',
+					phone: userInfo.phone || ''
+				})
 				uni.hideLoading()
 				
 				if (res.success && res.data) {
@@ -1110,19 +1153,9 @@ export default {
 							uni.redirectTo({ url })
 							return
 						} else if (res.data.review_status === 'rejected') {
-							// 被驳回：留在当前页面，允许编辑并重新提交
-							this.isRejected = true
-							this.rejectReason = res.data.reject_reason || '审核未通过，请修改后重新提交'
-							
-							// 加载教师数据到表单
-							await this.loadTeacherData(res.data.teacher_id)
-							
-							// 显示提示信息
-							uni.showModal({
-								title: '审核未通过',
-								content: this.rejectReason,
-								showCancel: false,
-								confirmText: '修改简历'
+							// 已拒绝（含 5 分钟后自动拒绝）：不弹窗，直接进简历预览页展示备注和操作按钮
+							uni.redirectTo({
+								url: `/pages/teacher-resume-preview/index?teacher_id=${res.data.teacher_id}&readonly=true&status=rejected`
 							})
 							return
 						}
@@ -1589,7 +1622,12 @@ export default {
 			}
 			
 			try {
-				const res = await teacherRegisterApi.checkPhone(this.formData.phone)
+				const options = {}
+				// 编辑模式下，排除当前教师本身，避免把自己的手机号也当成重复
+				if (this.isEditMode && this.teacherId) {
+					options.excludeTeacherId = this.teacherId
+				}
+				const res = await teacherRegisterApi.checkPhone(this.formData.phone, options)
 				if (res.success && res.data.exists) {
 					this.phoneError = '该手机号已注册'
 				} else {
@@ -2312,7 +2350,7 @@ export default {
 				if (res.success) {
 					// 清除本地存储
 					uni.removeStorageSync('teacher_register_progress')
-					
+					// 提交后一律为待审核，不再弹「已拒绝」；若 5 分钟后三项认证仍为空，由后端自动改为已拒绝，用户进入页面时在简历预览/状态处可见
 					const title = this.isEditMode ? '更新成功' : '注册成功'
 					const content = this.isEditMode ? '您的信息已更新！' : '提交成功，等待审核'
 					
@@ -2321,7 +2359,6 @@ export default {
 						content: content,
 						showCancel: false,
 						success: () => {
-							// 返回到个人中心
 							uni.navigateBack({
 								delta: 2,
 								fail: () => {
@@ -2409,20 +2446,58 @@ export default {
 
 	// 分享给好友/群聊
 	onShareAppMessage() {
-		return {
-			title: '成为优秀教师，开启家教之旅！',
-			path: '/pages/teacher-register/index',
-			imageUrl: '/static/share-teacher.png'
+		const userInfo = uni.getStorageSync('userInfo') || {}
+		const nickname = userInfo.nickname || userInfo.wechat_nickname || '好友'
+		const openid = userInfo.openid || ''
+		const sharerOpenid = this.getSharerOpenid ? this.getSharerOpenid() : openid
+
+		// 带上邀请人 openid & 标记来源，方便落地页识别
+		let path = '/pages/teacher-register/index'
+		if (openid) {
+			const encodedName = encodeURIComponent(nickname)
+			path += `?inviter=${openid}&inviterName=${encodedName}&fromInvite=1`
 		}
+		if (sharerOpenid) {
+			path += (path.indexOf('?') >= 0 ? '&' : '?') + 'superior_openid=' + encodeURIComponent(sharerOpenid)
+		}
+
+		const imageUrl = '/static/tabbar/tutor-list.png'
+		const payload = {
+			title: `${nickname}邀请你在91家教中心注册老师`,
+			path
+		}
+		// 不传 imageUrl 则使用页面缩略图（避免 static/tabbar “伪 png” 导致空白）
+		if (imageUrl && !imageUrl.startsWith('/static/tabbar/')) {
+			payload.imageUrl = imageUrl
+		}
+		return payload
 	},
 
 	// 分享到朋友圈
 	onShareTimeline() {
-		return {
-			title: '成为优秀教师，开启家教之旅！',
-			query: '',
-			imageUrl: '/static/share-teacher.png'
+		const userInfo = uni.getStorageSync('userInfo') || {}
+		const nickname = userInfo.nickname || userInfo.wechat_nickname || '好友'
+		const openid = userInfo.openid || ''
+		const sharerOpenid = this.getSharerOpenid ? this.getSharerOpenid() : openid
+
+		let query = ''
+		if (openid) {
+			const encodedName = encodeURIComponent(nickname)
+			query = `inviter=${openid}&inviterName=${encodedName}&fromInvite=1`
 		}
+		if (sharerOpenid) {
+			query += (query ? '&' : '') + 'superior_openid=' + encodeURIComponent(sharerOpenid)
+		}
+
+		const imageUrl = '/static/tabbar/tutor-list.png'
+		const payload = {
+			title: `${nickname}邀请你在91家教中心注册老师`,
+			query
+		}
+		if (imageUrl && !imageUrl.startsWith('/static/tabbar/')) {
+			payload.imageUrl = imageUrl
+		}
+		return payload
 	}
 }
 </script>

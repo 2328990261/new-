@@ -5,6 +5,8 @@ use think\facade\Route;
 Route::group('api', function () {
     // 家教信息查询
     Route::get('tutor/list', 'api.Tutor/list');
+    Route::get('tutors/list', 'api.Tutor/list'); // 小程序端兼容路径
+    Route::get('tutors/search', 'api.Tutor/list'); // 教师端生源搜索（与 list 同一逻辑，支持 keyword）
     Route::get('tutor/detail/:id', 'api.Tutor/detail');
     Route::get('tutor/hot-cities', 'api.Tutor/hotCities');
     Route::get('tutor/hot-subjects', 'api.Tutor/hotSubjects');
@@ -68,12 +70,17 @@ Route::group('api', function () {
     Route::get('teacher-register/advantage-tags', 'api.TeacherRegister/getAdvantageTags');
     Route::get('teacher-register/check-phone', 'api.TeacherRegister/checkPhone');
     Route::get('teacher-register/status', 'api.TeacherRegister/getRegistrationStatus');
+    // 本人编辑简历时获取完整资料（含联系方式等），需登录后使用
+    Route::get('teacher-register/my-profile', 'api.TeacherRegister/myProfile');
+    Route::post('teacher-register/parse-resume', 'api.TeacherRegister/parseResume');
+    Route::get('teacher-register/approval-notice', 'api.TeacherRegister/approvalNotice');
     
     // 投递管理
     Route::post('application/apply', 'api.Application/apply');
     Route::get('application/my-list', 'api.Application/myList');
     Route::get('application/detail/:id', 'api.Application/detail');
     Route::post('application/cancel/:id', 'api.Application/cancel');
+    Route::get('application/list-by-order', 'api.Application/listByOrder');
     
     // 支付相关
     Route::get('payment/search', 'api.Payment/search');
@@ -109,11 +116,21 @@ Route::group('api', function () {
     
     // 微信小程序登录
     Route::post('wechat/login', 'api.WechatMiniProgram/login');
+    Route::post('wechat/login-openid', 'api.WechatMiniProgram/loginWithOpenid');
     Route::post('wechat/login-phone', 'api.WechatMiniProgram/loginWithPhone');
     Route::post('wechat/update-user-type', 'api.WechatMiniProgram/updateUserType');
     
     // 微信小程序二维码生成
     Route::post('wechat/generate-qrcode', 'api.WechatMiniProgram/generateQRCode');
+
+    // 支付宝小程序登录
+    Route::post('alipay/login', 'api.AlipayMiniProgram/login');
+    Route::post('alipay/login-openid', 'api.AlipayMiniProgram/loginWithOpenid');
+    Route::post('alipay/login-phone', 'api.AlipayMiniProgram/loginWithPhone');
+    Route::post('alipay/update-user-type', 'api.AlipayMiniProgram/updateUserType');
+
+    // 小程序端公开配置（订阅模板 ID 等，不含密钥）
+    Route::get('mini/client-config', 'api.MiniProgram/clientConfig');
     
     // 小程序预约
     Route::post('mini-booking/create', 'api.MiniProgramBooking/create');
@@ -152,14 +169,22 @@ Route::group('api', function () {
     Route::post('favorite-tutor/add', 'api.FavoriteTutor/add');
     Route::post('favorite-tutor/remove', 'api.FavoriteTutor/remove');
     Route::get('favorite-tutor/check', 'api.FavoriteTutor/checkFavorite');
+
+    // 收藏教师管理
+    Route::get('favorite-teacher/list', 'api.FavoriteTeacher/getList');
+    Route::post('favorite-teacher/add', 'api.FavoriteTeacher/add');
+    Route::post('favorite-teacher/remove', 'api.FavoriteTeacher/remove');
+    Route::get('favorite-teacher/check', 'api.FavoriteTeacher/checkFavorite');
     
     // 邀请好友系统
     Route::get('invitation/stats', 'api.Invitation/stats');
     Route::get('invitation/my-invitations', 'api.Invitation/stats'); // 使用stats方法返回邀请列表
     Route::get('invitation/ranking', 'api.Invitation/stats'); // 使用stats方法返回排行榜
+    Route::get('invitation/inviter-profile', 'api.Invitation/inviterProfile'); // 受邀人侧：获取邀请人资料（已发放优先）
     Route::post('invitation/register', 'api.Invitation/register');
     Route::get('invitation/my-coupons', 'api.Invitation/myCoupons');
     Route::post('invitation/receive-coupon', 'api.Invitation/receiveCoupon');
+    Route::post('invitation/use-coupon', 'api.Invitation/useCoupon');
     Route::get('invitation/check-status', 'api.Invitation/checkStatus');
     Route::post('invitation/verify-callback', 'api.Invitation/verifyCallback');
     

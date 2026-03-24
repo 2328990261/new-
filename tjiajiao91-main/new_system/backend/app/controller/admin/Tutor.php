@@ -50,10 +50,31 @@ class Tutor extends BaseController
             // 构建查询条件
             $where = [['status', '=', 1]];
             
+            $currentAdminRole = $_SESSION['admin_role'] ?? '';
+            $currentAdmin = null;
+            if ($viewScope === 'mine' || $currentAdminRole === 'dispatcher') {
+                $currentAdmin = Admin::field('id,role,city_id')->find($_SESSION['admin_id']);
+                if ($currentAdmin) {
+                    $currentAdminRole = $currentAdmin->role;
+                }
+            }
+
             // 根据查看范围筛选
             if ($viewScope === 'mine') {
-                // 我的订单：只显示当前管理员的订单
-                $where[] = ['admin_id', '=', $_SESSION['admin_id']];
+                // 我的订单：
+                // - 派单组：按归属城市匹配订单
+                // - 其他角色：保持原逻辑，按录入人admin_id匹配
+                if ($currentAdminRole === 'dispatcher') {
+                    $dispatcherCityIds = $this->normalizeDispatcherCityIds($currentAdmin->city_id ?? null);
+                    if (!empty($dispatcherCityIds)) {
+                        $where[] = ['city_id', 'in', $dispatcherCityIds];
+                    } else {
+                        // 派单员未配置归属城市时，不返回任何数据
+                        $where[] = ['id', '=', -1];
+                    }
+                } else {
+                    $where[] = ['admin_id', '=', $_SESSION['admin_id']];
+                }
             } elseif ($viewScope === 'all') {
                 // 全部订单：显示所有非渠道订单（is_channel = 0）
                 $where[] = ['is_channel', '=', 0];
@@ -1746,8 +1767,20 @@ class Tutor extends BaseController
             
             // 根据查看范围筛选
             if ($viewScope === 'mine') {
-                // 我的订单：只统计当前管理员的订单
-                $query->where('o.admin_id', $_SESSION['admin_id']);
+                // 我的订单：
+                // - 派单组按归属城市统计
+                // - 其他角色按录入人统计
+                $currentAdmin = Admin::field('id,role,city_id')->find($_SESSION['admin_id']);
+                if ($currentAdmin && $currentAdmin->role === 'dispatcher') {
+                    $dispatcherCityIds = $this->normalizeDispatcherCityIds($currentAdmin->city_id ?? null);
+                    if (!empty($dispatcherCityIds)) {
+                        $query->whereIn('o.city_id', $dispatcherCityIds);
+                    } else {
+                        $query->where('o.id', '=', -1);
+                    }
+                } else {
+                    $query->where('o.admin_id', $_SESSION['admin_id']);
+                }
             } elseif ($viewScope === 'all') {
                 // 全部订单：只统计非渠道订单（is_channel = 0）
                 $query->where('o.is_channel', 0);
@@ -1857,5 +1890,22 @@ class Tutor extends BaseController
                 'error' => '批量派单失败：' . $e->getMessage()
             ]);
         }
+    }
+
+    /**
+     * 归一化派单员归属城市（支持数组或逗号分隔字符串）
+     */
+    private function normalizeDispatcherCityIds($cityValue): array
+    {
+        if (is_array($cityValue)) {
+            $raw = $cityValue;
+        } else {
+            $raw = explode(',', (string)($cityValue ?? ''));
+        }
+        $ids = array_map('intval', $raw);
+        $ids = array_filter($ids, function ($id) {
+            return $id > 0;
+        });
+        return array_values(array_unique($ids));
     }
 }

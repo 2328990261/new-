@@ -9,6 +9,8 @@ use think\facade\Db;
 
 class Application extends BaseController
 {
+    private const MAX_PENDING_APPLICATIONS = 5;
+
     /**
      * 投递简历
      */
@@ -54,6 +56,17 @@ class Application extends BaseController
             $teacherId = $teacher->id;
             trace('找到教师: teacher_id=' . $teacherId . ', name=' . $teacher->name, 'info');
             
+            // 限制：待审核投递最多只能有 5 份
+            $pendingCount = ResumeApplicationModel::where('teacher_id', $teacherId)
+                ->where('status', 'pending')
+                ->count();
+            if ($pendingCount >= self::MAX_PENDING_APPLICATIONS) {
+                return json([
+                    'success' => false,
+                    'error' => '待审核的投递最多只能保留' . self::MAX_PENDING_APPLICATIONS . '份，请先等待审核或取消部分待审核投递后再试'
+                ]);
+            }
+
             // 查询家教订单信息
             $tutor = Db::name('tutor_orders_new')->where('id', $tutorId)->find();
             
@@ -129,6 +142,7 @@ class Application extends BaseController
             // 构建查询 - 只返回当前教师的投递记录
             $query = ResumeApplicationModel::alias('ra')
                 ->leftJoin('fa_tutor_orders_new t', 't.id = ra.tutor_id')
+                ->leftJoin('fa_subjects s', 's.id = t.subject_id')
                 ->where('ra.teacher_id', $teacherId)
                 ->field([
                     'ra.id',
@@ -139,6 +153,7 @@ class Application extends BaseController
                     'ra.review_time',
                     'ra.admin_remark',
                     't.content as tutor_content',
+                    's.name as tutor_subject',
                     't.grade as tutor_grade',
                     't.salary as tutor_salary'
                 ])
@@ -290,6 +305,35 @@ class Application extends BaseController
             return json([
                 'success' => false,
                 'error' => '取消失败：' . $e->getMessage()
+            ]);
+        }
+    }
+    
+    /**
+     * 根据订单ID获取投递列表（小程序预约详情页使用）
+     */
+    public function listByOrder()
+    {
+        $orderId = $this->request->get('order_id');
+        
+        if (empty($orderId)) {
+            return json(['success' => false, 'error' => '缺少订单ID']);
+        }
+        
+        try {
+            // 这里暂时返回空数组，因为小程序的预约订单(parent_orders)和投递系统(resume_application)
+            // 是两个不同的业务模块，预约订单不会有投递记录
+            // 如果后续需要关联，需要在数据库设计上做调整
+            
+            return json([
+                'success' => true,
+                'data' => []
+            ]);
+            
+        } catch (\Exception $e) {
+            return json([
+                'success' => false,
+                'error' => '查询失败：' . $e->getMessage()
             ]);
         }
     }

@@ -23,20 +23,17 @@ class Tutor extends BaseController
             $teacherType = $this->request->get('teacher_type');
             $teacherGender = $this->request->get('teacher_gender');
             $keyword = $this->request->get('keyword');
+            // 排序：top=精选优先（置顶优先），time=按录入时间倒序
+            $sort = $this->request->get('sort', '');
             $page = $this->request->get('page/d', 1);
-            $limit = $this->request->get('limit/d', 20);
+            $limit = (int) $this->request->get('limit', $this->request->get('page_size', 20));
+            if ($limit < 1) $limit = 20;
+            $excludeId = $this->request->get('exclude_id');
             
             $query = TutorOrder::with(['city', 'district', 'subject', 'admin', 'dispatcher'])
                 ->where('status', 1);
-            
-            // 默认排序（如果没有关键词搜索）
-            if (empty($keyword)) {
-                $query->order([
-                    'is_top' => 'desc',
-                    'is_urgent' => 'desc',
-                    'create_time' => 'desc'
-                ]);
-            }
+            $sort = is_string($sort) ? strtolower(trim($sort)) : '';
+            $sortMode = in_array($sort, ['top', 'time'], true) ? $sort : '';
             
             // 过滤掉过期的置顶
             $query->where(function($q) {
@@ -54,6 +51,10 @@ class Tutor extends BaseController
             if ($cityId) $query->where('city_id', $cityId);
             if ($districtId) $query->where('district_id', $districtId);
             if ($subjectId) $query->where('subject_id', $subjectId);
+            // 排除指定ID（用于详情页推荐列表）
+            if ($excludeId !== null && $excludeId !== '') {
+                $query->where('id', '<>', $excludeId);
+            }
             
             // 年级筛选：支持单个或多个（逗号分隔）
             if ($grade) {
@@ -360,9 +361,29 @@ class Tutor extends BaseController
                         }
                     });
                     
-                    // 按匹配度排序
+                    // 排序优先级：
+                    // - time：纯时间倒序（忽略匹配度、置顶）
+                    // - top/默认：置顶优先，其次匹配度，其次时间
+                    if ($sortMode === 'time') {
+                        $query->order(['create_time' => 'desc']);
+                    } else {
+                        $query->order([
+                            'is_top' => 'desc',
+                            'is_urgent' => 'desc',
+                            'match_score' => 'desc',
+                            'create_time' => 'desc'
+                        ]);
+                    }
+                }
+            }
+
+            // 无 keyword 时的排序
+            if (empty($keyword)) {
+                if ($sortMode === 'time') {
+                    $query->order(['create_time' => 'desc']);
+                } else {
+                    // 默认/精选：置顶优先 + 时间倒序
                     $query->order([
-                        'match_score' => 'desc',
                         'is_top' => 'desc',
                         'is_urgent' => 'desc',
                         'create_time' => 'desc'
@@ -687,9 +708,12 @@ class Tutor extends BaseController
                 ]);
             }
             
-            // 通过 admin_openid 查询归属于该管理员的订单
+            // 通过 admin_openid 查询归属于该管理员的订单（兼容 admin_openid 为逗号分隔）
             $query = TutorOrder::with(['city', 'district', 'subject', 'dispatcher'])
-                ->where('admin_openid', $openid)
+                ->where(function ($q) use ($openid) {
+                    $q->where('admin_openid', $openid)
+                      ->whereOrRaw("FIND_IN_SET(?, REPLACE(IFNULL(admin_openid, ''), ' ', '')) > 0", [$openid]);
+                })
                 ->where('status', 1)
                 ->order('create_time', 'desc');
             

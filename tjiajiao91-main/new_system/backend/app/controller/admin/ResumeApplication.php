@@ -12,13 +12,35 @@ use think\facade\Log;
 class ResumeApplication extends BaseController
 {
     /**
+     * 应用「我的投递」筛选条件（与家教信息“我的订单”逻辑一致）
+     * 只按录入者筛选：o.admin_id = 当前登录管理员
+     */
+    private function applyMineFilter($query)
+    {
+        if (session_status() === PHP_SESSION_NONE) {
+            session_start();
+        }
+        $adminId = $_SESSION['admin_id'] ?? null;
+        if (!$adminId) {
+            return $query;
+        }
+        $query->where('o.admin_id', $adminId);
+        return $query;
+    }
+
+    /**
      * 获取投递列表
+     * view_scope: mine=我的投递（按录入者过滤）, all=全部投递
      */
     public function index()
     {
         try {
+            if (session_status() === PHP_SESSION_NONE) {
+                session_start();
+            }
             $page = $this->request->param('page', 1);
             $pageSize = $this->request->param('page_size', 20);
+            $viewScope = $this->request->param('view_scope', 'mine');
             $status = $this->request->param('status', '');
             $teacherName = $this->request->param('teacher_name', '');
             $tutorTitle = $this->request->param('tutor_title', '');
@@ -40,6 +62,11 @@ class ResumeApplication extends BaseController
                         o.salary as tutor_salary, s.name as tutor_subject,
                         c.name as tutor_city, d.name as tutor_district,
                         a.nickname as reviewer_name');
+
+            // 我的投递 / 全部投递
+            if ($viewScope === 'mine') {
+                $this->applyMineFilter($query);
+            }
             
             // 状态筛选
             if ($status) {
@@ -240,15 +267,29 @@ class ResumeApplication extends BaseController
             $pending = ApplicationModel::where('status', 'pending')->count();
             $approved = ApplicationModel::where('status', 'approved')->count();
             $rejected = ApplicationModel::where('status', 'rejected')->count();
+
+            // 我的投递（按录入者过滤，和家教信息“我的订单”一致）
+            $mineQuery = Db::name('resume_application')->alias('ra')
+                ->leftJoin('tutor_orders_new o', 'ra.tutor_id = o.id');
+            $this->applyMineFilter($mineQuery);
+            $mine = (clone $mineQuery)->count();
+            $minePending = (clone $mineQuery)->where('ra.status', 'pending')->count();
+            $mineApproved = (clone $mineQuery)->where('ra.status', 'approved')->count();
+            $mineRejected = (clone $mineQuery)->where('ra.status', 'rejected')->count();
             
             return json([
                 'code' => 200,
                 'message' => '获取成功',
                 'data' => [
+                    'mine' => (int) $mine,
                     'total' => $total,
                     'pending' => $pending,
                     'approved' => $approved,
-                    'rejected' => $rejected
+                    'rejected' => $rejected,
+                    // 我的投递：分状态统计（前端“我的投递”视图使用）
+                    'mine_pending' => (int) $minePending,
+                    'mine_approved' => (int) $mineApproved,
+                    'mine_rejected' => (int) $mineRejected
                 ]
             ]);
         } catch (\Exception $e) {

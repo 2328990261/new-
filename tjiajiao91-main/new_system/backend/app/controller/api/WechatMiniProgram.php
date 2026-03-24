@@ -27,17 +27,56 @@ class WechatMiniProgram extends BaseController
     public function login()
     {
         $code = Request::post('code');
-        
+        $superiorOpenid = Request::post('superior_openid', '');
+
         if (empty($code)) {
             return json([
                 'code' => 400,
                 'message' => '缺少code参数'
             ]);
         }
-        
+
         try {
-            $result = $this->service->login($code);
-            
+            $extraInfo = [];
+            if (!empty($superiorOpenid)) {
+                $extraInfo['superior_openid'] = $superiorOpenid;
+            }
+            $result = $this->service->login($code, $extraInfo);
+
+            return json([
+                'code' => 200,
+                'message' => '登录成功',
+                'data' => $result
+            ]);
+        } catch (\Exception $e) {
+            return json([
+                'code' => 500,
+                'message' => $e->getMessage()
+            ]);
+        }
+    }
+
+    /**
+     * 使用 openid 静默登录（已登录过的用户再次打开时免手机号）
+     * @return Response
+     */
+    public function loginWithOpenid()
+    {
+        $code = Request::post('code');
+        $openid = Request::post('openid');
+        $superiorOpenid = Request::post('superior_openid', '');
+
+        if (empty($code) || empty($openid)) {
+            return json([
+                'code' => 400,
+                'message' => '缺少 code 或 openid 参数'
+            ]);
+        }
+
+        try {
+            $result = $this->service->loginWithOpenid($code, $openid, [
+                'superior_openid' => $superiorOpenid
+            ]);
             return json([
                 'code' => 200,
                 'message' => '登录成功',
@@ -67,6 +106,7 @@ class WechatMiniProgram extends BaseController
         $avatar = Request::post('avatar', '');
         $userType = Request::post('user_type', ''); // 用户类型：teacher/parent
         $inviterOpenid = Request::post('inviter_openid', ''); // 邀请人openid
+        $superiorOpenid = Request::post('superior_openid', ''); // 上级管理员openid（分享预约来源）
         
         // 记录接收到的参数（调试用）
         \think\facade\Log::info('Login params received: ' . json_encode([
@@ -75,7 +115,8 @@ class WechatMiniProgram extends BaseController
             'nickname' => $nickname,
             'avatar' => $avatar,
             'userType' => $userType,
-            'inviterOpenid' => $inviterOpenid
+            'inviterOpenid' => $inviterOpenid,
+            'superiorOpenid' => $superiorOpenid
         ]));
         
         if (empty($code)) {
@@ -99,6 +140,9 @@ class WechatMiniProgram extends BaseController
             }
             if (!empty($inviterOpenid)) {
                 $extraInfo['inviter_openid'] = $inviterOpenid;
+            }
+            if (!empty($superiorOpenid)) {
+                $extraInfo['superior_openid'] = $superiorOpenid;
             }
             
             // 优先使用新版phone_code

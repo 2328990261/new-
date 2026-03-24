@@ -1,9 +1,9 @@
-﻿<template>
+<template>
 	<view class="login-container">
 		<!-- 顶部导航 -->
 		<view class="nav-bar" :style="{ paddingTop: statusBarHeight + 'px' }">
-			<view class="nav-back" @click="goBack">
-				<text class="back-icon">←</text>
+			<view class="navbar-back" @click="goBack">
+				<text class="back-icon">‹</text>
 			</view>
 		</view>
 
@@ -55,22 +55,33 @@
 					<text class="title-text">欢迎使用</text>
 				</view>
 
-				<!-- 一键登录按钮 -->
+				<!-- 先点此按钮：后端判断账号是否存在，已存在则直接登录不消耗手机号验证资源 -->
 				<button 
-					v-if="canLogin"
+					v-if="canLogin && !needPhoneAuth"
 					class="login-btn primary-btn" 
-					open-type="getPhoneNumber"
-					@getphonenumber="getPhoneNumber"
+					@click="handleQuickLogin"
 				>
 					<text class="btn-text">手机号快捷登录</text>
 				</button>
 				<button 
-					v-else
+					v-else-if="!canLogin"
 					class="login-btn primary-btn disabled" 
 					@click="handleLoginClick"
 				>
 					<text class="btn-text">手机号快捷登录</text>
 				</button>
+
+				<!-- 仅新用户才显示：拉起手机号快速验证组件（会消耗资源包） -->
+				<template v-if="needPhoneAuth">
+					<view class="phone-auth-tip">请验证手机号完成注册</view>
+					<button 
+						class="login-btn primary-btn"
+						open-type="getPhoneNumber"
+						@getphonenumber="getPhoneNumber"
+					>
+						<text class="btn-text">验证手机号</text>
+					</button>
+				</template>
 
 				<!-- 用户协议 -->
 				<view class="agreement-box">
@@ -100,6 +111,9 @@ import { wechatLogin } from '@/utils/api.js'
 import auth from '@/utils/auth.js'
 import envConfig from '@/config/env.js'
 
+// 登录表单缓存 key（退出登录不清除，下次进入自动恢复头像、昵称、协议勾选）
+const LOGIN_FORM_CACHE_KEY = 'loginFormCache'
+
 export default {
 	data() {
 		return {
@@ -110,7 +124,9 @@ export default {
 			isProcessingPhone: false, // 防止频繁调用手机号授权
 			userAvatar: '', // 用户头像
 			userNickname: '', // 用户昵称
-			inviterOpenid: '' // 邀请人openid
+			inviterOpenid: '', // 邀请人openid
+			needPhoneAuth: false, // 仅新用户为 true 时显示「验证手机号」按钮，避免老用户重复消耗手机号验证组件
+			fromPage: '' // 来源页面（如 step-booking），登录成功后返回该页并携带管理员参数
 		}
 	},
 	computed: {
@@ -128,13 +144,35 @@ export default {
 			this.inviterOpenid = options.inviter
 			console.log('检测到邀请链接，邀请人openid:', this.inviterOpenid)
 		}
+		// 获取来源页面（预约页跳转登录时带上，登录成功后返回）
+		if (options.from) {
+			this.fromPage = options.from
+		}
+		// URL 显式指定登录后返回页（兼容旧链接）
+		if (options.redirect) {
+			try {
+				const u = decodeURIComponent(options.redirect)
+				if (u) uni.setStorageSync('login_return_url', u)
+			} catch (e) {}
+		}
 		
-		// 加载已保存的用户信息
+		// 优先从「上次登录表单」恢复（退出登录后仍保留，方便再次登录只点一键登录）
+		try {
+			const cache = uni.getStorageSync(LOGIN_FORM_CACHE_KEY)
+			if (cache && typeof cache === 'object') {
+				if (cache.avatar) this.userAvatar = cache.avatar
+				if (cache.nickname) this.userNickname = cache.nickname
+				if (cache.agreedToTerms === true) this.agreedToTerms = true
+			}
+		} catch (e) {
+			console.error('加载登录表单缓存失败', e)
+		}
+		// 若缓存无头像/昵称，再尝试从 userInfo 补全（兼容旧数据）
 		try {
 			const savedUserInfo = uni.getStorageSync('userInfo')
 			if (savedUserInfo) {
-				this.userAvatar = savedUserInfo.avatar || ''
-				this.userNickname = savedUserInfo.name || ''
+				if (!this.userAvatar && savedUserInfo.avatar) this.userAvatar = savedUserInfo.avatar
+				if (!this.userNickname && savedUserInfo.name) this.userNickname = savedUserInfo.name
 			}
 		} catch (e) {
 			console.error('加载用户信息失败', e)
@@ -144,6 +182,44 @@ export default {
 		this.checkAutoLogin()
 	},
 	methods: {
+		// 统一获取分享归属 openid：任意分享入口进入后都应能绑定
+		getSuperiorOpenid() {
+			let fromCache = ''
+			let fromAdmin = ''
+			try {
+				fromCache = uni.getStorageSync('superior_openid') || ''
+				if (fromCache) {
+					if (envConfig.DEBUG) {
+						console.log('[superior_bind] login.getSuperiorOpenid', {
+							source: 'storage:superior_openid',
+							value: String(fromCache),
+							setTime: uni.getStorageSync('superior_openid_set_time') || null
+						})
+					}
+					return String(fromCache)
+				}
+			} catch (e) {}
+			try {
+				const adminParams = uni.getStorageSync('booking_redirect_admin') || {}
+				fromAdmin = adminParams.admin_openid || uni.getStorageSync('booking_share_admin_openid') || ''
+				if (envConfig.DEBUG) {
+					console.log('[superior_bind] login.getSuperiorOpenid', {
+						source: fromAdmin ? 'booking_admin 兜底' : '(空)',
+						superior_openid_storage: fromCache || '(空)',
+						booking_redirect_admin: adminParams,
+						booking_share_admin_openid: uni.getStorageSync('booking_share_admin_openid') || '',
+						resolved: fromAdmin || '(空)'
+					})
+				}
+				return fromAdmin
+			} catch (e) {
+				if (envConfig.DEBUG) {
+					console.log('[superior_bind] login.getSuperiorOpenid', { source: '异常', error: String(e) })
+				}
+				return ''
+			}
+		},
+
 		// 检查是否可以自动登录
 		async checkAutoLogin() {
 			const token = uni.getStorageSync('token')
@@ -168,9 +244,11 @@ export default {
 					})
 					
 					// 使用 openid 登录
+					const superiorOpenid = this.getSuperiorOpenid()
 					const res = await wechatLogin.loginWithOpenid({
 						code: loginRes.code,
-						openid: userInfo.openid
+						openid: userInfo.openid,
+						superior_openid: superiorOpenid
 					})
 					
 					uni.hideLoading()
@@ -270,13 +348,13 @@ export default {
 							// 更新本地头像显示
 							this.userAvatar = fullAvatarUrl
 							
-							// 保存真实头像URL到本地存储
+							// 保存到 userInfo 与登录表单缓存（退出登录后下次可恢复）
 							try {
 								const localUserInfo = uni.getStorageSync('userInfo') || {}
 								localUserInfo.avatar = fullAvatarUrl
 								localUserInfo.avatarUrl = fullAvatarUrl
 								uni.setStorageSync('userInfo', localUserInfo)
-								console.log('8. 更新后的本地存储:', localUserInfo)
+								this.saveLoginFormCache({ avatar: fullAvatarUrl })
 							} catch (e) {
 								console.error('保存头像失败', e)
 							}
@@ -317,22 +395,21 @@ export default {
 		
 		// 昵称输入完成
 		onNicknameBlur(e) {
-			const nickname = e.detail.value
+			const nickname = (e.detail && e.detail.value) ? e.detail.value : (this.userNickname || '').trim()
 			if (nickname) {
 				this.userNickname = nickname
-				
-				// 保存昵称到本地存储
 				try {
 					const userInfo = uni.getStorageSync('userInfo') || {}
 					userInfo.name = nickname
 					uni.setStorageSync('userInfo', userInfo)
+					this.saveLoginFormCache({ nickname })
 				} catch (e) {
 					console.error('保存昵称失败', e)
 				}
 			}
 		},
 		
-		// 处理登录按钮点击
+		// 处理登录按钮点击（未满足条件时提示）
 		handleLoginClick() {
 			if (!this.agreedToTerms) {
 				uni.showToast({
@@ -342,7 +419,6 @@ export default {
 				})
 				return
 			}
-			
 			if (!this.userAvatar) {
 				uni.showToast({
 					title: '请先选择头像',
@@ -351,7 +427,6 @@ export default {
 				})
 				return
 			}
-			
 			if (!this.userNickname) {
 				uni.showToast({
 					title: '请先输入昵称',
@@ -359,6 +434,54 @@ export default {
 					duration: 2000
 				})
 				return
+			}
+		},
+
+		// 手机号快捷登录：先用 code 查后端，账号已存在则直接登录不拉起手机号验证（省资源包）；新用户再显示「验证手机号」按钮
+		async handleQuickLogin() {
+			if (!this.canLogin) {
+				this.handleLoginClick()
+				return
+			}
+			uni.showLoading({ title: '登录中...', mask: true })
+			try {
+				const loginRes = await new Promise((resolve, reject) => {
+					uni.login({
+						provider: 'weixin',
+						success: resolve,
+						fail: reject
+					})
+				})
+				const superiorOpenid = this.getSuperiorOpenid()
+				if (envConfig.DEBUG) {
+					console.log('[superior_bind] login.handleQuickLogin → POST /api/wechat/login', {
+						superior_openid: superiorOpenid || '(空)',
+						needPhoneAuthWillBe: '待接口返回后确定'
+					})
+				}
+				const res = await wechatLogin.login(loginRes.code, { superior_openid: superiorOpenid })
+				uni.hideLoading()
+				if (res.code !== 200 || !res.data) {
+					uni.showToast({ title: res.message || '登录失败', icon: 'none' })
+					return
+				}
+				const data = res.data
+				// 账号已存在：直接保存登录信息并跳转，不拉起手机号验证组件
+				if (data.token) {
+					// 保存身份，避免再进身份选择页
+					if (data.userInfo && data.userInfo.user_type) {
+						uni.setStorageSync('userRole', data.userInfo.user_type)
+					}
+					this.loginSuccess(data)
+					return
+				}
+				// 新用户：保留 code，显示「验证手机号」按钮，仅此时会拉起手机号快速验证组件
+				this.code = loginRes.code
+				this.needPhoneAuth = true
+			} catch (err) {
+				uni.hideLoading()
+				console.error('登录检查失败:', err)
+				uni.showToast({ title: err.message || '登录失败，请重试', icon: 'none' })
 			}
 		},
 		
@@ -374,6 +497,16 @@ export default {
 		
 		onAgreementChange(e) {
 			this.agreedToTerms = e.detail.value.length > 0
+			this.saveLoginFormCache({ agreedToTerms: this.agreedToTerms })
+		},
+		// 保存登录表单到本地（退出登录不删，下次进入自动恢复头像、昵称、协议勾选）
+		saveLoginFormCache(partial) {
+			try {
+				const cache = uni.getStorageSync(LOGIN_FORM_CACHE_KEY) || {}
+				uni.setStorageSync(LOGIN_FORM_CACHE_KEY, { ...cache, ...partial })
+			} catch (e) {
+				console.error('保存登录表单缓存失败', e)
+			}
 		},
 		
 		viewAgreement(e) {
@@ -423,20 +556,26 @@ export default {
 			this.wxLogin()
 		},
 		
-		// 获取手机号回调（微信官方API）
+		// 获取手机号回调（微信官方API）- 仅在新用户点击「验证手机号」时触发，此时 this.code 已在 handleQuickLogin 中准备好
 		getPhoneNumber(e) {
-			// console.log('getPhoneNumber:', e)
-			
-			// 防抖处理，避免频繁调用
-			if (this.isProcessingPhone) {
-				// console.log('正在处理手机号授权，请勿重复操作')
-				return
-			}
-			
+			if (this.isProcessingPhone) return
 			if (e.detail.errMsg === 'getPhoneNumber:ok') {
 				this.isProcessingPhone = true
-				
-				// 先获取微信登录code，再处理手机号
+				// 新用户流程：之前的 code 已在 handleQuickLogin 里用过了（微信 code 只能用一次），这里必须重新拉取新 code
+				if (this.needPhoneAuth && e.detail.code) {
+					uni.login({
+						provider: 'weixin',
+						success: (loginRes) => {
+							this.code = loginRes.code
+							this.loginWithPhoneCode(e.detail.code)
+						},
+						fail: (err) => {
+							this.isProcessingPhone = false
+							uni.showToast({ title: '微信登录失败，请重试', icon: 'none' })
+						}
+					})
+					return
+				}
 				this.wxLoginThenProcessPhone(e.detail)
 			} else if (e.detail.errMsg === 'getPhoneNumber:fail user deny') {
 				this.isProcessingPhone = false
@@ -516,13 +655,22 @@ export default {
 			})
 			
 			try {
+				const superiorOpenid = this.getSuperiorOpenid()
+				if (envConfig.DEBUG) {
+					console.log('[superior_bind] login.loginWithPhoneCode → POST /api/wechat/login-phone', {
+						superior_openid: superiorOpenid || '(空)',
+						inviter_openid: this.inviterOpenid || '(空)',
+						note: '新用户创建/老用户补绑 superior 主要看本次 superior_openid'
+					})
+				}
 				const res = await wechatLogin.loginWithPhone({
 					code: this.code,
 					phone_code: phoneCode,
 					nickname: this.userNickname || '',
 					avatar: this.userAvatar || '',
 					user_type: uni.getStorageSync('userRole') || '',
-					inviter_openid: this.inviterOpenid || '' // 传递邀请人openid
+					inviter_openid: this.inviterOpenid || '', // 传递邀请人openid
+					superior_openid: superiorOpenid
 				})
 				
 				uni.hideLoading()
@@ -644,6 +792,13 @@ export default {
 			})
 			
 			try {
+				const superiorOpenid = this.getSuperiorOpenid()
+				if (envConfig.DEBUG) {
+					console.log('[superior_bind] login.loginWithPhone(旧版加密) → POST /api/wechat/login-phone', {
+						superior_openid: superiorOpenid || '(空)',
+						inviter_openid: this.inviterOpenid || '(空)'
+					})
+				}
 				const res = await wechatLogin.loginWithPhone({
 					code: this.code,
 					encrypted_data: encryptedData,
@@ -651,7 +806,8 @@ export default {
 					nickname: this.userNickname || '',
 					avatar: this.userAvatar || '',
 					user_type: uni.getStorageSync('userRole') || '',
-					inviter_openid: this.inviterOpenid || '' // 传递邀请人openid
+					inviter_openid: this.inviterOpenid || '', // 传递邀请人openid
+					superior_openid: superiorOpenid
 				})
 				
 				uni.hideLoading()
@@ -758,9 +914,15 @@ export default {
 		
 		// 登录成功处理
 		loginSuccess(data) {
-			// 重置处理状态
 			this.isProcessingPhone = false
-			
+			this.needPhoneAuth = false
+			// 仅老用户保存身份，新用户必须走「选择家长/老师」页，不在这里写 userRole
+			if (!data.isNewUser && data.userInfo && data.userInfo.user_type) {
+				uni.setStorageSync('userRole', data.userInfo.user_type)
+			}
+			if (data.isNewUser) {
+				uni.removeStorageSync('userRole')
+			}
 			console.log('登录返回的数据:', data)
 			console.log('用户信息:', data.userInfo)
 			
@@ -790,6 +952,13 @@ export default {
 				userInfo: userInfo
 			}, 90) // 90天有效期
 			
+			// 保存本次登录的表单到缓存，下次进入自动恢复头像、昵称、协议勾选
+			this.saveLoginFormCache({
+				avatar: this.userAvatar || userInfo.avatar || '',
+				nickname: this.userNickname || userInfo.name || '',
+				agreedToTerms: true
+			})
+			
 			// 验证保存是否成功
 			console.log('保存后的登录状态:', auth.isLoggedIn())
 			console.log('保存后的用户信息:', auth.getUserInfo())
@@ -809,34 +978,81 @@ export default {
 		// 请求位置授权
 		this.requestLocationPermission()
 		
-		// 延迟跳转到角色选择页面
+			// 延迟跳转：优先回到「进入登录前」的页面（login_return_url）
 			setTimeout(() => {
-				// 检查是否已经选择过角色
+				let returnUrl = ''
+				try {
+					returnUrl = (uni.getStorageSync('login_return_url') || '').trim()
+				} catch (e) {}
+
 				const userRole = uni.getStorageSync('userRole')
-				
+				const isNewUser = !!data.isNewUser
+				const fromInvite = !!this.inviterOpenid
+
+				// 邀请注册：新用户且无身份 → 先进老师注册页
+				if (fromInvite && !userRole && isNewUser) {
+					try {
+						uni.removeStorageSync('login_return_url')
+					} catch (e2) {}
+					uni.redirectTo({ url: '/pages/teacher-register/index?fromInvite=1' })
+					return
+				}
+
+				if (returnUrl) {
+					try {
+						uni.removeStorageSync('login_return_url')
+					} catch (e3) {}
+					if (!returnUrl.startsWith('/')) returnUrl = '/' + returnUrl
+					if (isNewUser && !userRole) {
+						uni.setStorageSync('post_role_redirect_url', returnUrl)
+						uni.redirectTo({ url: '/pages/role-select/index' })
+						return
+					}
+					uni.reLaunch({ url: returnUrl })
+					return
+				}
+
+				// 兼容：未写入 login_return_url 时，预约页带 from= 的旧逻辑
+				if ((this.fromPage === 'step-booking' || this.fromPage === 'booking-form') && userRole === 'parent') {
+					try {
+						const adminParams = uni.getStorageSync('booking_redirect_admin')
+						if (adminParams && typeof adminParams === 'object') {
+							const qs = Object.entries(adminParams)
+								.map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`)
+								.join('&')
+							uni.removeStorageSync('booking_redirect_admin')
+							const target = uni.getStorageSync('booking_redirect_target') || ''
+							uni.removeStorageSync('booking_redirect_target')
+							if (target === 'booking-form') {
+								uni.reLaunch({ url: '/pages/booking-form/index?' + qs })
+							} else {
+								uni.reLaunch({ url: '/pages/step-booking/index?' + qs })
+							}
+							return
+						}
+					} catch (e) {
+						console.error('恢复预约页管理员参数失败:', e)
+					}
+					const pages = getCurrentPages()
+					if (pages.length > 1) {
+						uni.navigateBack()
+						return
+					}
+				}
+
 				if (userRole) {
-					// 已选择过角色，根据角色跳转
 					if (userRole === 'parent') {
-						// 家长：检查是否有上一页
 						const pages = getCurrentPages()
 						if (pages.length > 1) {
 							uni.navigateBack()
 						} else {
-							uni.reLaunch({
-								url: '/pages/ai-booking/index'
-							})
+							uni.reLaunch({ url: '/pages/teacher-library/index' })
 						}
 					} else if (userRole === 'teacher') {
-						// 老师：跳转到生源信息页面
-						uni.reLaunch({
-							url: '/pages/tutor-list/index'
-						})
+						uni.reLaunch({ url: '/pages/tutor-list/index' })
 					}
 				} else {
-					// 未选择角色，跳转到角色选择页面
-					uni.redirectTo({
-						url: '/pages/role-select/index'
-					})
+					uni.redirectTo({ url: '/pages/role-select/index' })
 				}
 			}, 500)
 		},
@@ -881,32 +1097,25 @@ export default {
 	position: relative;
 	display: flex;
 	align-items: center;
-	padding: 20rpx 32rpx;
+	height: 44px;
 	background: transparent;
 	z-index: 10;
 }
 
-.nav-back {
-	width: 64rpx;
-	height: 64rpx;
-	background: rgba(255, 255, 255, 0.95);
-	backdrop-filter: blur(10rpx);
-	border-radius: 50%;
+.navbar-back {
+	position: absolute;
+	left: 0;
+	top: 0;
+	bottom: 0;
 	display: flex;
 	align-items: center;
-	justify-content: center;
-	box-shadow: 0 4rpx 16rpx rgba(0, 0, 0, 0.08);
-	transition: all 0.3s;
-	
-	&:active {
-		transform: scale(0.95);
-		background: rgba(255, 255, 255, 1);
-	}
+	padding: 0 32rpx;
 }
 
 .back-icon {
-	font-size: 40rpx;
-	color: #333;
+	font-size: 72rpx;
+	color: #FFFFFF;
+	font-weight: 300;
 }
 
 .main-content {
@@ -1176,6 +1385,13 @@ export default {
 		color: #9CA3AF;
 		box-shadow: none;
 	}
+}
+
+.phone-auth-tip {
+	font-size: 28rpx;
+	color: #666;
+	margin-bottom: 24rpx;
+	text-align: center;
 }
 
 .agreement-box {

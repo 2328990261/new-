@@ -1,4 +1,4 @@
-﻿<template>
+<template>
 	<view class="ai-booking-container" @touchmove.stop.prevent>
 		<!-- 状态栏占位 -->
 		<view class="status-bar" :style="{ height: statusBarHeight + 'px' }"></view>
@@ -252,6 +252,7 @@
 </template>
 
 <script>
+import auth from '@/utils/auth.js'
 import envConfig from '@/config/env.js'
 import shareMixin from '@/mixins/share.js'
 import request from '@/utils/request.js'
@@ -266,6 +267,7 @@ export default {
 	data() {
 		return {
 			statusBarHeight: 0,
+			adminOpenid: null, // 分享来源的上一级 openid（用于显示分享者/归属）
 			messages: [],
 			userInput: '',
 			scrollIntoView: '',
@@ -408,6 +410,18 @@ export default {
 	onLoad(options) {
 		// 简化初始化，使用固定状态栏高度
 		this.statusBarHeight = 44
+		
+		// 统一分享参数处理：优先 superior_openid（上一级），其次 admin_openid
+		if (options.superior_openid) {
+			this.adminOpenid = options.superior_openid
+			uni.setStorageSync('booking_share_admin_openid', options.superior_openid)
+		} else if (options.admin_openid) {
+			this.adminOpenid = options.admin_openid
+			uni.setStorageSync('booking_share_admin_openid', options.admin_openid)
+		} else {
+			const cachedOpenid = uni.getStorageSync('booking_share_admin_openid')
+			if (cachedOpenid) this.adminOpenid = cachedOpenid
+		}
 		
 		// 检查是否从教师详情页跳转过来
 		if (options && options.from === 'teacher') {
@@ -700,9 +714,7 @@ export default {
 				const token = uni.getStorageSync('token')
 				if (!token) {
 					// 未登录，跳转到登录页
-					uni.navigateTo({
-						url: '/pages/login/index'
-					})
+					auth.navigateToLogin()
 				} else {
 					// 已登录，提交预约
 					this.submitBooking()
@@ -722,9 +734,7 @@ export default {
 			if (!userInfo || !userInfo.id) {
 				// 未登录，保存当前预约数据并跳转登录
 				uni.setStorageSync('pendingBooking', this.bookingData)
-				uni.navigateTo({
-					url: '/pages/login/index'
-				})
+				auth.navigateToLogin()
 				return
 			}
 			
@@ -743,7 +753,7 @@ export default {
 					icon: 'none'
 				})
 				setTimeout(() => {
-					uni.navigateTo({ url: '/pages/login/index' })
+					auth.navigateToLogin()
 				}, 1500)
 				return
 			}
@@ -813,6 +823,7 @@ export default {
 					method: 'POST',
 					data: {
 						user_id: userInfo.id,
+						admin_openid: this.adminOpenid || uni.getStorageSync('booking_share_admin_openid') || '',
 						booking_data: bookingDataToSubmit
 					}
 				})
@@ -905,9 +916,7 @@ export default {
 					icon: 'none'
 				})
 				setTimeout(() => {
-					uni.navigateTo({
-						url: '/pages/login/index'
-					})
+					auth.navigateToLogin()
 				}, 1000)
 				return
 			}
@@ -925,9 +934,7 @@ export default {
 					icon: 'none'
 				})
 				setTimeout(() => {
-					uni.navigateTo({
-						url: '/pages/login/index'
-					})
+					auth.navigateToLogin()
 				}, 1000)
 				return
 			}
@@ -1551,19 +1558,36 @@ ${this.bookingData.selected_teacher_name ? '指定教师：' + this.bookingData.
 	},
 	// 分享给好友/群聊
 	onShareAppMessage() {
-		return {
+		const sharerOpenid = this.getSharerOpenid ? this.getSharerOpenid() : ''
+		const imageUrl = '/static/tabbar/applications-active.png'
+		const payload = {
 			title: '小萌AI智能家教匹配，一键找到好老师！',
-			path: '/pages/ai-booking/index',
-			imageUrl: '/static/share-ai.png'
+			path: '/pages/ai-booking/index'
 		}
+		if (sharerOpenid) {
+			payload.path += '?admin_openid=' + sharerOpenid + '&superior_openid=' + encodeURIComponent(sharerOpenid)
+		}
+		// 不传 imageUrl 则使用页面缩略图（避免 static/tabbar “伪 png” 导致空白）
+		if (imageUrl && !imageUrl.startsWith('/static/tabbar/')) {
+			payload.imageUrl = imageUrl
+		}
+		return payload
 	},
 	// 分享到朋友圈
 	onShareTimeline() {
-		return {
+		const sharerOpenid = this.getSharerOpenid ? this.getSharerOpenid() : ''
+		const imageUrl = '/static/tabbar/applications-active.png'
+		const payload = {
 			title: '小萌AI智能家教匹配，一键找到好老师！',
-			query: '',
-			imageUrl: '/static/share-ai.png'
+			query: ''
 		}
+		if (sharerOpenid) {
+			payload.query = 'admin_openid=' + sharerOpenid + '&superior_openid=' + encodeURIComponent(sharerOpenid)
+		}
+		if (imageUrl && !imageUrl.startsWith('/static/tabbar/')) {
+			payload.imageUrl = imageUrl
+		}
+		return payload
 	}
 }
 </script>

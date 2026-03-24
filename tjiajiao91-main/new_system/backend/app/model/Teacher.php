@@ -25,7 +25,7 @@ class Teacher extends Model
         'email'                 => 'string',
         'hometown'              => 'string',
         'teaching_years'        => 'int',
-        'birth_year'            => 'int',
+        'birth_date'            => 'string',  // 出生年月 YYYY-MM，小程序端提交
         'location_province'     => 'string',
         'location_city'         => 'string',
         'location_district'     => 'string',

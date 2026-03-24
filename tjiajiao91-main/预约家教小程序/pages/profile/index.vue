@@ -19,62 +19,78 @@
 			<!-- 用户信息卡片内容 -->
 			<view class="header-card-content">
 				<!-- 头像 -->
-				<button v-if="isLoggedIn" class="avatar-btn" open-type="chooseAvatar" @chooseavatar="onChooseAvatar">
+				<view v-if="isLoggedIn" class="avatar-btn">
 					<image v-if="userInfo.avatar" :src="userInfo.avatar" class="avatar" mode="aspectFill" />
 					<view v-else class="avatar-placeholder">
-						<view class="avatar-icon-default"></view>
+						<uni-icons type="contact" size="110" color="#C0C4CC" />
 					</view>
-				</button>
+				</view>
 				<view v-else class="avatar-placeholder" @click="goToLogin">
-					<view class="avatar-icon-default"></view>
+					<uni-icons type="contact" size="110" color="#C0C4CC" />
 				</view>
 				
 				<!-- 用户信息 -->
 				<view class="user-info">
-					<input 
-						v-if="isLoggedIn"
-						type="nickname" 
-						class="nickname-input"
-						:value="userInfo.name || '微信用户'"
-						placeholder="微信用户"
-						@blur="onNicknameChange"
-					/>
+					<text v-if="isLoggedIn" class="nickname-text">{{ userInfo.name || '微信用户' }}</text>
 					<text v-else class="nickname-text" @click="goToLogin">点击设置</text>
 					
 					<text class="user-phone">
 						{{ isLoggedIn ? (userInfo.phone || '未绑定手机号') : '' }}
 					</text>
 				</view>
+
+				<!-- 设置按钮 -->
+				<button class="settings-btn" @click="goToProfileSettings">
+					<uni-icons type="gear" size="34" color="#606266" />
+				</button>
 			</view>
 			
 			<!-- 认证状态（仅老师端显示） -->
 			<view v-if="isLoggedIn && userRole === 'teacher'" class="auth-status-section">
 				<view class="auth-item" @click="goToResume">
-					<view class="auth-icon" :class="{ 'auth-success': authStatus.resume }">
-						<text class="icon-text">📄</text>
+					<view class="auth-title-row">
+						<view class="auth-icon auth-icon--flat" :class="{ 'auth-success': authStatus.resume }">
+							<uni-icons
+								:type="authStatus.resume ? 'checkbox' : 'close'"
+								:size="28"
+								:color="authStatus.resume ? '#52C9A6' : '#FF4D4F'"
+							/>
+						</view>
+						<text class="auth-label">简历认证</text>
 					</view>
-					<text class="auth-label">简历认证</text>
-					<text class="auth-status" :class="{ 'status-success': authStatus.resume }">
+					<text class="auth-status" :class="{ 'status-success': authStatus.resume, 'status-danger': !authStatus.resume }">
 						{{ authStatus.resume ? '已认证' : '未认证' }}
 					</text>
 				</view>
 				
 				<view class="auth-item" @click="goToTeachingInfo">
-					<view class="auth-icon" :class="{ 'auth-success': authStatus.teaching }">
-						<text class="icon-text">📚</text>
+					<view class="auth-title-row">
+						<view class="auth-icon auth-icon--flat" :class="{ 'auth-success': authStatus.teaching }">
+							<uni-icons
+								type="calendar"
+								:size="28"
+								:color="authStatus.teaching ? '#52C9A6' : '#909399'"
+							/>
+						</view>
+						<text class="auth-label">授课信息</text>
 					</view>
-					<text class="auth-label">授课信息</text>
-					<text class="auth-status" :class="{ 'status-success': authStatus.teaching }">
+					<text class="auth-status" :class="{ 'status-success': authStatus.teaching, 'status-danger': !authStatus.teaching }">
 						{{ authStatus.teaching ? '已完善' : '待完善' }}
 					</text>
 				</view>
 				
 				<view class="auth-item" @click="goToIdentityAuth">
-					<view class="auth-icon" :class="{ 'auth-success': authStatus.identity }">
-						<text class="icon-text">✓</text>
+					<view class="auth-title-row">
+						<view class="auth-icon auth-icon--flat" :class="{ 'auth-success': authStatus.identity }">
+							<uni-icons
+								type="auth"
+								:size="28"
+								:color="authStatus.identity ? '#52C9A6' : '#909399'"
+							/>
+						</view>
+						<text class="auth-label">实名认证</text>
 					</view>
-					<text class="auth-label">实名认证</text>
-					<text class="auth-status" :class="{ 'status-success': authStatus.identity }">
+					<text class="auth-status" :class="{ 'status-success': authStatus.identity, 'status-danger': !authStatus.identity }">
 						{{ authStatus.identity ? '已认证' : '未认证' }}
 					</text>
 				</view>
@@ -85,17 +101,9 @@
 		<view class="menu-section">
 			<!-- 老师端菜单 -->
 			<view v-if="userRole === 'teacher'" class="menu-group">
-				<view class="menu-item" @click="goToResume">
-					<view class="menu-icon-wrapper">
-						<text class="icon-emoji">📄</text>
-					</view>
-					<text class="menu-text">我的简历</text>
-					<text class="menu-arrow">›</text>
-				</view>
-				
 				<view class="menu-item" @click="goToMyApplications">
 					<view class="menu-icon-wrapper">
-						<text class="icon-emoji">📋</text>
+						<uni-icons type="paperplane" size="28" color="#52C9A6" />
 					</view>
 					<text class="menu-text">我的投递</text>
 					<text class="menu-arrow">›</text>
@@ -103,23 +111,15 @@
 				
 				<view class="menu-item" @click="goToMyFavorites">
 					<view class="menu-icon-wrapper">
-						<text class="icon-emoji">⭐</text>
+						<uni-icons type="star-filled" size="28" color="#FFC107" />
 					</view>
 					<text class="menu-text">我的收藏</text>
 					<text class="menu-arrow">›</text>
 				</view>
 				
-				<view class="menu-item" @click="goToTeachingInfo">
-					<view class="menu-icon-wrapper">
-						<text class="icon-emoji">📖</text>
-					</view>
-					<text class="menu-text">授课信息</text>
-					<text class="menu-arrow">›</text>
-				</view>
-				
 				<view class="menu-item" @click="goToCouponWallet">
 					<view class="menu-icon-wrapper wallet-icon">
-						<text class="icon-emoji">🎫</text>
+						<uni-icons type="shop" size="28" color="#FFFFFF" />
 					</view>
 					<text class="menu-text">我的卡包</text>
 					<view class="wallet-badge" v-if="couponCount > 0">
@@ -130,7 +130,7 @@
 				
 				<view class="menu-item" @click="goToInvitation">
 					<view class="menu-icon-wrapper invitation-icon">
-						<text class="icon-emoji">🎁</text>
+						<uni-icons type="gift" size="28" color="#FF6B35" />
 					</view>
 					<text class="menu-text">邀请好友</text>
 					<view class="invitation-badge">
@@ -144,7 +144,7 @@
 			<view v-if="userRole === 'parent'" class="menu-group">
 				<view class="menu-item" @click="goToMyDemands">
 					<view class="menu-icon-wrapper">
-						<text class="icon-emoji">�</text>
+						<uni-icons type="calendar" size="28" color="#52C9A6" />
 					</view>
 					<text class="menu-text">我的预约</text>
 					<text class="menu-arrow">›</text>
@@ -152,7 +152,7 @@
 				
 				<view class="menu-item" @click="goToMyFavorites">
 					<view class="menu-icon-wrapper">
-						<text class="icon-emoji">⭐</text>
+						<uni-icons type="star-filled" size="28" color="#FFC107" />
 					</view>
 					<text class="menu-text">我的收藏</text>
 					<text class="menu-arrow">›</text>
@@ -160,7 +160,7 @@
 				
 				<view class="menu-item" @click="goToCouponWallet">
 					<view class="menu-icon-wrapper wallet-icon">
-						<text class="icon-emoji">🎫</text>
+						<uni-icons type="shop" size="28" color="#FFFFFF" />
 					</view>
 					<text class="menu-text">我的卡包</text>
 					<view class="wallet-badge" v-if="couponCount > 0">
@@ -171,7 +171,7 @@
 				
 				<view class="menu-item" @click="goToInvitation">
 					<view class="menu-icon-wrapper invitation-icon">
-						<text class="icon-emoji">🎁</text>
+						<uni-icons type="gift" size="28" color="#FF6B35" />
 					</view>
 					<text class="menu-text">邀请好友</text>
 					<view class="invitation-badge">
@@ -184,14 +184,14 @@
 			<view class="menu-group">
 				<view class="menu-item" @click="switchRole">
 					<view class="menu-icon-wrapper">
-						<text class="icon-emoji">🔄</text>
+						<uni-icons type="refreshempty" size="28" color="#52C9A6" />
 					</view>
 					<text class="menu-text">{{ userRole === 'teacher' ? '切换家长端' : '切换老师端' }}</text>
 					<text class="menu-arrow">›</text>
 				</view>
 			</view>
 			
-			<!-- 退出登录按钮 -->
+			<!-- 已登录：退出登录；未登录：引导登录 -->
 			<view class="logout-section" v-if="isLoggedIn">
 				<button class="logout-btn" @click="handleLogout">退出登录</button>
 			</view>
@@ -206,10 +206,10 @@
 			<text class="footer-divider">|</text>
 			<text class="footer-link" @click="goToAgreement">用户协议</text>
 		</view>
+		</scroll-view>
 		
 		<!-- 自定义 tabBar -->
 		<custom-tabbar current="/pages/profile/index" />
-		</scroll-view>
 	</view>
 </template>
 
@@ -217,10 +217,13 @@
 import envConfig from '@/config/env.js'
 import CustomTabbar from '@/components/custom-tabbar/index.vue'
 import auth from '@/utils/auth.js'
-
+import uniIcons from '@/uni_modules/uni-icons/components/uni-icons/uni-icons.vue'
+import { wechatLogin } from '@/utils/api.js'
+ 
 export default {
 	components: {
-		CustomTabbar
+		CustomTabbar,
+		uniIcons
 	},
 	data() {
 		// 立即从存储加载角色
@@ -581,20 +584,14 @@ export default {
 			})
 		},
 		
-		onNicknameChange(e) {
-			const nickname = e.detail.value
-			if (nickname && nickname.trim()) {
-				this.userInfo.name = nickname.trim()
-				const localUserInfo = uni.getStorageSync('userInfo') || {}
-				localUserInfo.name = nickname.trim()
-				localUserInfo.nickname = nickname.trim()
-				uni.setStorageSync('userInfo', localUserInfo)
-				
-				uni.showToast({
-					title: '昵称已更新',
-					icon: 'success'
-				})
+		goToProfileSettings() {
+			if (!this.isLoggedIn) {
+				auth.navigateToLogin()
+				return
 			}
+			uni.navigateTo({
+				url: '/pages/profile-settings/index'
+			})
 		},
 		
 		goToResume() {
@@ -795,6 +792,12 @@ export default {
 					if (res.confirm) {
 						uni.setStorageSync('userRole', newRole)
 						this.userRole = newRole
+
+						// 已登录时同步身份到服务端，避免库里 user_type 仍是旧值
+						const token = uni.getStorageSync('token')
+						if (token) {
+							wechatLogin.updateUserType(newRole).catch(() => {})
+						}
 						
 						uni.showToast({
 							title: `已切换到${roleText}`,
@@ -832,40 +835,23 @@ export default {
 		
 		goToLogin() {
 			if (!this.isLoggedIn) {
-				uni.navigateTo({
-					url: '/pages/login/index'
-				})
+				auth.navigateToLogin()
 			}
 		},
 		
 		handleLogout() {
 			uni.showModal({
 				title: '退出登录',
-				content: '确定要退出登录吗？',
+				content: '确定要退出当前账号吗？',
+				confirmColor: '#52C9A6',
 				success: (res) => {
-					if (res.confirm) {
-						// 使用auth工具清除登录信息
-						auth.clearLoginInfo()
-						
-						// 清除角色信息
-						uni.removeStorageSync('userRole')
-						
-						this.isLoggedIn = false
-						this.userInfo = {
-							name: '',
-							phone: '',
-							avatar: ''
-						}
-						
-						uni.showToast({
-							title: '已退出登录',
-							icon: 'success'
-						})
-						
-						setTimeout(() => {
-							this.loadUserInfo()
-						}, 1500)
-					}
+					if (!res.confirm) return
+					auth.clearLoginInfo()
+					this.isLoggedIn = false
+					this.userInfo = { name: '', phone: '', avatar: '' }
+					this.authStatus = { resume: false, teaching: false, identity: false }
+					this.couponCount = 0
+					uni.showToast({ title: '已退出登录', icon: 'success' })
 				}
 			})
 		}
@@ -977,38 +963,6 @@ export default {
 	overflow: hidden;
 }
 
-.avatar-icon-default {
-	width: 60rpx;
-	height: 60rpx;
-	background: #dcdfe6;
-	border-radius: 50%;
-	position: relative;
-}
-
-.avatar-icon-default::before {
-	content: '';
-	position: absolute;
-	top: 8rpx;
-	left: 50%;
-	transform: translateX(-50%);
-	width: 24rpx;
-	height: 24rpx;
-	background: #fff;
-	border-radius: 50%;
-}
-
-.avatar-icon-default::after {
-	content: '';
-	position: absolute;
-	bottom: 4rpx;
-	left: 50%;
-	transform: translateX(-50%);
-	width: 40rpx;
-	height: 20rpx;
-	background: #fff;
-	border-radius: 20rpx 20rpx 0 0;
-}
-
 .icon-text {
 	font-size: 28rpx;
 	line-height: 1;
@@ -1048,6 +1002,27 @@ export default {
 	line-height: 50rpx;
 }
 
+.settings-btn {
+	width: 76rpx;
+	height: 76rpx;
+	padding: 0;
+	margin: 0;
+	border-radius: 18rpx;
+	background: #f5f7fa;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	flex-shrink: 0;
+}
+
+.settings-btn::after {
+	border: none;
+}
+
+.settings-btn:active {
+	background: #eef1f6;
+}
+
 .user-phone {
 	font-size: 26rpx;
 	color: #606266;
@@ -1056,8 +1031,9 @@ export default {
 .auth-status-section {
 	display: flex;
 	gap: 16rpx;
-	padding: 24rpx 32rpx 0;
-	margin-top: 24rpx;
+	/* 头像信息与认证区间距稍收紧 */
+	padding: 16rpx 32rpx 0;
+	margin-top: 12rpx;
 }
 
 .auth-item {
@@ -1065,11 +1041,19 @@ export default {
 	display: flex;
 	flex-direction: column;
 	align-items: center;
-	gap: 8rpx;
-	padding: 16rpx 8rpx;
+	gap: 12rpx;
+	padding: 20rpx 8rpx;
 	background: rgba(255, 255, 255, 0.9);
 	border-radius: 12rpx;
 	transition: all 0.3s;
+}
+
+.auth-title-row {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	gap: 10rpx;
+	width: 100%;
 }
 
 .auth-item:active {
@@ -1078,8 +1062,8 @@ export default {
 }
 
 .auth-icon {
-	width: 48rpx;
-	height: 48rpx;
+	width: 60rpx;
+	height: 60rpx;
 	border-radius: 50%;
 	background: #e4e7ed;
 	display: flex;
@@ -1088,8 +1072,16 @@ export default {
 	transition: all 0.3s;
 }
 
+/* 保证三个图标字形视觉统一、居中对齐 */
+.auth-icon :deep(.uni-icons) {
+	line-height: 1;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+}
+
 .auth-icon .icon-text {
-	font-size: 28rpx;
+	font-size: 32rpx;
 	opacity: 0.6;
 }
 
@@ -1102,13 +1094,14 @@ export default {
 }
 
 .auth-label {
-	font-size: 22rpx;
+	font-size: 24rpx;
 	color: #606266;
 	white-space: nowrap;
+	font-weight: 500;
 }
 
 .auth-status {
-	font-size: 20rpx;
+	font-size: 22rpx;
 	color: #909399;
 }
 
@@ -1117,15 +1110,31 @@ export default {
 	font-weight: 500;
 }
 
+.auth-status.status-danger {
+	color: #FF4D4F;
+	font-weight: 500;
+}
+
+/* 顶部认证卡片中，去掉「简历认证、授课信息」的圆形背景色，只保留图标本身 */
+.auth-icon--flat {
+	background: transparent;
+}
+
+.auth-icon--flat.auth-success {
+	background: transparent;
+}
+
 .menu-section {
-	padding: 0 32rpx;
+	/* 两端统一：整体左右留白略收紧 */
+	padding: 0 24rpx;
 }
 
 .menu-group {
 	background: #fff;
 	border-radius: 20rpx;
 	overflow: hidden;
-	margin-bottom: 24rpx;
+	/* 组与组之间间距调小一点 */
+	margin-bottom: 16rpx;
 	box-shadow: 0 4rpx 16rpx rgba(82, 201, 166, 0.06);
 	border: 1rpx solid rgba(82, 201, 166, 0.08);
 }
@@ -1133,9 +1142,11 @@ export default {
 .menu-item {
 	display: flex;
 	align-items: center;
-	padding: 32rpx;
+	/* 单行纵向/横向 padding 缩小，视觉更紧凑 */
+	padding: 24rpx;
 	border-bottom: 1rpx solid #f5f7fa;
 	transition: all 0.3s;
+	min-height: 80rpx;
 }
 
 .menu-item:last-child {
@@ -1148,14 +1159,15 @@ export default {
 }
 
 .menu-icon-wrapper {
-	width: 48rpx;
-	height: 48rpx;
+	width: 56rpx;
+	height: 56rpx;
 	border-radius: 12rpx;
 	display: flex;
 	align-items: center;
 	justify-content: center;
-	margin-right: 24rpx;
+	margin-right: 20rpx;
 	background: #f5f7fa;
+	flex-shrink: 0;
 }
 
 .menu-icon-wrapper.invitation-icon {
@@ -1178,12 +1190,17 @@ export default {
 	margin-left: 8rpx;
 	min-width: 40rpx;
 	text-align: center;
+	height: 32rpx;
+	display: flex;
+	align-items: center;
+	justify-content: center;
 }
 
 .wallet-badge .badge-text {
 	font-size: 20rpx;
 	color: #fff;
 	font-weight: 500;
+	line-height: 1;
 }
 
 .invitation-badge {
@@ -1191,25 +1208,38 @@ export default {
 	background: linear-gradient(135deg, #FF8C42 0%, #FF6B35 100%);
 	border-radius: 12rpx;
 	margin-left: 8rpx;
+	height: 32rpx;
+	display: flex;
+	align-items: center;
+	justify-content: center;
 }
 
 .invitation-badge .badge-text {
 	font-size: 20rpx;
 	color: #fff;
 	font-weight: 500;
+	line-height: 1;
 }
 
 .menu-text {
 	flex: 1;
 	font-size: 30rpx;
 	color: #303133;
+	line-height: 56rpx;
+	display: flex;
+	align-items: center;
 }
 
 .menu-arrow {
 	font-size: 40rpx;
 	color: #c0c4cc;
-	line-height: 1;
+	line-height: 56rpx;
 	font-weight: 300;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	width: 40rpx;
+	height: 56rpx;
 }
 
 .logout-section {

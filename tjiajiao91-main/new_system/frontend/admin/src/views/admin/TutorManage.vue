@@ -1389,7 +1389,7 @@ import {
   UploadFilled, Document, ArrowUp, ArrowDown, ArrowRight, Tools, Download, Promotion, InfoFilled, Refresh, Loading
 } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { getTutorList, addTutor, updateTutor, deleteTutor, recognizeTutor, batchCopy, batchDelete, batchRecognizeTutors, checkNeedFix, batchCreateTutor, getCityStats, autoAssignAllOrders } from '@/api/tutor'
+import { getTutorList, addTutor, updateTutor, deleteTutor, recognizeTutor, batchCopy, batchDelete, batchRecognizeTutors, checkNeedFix, batchCreateTutor, getCityStats, autoAssignAllOrders, setTop } from '@/api/tutor'
 import { getCitiesByProvince, getCityList, getCitiesGroupedByProvince } from '@/api/city'
 import { getDistrictList } from '@/api/district'
 import { getSubjectList } from '@/api/subject'
@@ -3750,10 +3750,10 @@ const handleBatchDelete = async () => {
 // 切换置顶状态
 const handleToggleTop = async (tutor) => {
   try {
-    const newTopStatus = tutor.is_top === 1 ? 0 : 1
-    await updateTutor(tutor.id, {
-      is_top: newTopStatus
-    })
+    const currentTop = Number(tutor.is_top) === 1
+    const newTopStatus = currentTop ? 0 : 1
+    // 使用专用置顶接口，确保同步 top_expire_time
+    await setTop(tutor.id, newTopStatus, 24)
     ElMessage.success(newTopStatus ? '已置顶' : '已取消置顶')
     loadData()
   } catch (error) {

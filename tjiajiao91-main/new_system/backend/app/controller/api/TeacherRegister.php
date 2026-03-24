@@ -95,7 +95,7 @@ class TeacherRegister extends BaseController
      */
     public function submit()
     {
-        $data = $this->request->post();
+        $data = $this->getRequestData();
         
         // 记录接收到的数据用于调试
         \think\facade\Log::info('Teacher Register Submit Data:', $data);
@@ -175,6 +175,9 @@ class TeacherRegister extends BaseController
                 $data['advantage_tags'] = json_encode($data['advantage_tags'], JSON_UNESCAPED_UNICODE);
             }
             
+            // 规范化出生年月：统一为 YYYY-MM 写入 birth_date
+            $this->normalizeBirthDate($data);
+            
             // 只保留数据库中存在的字段
             $allowedFields = [
                 'name', 'gender', 'phone', 'wechat_id', 'wechat_nickname', 'openid', 'email',
@@ -194,13 +197,20 @@ class TeacherRegister extends BaseController
                 }
             }
             
+            // 初次提交一律进入人工「待审核」状态，不再因三项材料都为空而自动拒绝
+            $insertData['review_status'] = 'pending';
+            $insertData['review_note'] = null;
+            
             // 设置默认状态
             $insertData['status'] = 'active';  // 账号激活
-            $insertData['review_status'] = 'pending';  // 待审核
             $insertData['real_name_verified'] = 0;
             $insertData['education_verified'] = 0;
             $insertData['teacher_verified'] = 0;
             $insertData['is_top'] = 0;
+            
+            // 自动生成 teacher_no（对外展示编号，从 1000 起自增，如 T1000）
+            $maxNo = (int) Teacher::max('teacher_no');
+            $insertData['teacher_no'] = ($maxNo >= 1000) ? ($maxNo + 1) : 1000;
             
             // 创建教师记录
             $teacher = Teacher::create($insertData);
@@ -218,7 +228,9 @@ class TeacherRegister extends BaseController
                 'data' => [
                     'id' => $teacher->id,
                     'name' => $teacher->name,
-                    'status' => $teacher->status
+                    'status' => $teacher->status,
+                    'review_status' => $teacher->review_status,
+                    'review_note' => $teacher->review_note ?? ''
                 ]
             ]);
         } catch (\Exception $e) {
@@ -231,7 +243,7 @@ class TeacherRegister extends BaseController
      */
     public function update()
     {
-        $data = $this->request->post();
+        $data = $this->getRequestData();
         
         // 验证必填字段
         if (empty($data['id'])) {
@@ -246,6 +258,16 @@ class TeacherRegister extends BaseController
             $teacher = Teacher::find($teacherId);
             if (!$teacher) {
                 return json(['success' => false, 'error' => '教师不存在']);
+            }
+
+            // 如果请求中包含手机号，检查是否被其它教师占用（排除自己）
+            if (!empty($data['phone'])) {
+                $exists = Teacher::where('phone', $data['phone'])
+                    ->where('id', '<>', $teacherId)
+                    ->find();
+                if ($exists) {
+                    return json(['success' => false, 'error' => '该手机号已被其他教师使用']);
+                }
             }
             
             // 处理教学经历（结构化JSON数组）
@@ -286,6 +308,9 @@ class TeacherRegister extends BaseController
                 $data['advantage_tags'] = json_encode($data['advantage_tags'], JSON_UNESCAPED_UNICODE);
             }
             
+            // 规范化出生年月并写入 birth_date
+            $this->normalizeBirthDate($data);
+            
             // 只保留数据库中存在的字段
             $allowedFields = [
                 'name', 'gender', 'phone', 'wechat_id', 'wechat_nickname', 'openid', 'email',
@@ -305,11 +330,15 @@ class TeacherRegister extends BaseController
                 }
             }
             
-            // 更新后重新设置为待审核（无论之前是什么状态）
-            $updateData['review_status'] = 'pending';
-            $updateData['review_note'] = null;
-            $updateData['review_time'] = null;
-            $updateData['reviewer_id'] = null;
+            // 更新时不再根据认证材料自动改为「已拒绝」，
+            // 审核结果只由后台人工审核接口决定，这里不动 review_status 及审核备注/时间
+            // 但若当前为「已拒绝」，用户重新提交后应回到「待审核」
+            if ($teacher->review_status === 'rejected') {
+                $updateData['review_status'] = 'pending';
+                $updateData['review_note'] = null;
+                $updateData['review_time'] = null;
+                $updateData['reviewer_id'] = null;
+            }
             
             // 更新教师记录
             $teacher->save($updateData);
@@ -320,7 +349,8 @@ class TeacherRegister extends BaseController
                 'data' => [
                     'id' => $teacher->id,
                     'name' => $teacher->name,
-                    'review_status' => $teacher->review_status
+                    'review_status' => $teacher->review_status,
+                    'review_note' => $teacher->review_note ?? ''
                 ]
             ]);
         } catch (\Exception $e) {
@@ -602,12 +632,17 @@ class TeacherRegister extends BaseController
     public function checkPhone()
     {
         $phone = $this->request->param('phone', '');
+        $excludeId = (int)$this->request->param('exclude_teacher_id', 0);
         
         if (empty($phone)) {
             return json(['success' => false, 'error' => '请输入手机号']);
         }
         
-        $exists = Teacher::where('phone', $phone)->find();
+        $query = Teacher::where('phone', $phone);
+        if ($excludeId > 0) {
+            $query->where('id', '<>', $excludeId);
+        }
+        $exists = $query->find();
         
         return json([
             'success' => true,
@@ -656,6 +691,44 @@ class TeacherRegister extends BaseController
                 ]);
             }
             
+            // === 超时自动拒绝逻辑 ===
+            // 需求：提交后先进入待审核，如果 5 分钟内仍未上传任何认证材料（三项都为空），再自动标记为已拒绝
+            if ($teacher->review_status === 'pending') {
+                // 使用最近一次提交时间作为计时基准：
+                // 首次提交：update_time≈create_time；
+                // 驳回后重新提交：update_time 会刷新，避免刚提交就被立即自动拒绝。
+                $pendingBaseAt = $teacher->update_time ?: $teacher->getData('update_time');
+                if (empty($pendingBaseAt)) {
+                    $pendingBaseAt = $teacher->create_time ?: $teacher->getData('create_time');
+                }
+
+                if (!empty($pendingBaseAt)) {
+                    $createdTs = strtotime($pendingBaseAt);
+                    $nowTs = time();
+                    // 超过 5 分钟
+                    if ($createdTs > 0 && ($nowTs - $createdTs) >= 300) {
+                        // 使用 getData 读取原始数据库值，避免模型获取器或类型转换导致误判为“未上传”
+                        $idCardFront = trim((string)($teacher->getData('id_card_front') ?? ''));
+                        $idCardBack  = trim((string)($teacher->getData('id_card_back') ?? ''));
+                        $eduCert     = trim((string)($teacher->getData('education_certificate') ?? ''));
+                        $teacherCert = trim((string)($teacher->getData('teacher_certificate') ?? ''));
+                        $hasIdCard = $idCardFront !== '' || $idCardBack !== '';
+                        $hasEduCert = $eduCert !== '';
+                        $hasTeacherCert = $teacherCert !== '';
+
+                        if (!$hasIdCard && !$hasEduCert && !$hasTeacherCert) {
+                            $certRejectNote = '请在认证材料中身份证，学历证明，教师资格证三项中至少上传一项';
+                            $teacher->review_status = 'rejected';
+                            $teacher->review_note = $certRejectNote;
+                            $teacher->review_time = date('Y-m-d H:i:s');
+                            // reviewer_id 为空，表示系统自动拒绝
+                            $teacher->reviewer_id = null;
+                            $teacher->save();
+                        }
+                    }
+                }
+            }
+            
             // 返回教师注册状态
             return json([
                 'success' => true,
@@ -671,6 +744,278 @@ class TeacherRegister extends BaseController
             ]);
         } catch (\Exception $e) {
             return json(['success' => false, 'error' => '获取状态失败：' . $e->getMessage()]);
+        }
+    }
+    
+    /**
+     * 获取当前登录教师的完整资料（用于本人编辑简历）
+     * 仅返回与教师本人相关的完整字段，包含联系方式等敏感信息。
+     * 公开场景仍应使用 Teacher 控制器中的 detail 接口（脱敏版）。
+     */
+    public function myProfile()
+    {
+        // 这里通过 openid 或手机号来识别当前登录的教师；
+        // 与前端保持一致，优先使用 openid，退化到 phone。
+        $openid = $this->request->param('openid', '');
+        $phone  = $this->request->param('phone', '');
+        $teacherId = (int)$this->request->param('teacher_id', 0);
+
+        if (empty($openid) && empty($phone) && $teacherId <= 0) {
+            return json(['success' => false, 'error' => '缺少用户标识']);
+        }
+
+        try {
+            /** @var Teacher|null $teacher */
+            if ($teacherId > 0) {
+                // 编辑场景优先按 teacher_id 精确读取，避免 OR 条件命中到错误记录
+                $teacher = Teacher::where('id', $teacherId)->find();
+            } elseif (!empty($openid)) {
+                $teacher = Teacher::where('openid', $openid)->find();
+            } else {
+                $teacher = Teacher::where('phone', $phone)->find();
+            }
+            if (!$teacher) {
+                return json(['success' => false, 'error' => '教师不存在或未注册']);
+            }
+
+            // 只返回与表单相关的字段，避免泄露不必要的信息
+            $data = $teacher->toArray();
+
+            // 还原照片结构（与前端期望保持一致）
+            // 注意：Teacher 模型有 getPhotosAttr 获取器，toArray 后 photos 可能已经是数组
+            if (isset($data['photos']) && is_array($data['photos'])) {
+                $data['avatar'] = $data['photos']['avatar'] ?? ($data['avatar'] ?? '');
+                $data['teaching_photos'] = is_array($data['photos']['teaching_photos'] ?? null)
+                    ? $data['photos']['teaching_photos']
+                    : [];
+            } elseif (!empty($data['photos']) && is_string($data['photos'])) {
+                $photos = json_decode($data['photos'], true);
+                if (is_array($photos)) {
+                    $data['avatar'] = $photos['avatar'] ?? '';
+                    $data['teaching_photos'] = is_array($photos['teaching_photos'] ?? null)
+                        ? $photos['teaching_photos']
+                        : [];
+                } else {
+                    $photoArray = array_filter(array_map('trim', explode(',', $data['photos'])));
+                    $data['avatar'] = $photoArray[0] ?? '';
+                    $data['teaching_photos'] = array_slice($photoArray, 1);
+                }
+            } else {
+                $data['avatar'] = $data['avatar'] ?? '';
+                $data['teaching_photos'] = [];
+            }
+
+            // 还原优势标签为数组（模型获取器可能已返回数组）
+            if (isset($data['advantage_tags']) && is_array($data['advantage_tags'])) {
+                // 已是数组，直接使用
+            } elseif (!empty($data['advantage_tags']) && is_string($data['advantage_tags'])) {
+                $tags = json_decode($data['advantage_tags'], true);
+                $data['advantage_tags'] = is_array($tags) ? $tags : [];
+            } else {
+                $data['advantage_tags'] = [];
+            }
+
+            // 还原教学经历为数组（模型获取器可能已返回数组）
+            if (isset($data['experience']) && is_array($data['experience'])) {
+                $data['experiences'] = $data['experience'];
+            } elseif (!empty($data['experience']) && is_string($data['experience'])) {
+                $exp = json_decode($data['experience'], true);
+                $data['experiences'] = is_array($exp) ? $exp : [];
+            } else {
+                $data['experiences'] = [];
+            }
+
+            return json([
+                'success' => true,
+                'data' => $data,
+            ]);
+        } catch (\Exception $e) {
+            return json(['success' => false, 'error' => '获取资料失败：' . $e->getMessage()]);
+        }
+    }
+
+    /**
+     * 获取请求数据（兼容 application/json 与 form）
+     * 小程序端通常发 JSON，$_POST 为空，需从 raw body 解析
+     */
+    private function getRequestData(): array
+    {
+        $data = $this->request->param();
+        if (empty($data) || (!isset($data['name']) && !isset($data['phone']))) {
+            $raw = $this->request->getContent();
+            if (!empty($raw)) {
+                $decoded = json_decode($raw, true);
+                if (is_array($decoded)) {
+                    $data = $decoded;
+                }
+            }
+        }
+        return is_array($data) ? $data : [];
+    }
+    
+    /**
+     * 规范化出生年月：统一为 YYYY-MM 写入 birth_date（不存 birth_year）
+     * 空值时移除键，避免覆盖已有值
+     */
+    private function normalizeBirthDate(array &$data): void
+    {
+        $value = $data['birth_date'] ?? $data['birthDate'] ?? '';
+        if ($value === '' || $value === null) {
+            unset($data['birth_date']);
+            return;
+        }
+        $value = trim((string) $value);
+        // 兼容 "2020年03月" 或 "2020-03" 或 "2020-03-01"
+        if (preg_match('/^(\d{4})[年\-](\d{1,2})/', $value, $m)) {
+            $data['birth_date'] = $m[1] . '-' . str_pad((string)(int)$m[2], 2, '0', STR_PAD_LEFT);
+        } elseif (preg_match('/^\d{4}\-\d{2}(?:\-\d{2})?$/', $value)) {
+            $data['birth_date'] = substr($value, 0, 7);
+        } else {
+            $data['birth_date'] = $value;
+        }
+    }
+
+    /**
+     * 上传简历并调用 Coze 工作流解析（多格式：PDF/文档/图片）
+     * POST teacher-register/parse-resume
+     * 入参：file 或 resume（文件上传）二选一，或 resume_url（已可访问的简历文件 URL）
+     * 返回：Coze 工作流返回的解析结果（结构化字段 + 专业文字简历等）
+     */
+    public function parseResume()
+    {
+        $token = \think\facade\Config::get('coze.resume_token');
+        $runUrl = \think\facade\Config::get('coze.resume_run_url');
+        if (empty($token) || empty($runUrl)) {
+            return json(['success' => false, 'error' => '未配置 Coze 简历解析（COZE_RESUME_TOKEN / COZE_RESUME_RUN_URL）']);
+        }
+
+        $resumeUrl = $this->request->param('resume_url', '');
+        $fileType = $this->request->param('file_type', '');
+
+        // 若未传 resume_url，则必须上传文件
+        if (empty($resumeUrl)) {
+            $file = $this->request->file('file') ?: $this->request->file('resume');
+            if (!$file) {
+                return json(['success' => false, 'error' => '请上传简历文件或传入 resume_url']);
+            }
+            $allowedExt = ['pdf', 'doc', 'docx', 'jpg', 'jpeg', 'png'];
+            $ext = strtolower($file->extension());
+            if (!in_array($ext, $allowedExt)) {
+                return json(['success' => false, 'error' => '仅支持 pdf、doc、docx、jpg、jpeg、png']);
+            }
+            if ($file->getSize() > 15 * 1024 * 1024) {
+                return json(['success' => false, 'error' => '文件大小不能超过 15MB']);
+            }
+            $uploadPath = app()->getRootPath() . 'public/uploads/resume/';
+            $dateDir = date('Ymd');
+            $fullPath = $uploadPath . $dateDir . '/';
+            if (!is_dir($fullPath)) {
+                mkdir($fullPath, 0755, true);
+            }
+            $filename = uniqid() . '.' . $ext;
+            $file->move($fullPath, $filename);
+            $domain = $this->request->domain();
+            $resumeUrl = $domain . '/uploads/resume/' . $dateDir . '/' . $filename;
+            if (empty($fileType)) {
+                $fileType = $ext === 'doc' || $ext === 'docx' ? 'doc' : ($ext === 'pdf' ? 'pdf' : 'image');
+            }
+        }
+
+        if (empty($fileType)) {
+            $path = parse_url($resumeUrl, PHP_URL_PATH);
+            $ext = strtolower(pathinfo($path, PATHINFO_EXTENSION));
+            $fileType = $ext === 'doc' || $ext === 'docx' ? 'doc' : ($ext === 'pdf' ? 'pdf' : 'image');
+        }
+
+        $body = [
+            'resume_file' => [
+                'url'       => $resumeUrl,
+                'file_type' => $fileType,
+            ],
+        ];
+
+        $ch = curl_init($runUrl);
+        curl_setopt_array($ch, [
+            CURLOPT_POST            => true,
+            CURLOPT_POSTFIELDS     => json_encode($body),
+            CURLOPT_RETURNTRANSFER  => true,
+            CURLOPT_TIMEOUT         => 120,
+            CURLOPT_HTTPHEADER     => [
+                'Authorization: Bearer ' . $token,
+                'Content-Type: application/json',
+            ],
+        ]);
+        $response = curl_exec($ch);
+        $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        $curlError = curl_error($ch);
+        curl_close($ch);
+
+        if ($curlError) {
+            \think\facade\Log::error('Coze 简历解析请求失败: ' . $curlError);
+            return json(['success' => false, 'error' => '调用解析服务失败：' . $curlError]);
+        }
+        if ($httpCode !== 200) {
+            \think\facade\Log::error('Coze 简历解析 HTTP ' . $httpCode . ': ' . $response);
+            return json(['success' => false, 'error' => '解析服务返回错误（' . $httpCode . '）', 'raw' => $response]);
+        }
+
+        $data = json_decode($response, true);
+        if ($data === null) {
+            return json(['success' => false, 'error' => '解析结果格式异常', 'raw' => $response]);
+        }
+
+        return json([
+            'success' => true,
+            'message' => '解析成功',
+            'data'    => $data,
+        ]);
+    }
+
+    /**
+     * 简历审核通过待弹窗通知（教师端小程序轮询）
+     * 仅用已有字段 review_status + review_time，客户端用本地存储记录已弹过的 review_time，无需建表
+     * GET /api/teacher-register/approval-notice?openid=xxx
+     */
+    public function approvalNotice()
+    {
+        $openid = $this->request->param('openid', '');
+        if ($openid === '') {
+            return json(['success' => false, 'error' => '缺少用户标识']);
+        }
+
+        try {
+            $teacher = Teacher::where('openid', $openid)->find();
+            if (!$teacher) {
+                return json([
+                    'success' => true,
+                    'data'    => [
+                        'should_prompt' => false,
+                        'review_status' => null,
+                        'review_time'   => null,
+                        'teacher_id'    => null,
+                    ],
+                ]);
+            }
+
+            $status = (string) ($teacher->review_status ?? '');
+            $reviewTime = $teacher->review_time;
+            $rt = $reviewTime ? (is_string($reviewTime) ? $reviewTime : (string) $reviewTime) : '';
+
+            $should = ($status === 'approved' && $rt !== '');
+
+            return json([
+                'success' => true,
+                'data'    => [
+                    'should_prompt' => $should,
+                    'review_status' => $status !== '' ? $status : null,
+                    'review_time'   => $rt !== '' ? $rt : null,
+                    'teacher_id'    => (int) $teacher->id,
+                    'title'         => '简历审核通过',
+                    'message'       => '简历通过，请开始您的家教之旅',
+                ],
+            ]);
+        } catch (\Exception $e) {
+            return json(['success' => false, 'error' => $e->getMessage()]);
         }
     }
 }

@@ -17,10 +17,12 @@ class User extends Model
     protected $schema = [
         'id' => 'int',
         'openid' => 'string',
+        'superior_openid' => 'string',
         'phone' => 'string',
         'nickname' => 'string',
         'avatar' => 'string',
         'platform' => 'string',
+        'status' => 'int',
         'create_time' => 'datetime',
         'update_time' => 'datetime'
     ];
