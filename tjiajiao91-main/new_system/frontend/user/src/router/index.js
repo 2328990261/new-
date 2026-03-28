@@ -66,13 +66,13 @@ const routes = [
     path: '/refund',
     name: 'RefundApply',
     component: () => import('@/views/RefundApply.vue'),
-    meta: { title: '退款申请', hideNavbar: true }
+    meta: { title: '退款申请' }
   },
   {
     path: '/refund-test',
     name: 'RefundTest',
     component: () => import('@/views/RefundApplyTest.vue'),
-    meta: { title: '退款测试', hideNavbar: true }
+    meta: { title: '退款测试' }
   },
   {
     path: '/refund-apply',
@@ -86,7 +86,7 @@ const routes = [
     path: '/refund-success',
     name: 'RefundSuccess',
     component: () => import('@/views/RefundSuccess.vue'),
-    meta: { title: '退款成功', hideNavbar: true }
+    meta: { title: '退款成功' }
   },
   {
     path: '/wechat-bind',
@@ -98,19 +98,19 @@ const routes = [
     path: '/city-light',
     name: 'CityLight',
     component: () => import('@/views/CityLight.vue'),
-    meta: { title: '点亮城市', hideNavbar: true }
+    meta: { title: '点亮城市' }
   },
   {
     path: '/city-tutor',
     name: 'CityTutorList',
     component: () => import('@/views/CityTutorList.vue'),
-    meta: { title: '全国家教信息汇集', hideNavbar: true }
+    meta: { title: '全国家教信息汇集' }
   },
   {
     path: '/city-tutor-no-contact',
     name: 'CityTutorNoContact',
     component: () => import('@/views/CityTutorNoContact.vue'),
-    meta: { title: '全国家教信息汇集', hideNavbar: true }
+    meta: { title: '全国家教信息汇集' }
   },
   {
     path: '/partnership',
@@ -123,31 +123,31 @@ const routes = [
     path: '/parttime',
     name: 'PartTimeJobs',
     component: () => import('@/views/PartTimeJobs.vue'),
-    meta: { title: '兼职实习', hideNavbar: true }
+    meta: { title: '兼职实习' }
   },
   {
     path: '/parttime/detail/:id',
     name: 'PartTimeJobDetail',
     component: () => import('@/views/PartTimeJobDetail.vue'),
-    meta: { title: '职位详情', hideNavbar: true }
+    meta: { title: '职位详情' }
   },
   {
     path: '/parttime/publish',
     name: 'PartTimeJobPublish',
     component: () => import('@/views/PartTimeJobPublish.vue'),
-    meta: { title: '发布职位', hideNavbar: true }
+    meta: { title: '发布职位' }
   },
   {
     path: '/parttime/edit/:id',
     name: 'PartTimeJobEdit',
     component: () => import('@/views/PartTimeJobPublish.vue'),
-    meta: { title: '编辑职位', hideNavbar: true }
+    meta: { title: '编辑职位' }
   },
   {
     path: '/parttime/mine',
     name: 'PartTimeJobMine',
     component: () => import('@/views/PartTimeJobMine.vue'),
-    meta: { title: '我的发布', hideNavbar: true }
+    meta: { title: '我的发布' }
   }
 ]
 

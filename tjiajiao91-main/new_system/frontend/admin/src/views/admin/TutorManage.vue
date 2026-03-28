@@ -366,8 +366,8 @@
           :page-sizes="[10, 20, 50, 100]"
           :total="total"
           layout="total, sizes, prev, pager, next, jumper"
-          @size-change="loadData"
-          @current-change="loadData"
+          @size-change="handleSizeChange"
+          @current-change="handleCurrentChange"
         />
       </div>
     </el-card>
@@ -2204,6 +2204,16 @@ const loadDispatchers = async () => {
   }
 }
 
+const filterCityOptions = (cities, keyword) => {
+  const q = (keyword || '').trim().toLowerCase()
+  if (!q) return cities
+  return cities.filter((city) => {
+    const name = String(city.name || '').toLowerCase()
+    const shortName = String(city.short_name || '').toLowerCase()
+    return name.includes(q) || shortName.includes(q)
+  })
+}
+
 // 搜索城市（远程搜索 + 缓存优化）- 使用平铺格式（带重试机制）
 const searchCities = async (query, retryCount = 0) => {
   // 保存搜索关键词
@@ -2211,7 +2221,7 @@ const searchCities = async (query, retryCount = 0) => {
   
   // 如果已经加载过数据，直接使用缓存（热门城市已在后端优先排序）
   if (citiesCacheLoaded.value && allCitiesCache.value.length > 0) {
-    formCities.value = allCitiesCache.value
+    formCities.value = filterCityOptions(allCitiesCache.value, query)
     return
   }
   
@@ -2234,7 +2244,7 @@ const searchCities = async (query, retryCount = 0) => {
     // 更新缓存和显示列表
     allCitiesCache.value = citiesArray
     citiesCacheLoaded.value = true
-    formCities.value = citiesArray
+    formCities.value = filterCityOptions(citiesArray, query)
   } catch (e) {
     // 重试机制
     if (retryCount < 2) {
@@ -2276,6 +2286,20 @@ const loadDistricts = async (cityId) => {
 const handleSearch = () => {
   currentPage.value = 1
   // 搜索条件改变时清空选择，避免批量操作错误
+  clearSelection()
+  loadData()
+}
+
+// 分页：切页不重置到第一页
+const handleCurrentChange = (page) => {
+  currentPage.value = page
+  loadData()
+}
+
+// 分页：切换每页条数时回到第一页，并清空选择（避免跨页批量误操作）
+const handleSizeChange = (size) => {
+  pageSize.value = size
+  currentPage.value = 1
   clearSelection()
   loadData()
 }

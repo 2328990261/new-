@@ -4,6 +4,7 @@ namespace app\controller\admin;
 use app\BaseController;
 use app\model\TutorOrder;
 use app\model\Admin;
+use app\service\DispatcherAutoAssignService;
 use think\facade\Db;
 
 /**
@@ -117,17 +118,11 @@ class OrderAssign extends BaseController
                 return json(['success' => false, 'error' => '请选择要派单的订单']);
             }
             
-            // 获取状态开启的派单组成员
-            $dispatchers = Admin::where('role', 'dispatcher')
+            $dispatcherCount = Admin::where('role', 'dispatcher')
                 ->where('status', 1)
-                ->order('id', 'asc')
-                ->select()
-                ->toArray();
+                ->count();
             
-            // 记录查询到的派单组成员
-            trace('批量派单 - 查询到的派单组成员: ' . json_encode($dispatchers), 'info');
-            
-            if (empty($dispatchers)) {
+            if ($dispatcherCount === 0) {
                 return json(['success' => false, 'error' => '没有可用的派单组成员']);
             }
             
@@ -137,7 +132,7 @@ class OrderAssign extends BaseController
             
             Db::startTrans();
             
-            foreach ($orderIds as $index => $orderId) {
+            foreach ($orderIds as $orderId) {
                 try {
                     $order = TutorOrder::find($orderId);
                     if (!$order) {
@@ -145,36 +140,23 @@ class OrderAssign extends BaseController
                         continue;
                     }
                     
-                    // 轮动分配：按顺序循环分配
-                    $dispatcherIndex = $index % count($dispatchers);
-                    $dispatcher = $dispatchers[$dispatcherIndex];
-                    
-                    // 二次验证：确保该派单员确实是dispatcher角色且状态为启用
-                    $verifyDispatcher = Admin::where('id', $dispatcher['id'])
-                        ->where('role', 'dispatcher')
-                        ->where('status', 1)
-                        ->find();
-                    
-                    if (!$verifyDispatcher) {
-                        trace("警告：派单员ID {$dispatcher['id']} 验证失败，跳过订单 {$orderId}", 'warning');
+                    if (!DispatcherAutoAssignService::assignToDispatcher($order)) {
                         $failCount++;
                         continue;
                     }
                     
-                    // 记录派单详情
-                    trace("订单 {$orderId} 分配给派单员: ID={$dispatcher['id']}, role={$dispatcher['role']}, nickname={$dispatcher['nickname']}", 'info');
+                    $dispatcher = Admin::where('id', $order->dispatcher_id)
+                        ->where('role', 'dispatcher')
+                        ->where('status', 1)
+                        ->find();
                     
-                    // 更新订单派单信息
-                    $order->dispatcher_id = $dispatcher['id'];
-                    $order->contact_info = $dispatcher['contact'] ?? '';
-                    $order->assigned_time = date('Y-m-d H:i:s');
-                    $order->save();
+                    trace("订单 {$orderId} 批量派单给: ID={$order->dispatcher_id}", 'info');
                     
                     $assignResults[] = [
                         'order_id' => $orderId,
-                        'dispatcher_id' => $dispatcher['id'],
-                        'dispatcher_name' => $dispatcher['nickname'] ?? $dispatcher['username'],
-                        'dispatcher_role' => $dispatcher['role'] // 添加角色信息用于调试
+                        'dispatcher_id' => $order->dispatcher_id,
+                        'dispatcher_name' => $dispatcher ? ($dispatcher->nickname ?? $dispatcher->username) : '',
+                        'dispatcher_role' => $dispatcher ? $dispatcher->role : '',
                     ];
                     
                     $successCount++;

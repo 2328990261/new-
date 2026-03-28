@@ -21,6 +21,7 @@ class User extends Model
         'phone' => 'string',
         'nickname' => 'string',
         'avatar' => 'string',
+        'user_type' => 'string',
         'platform' => 'string',
         'status' => 'int',
         'create_time' => 'datetime',

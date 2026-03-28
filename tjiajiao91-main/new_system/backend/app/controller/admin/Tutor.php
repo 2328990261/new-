@@ -6,6 +6,7 @@ use app\model\TutorOrder;
 use app\model\Admin;
 use app\service\RecognitionService;
 use app\service\EmailService;
+use app\service\DispatcherAutoAssignService;
 use think\facade\Session;
 use think\facade\Db;
 
@@ -62,12 +63,12 @@ class Tutor extends BaseController
             // 根据查看范围筛选
             if ($viewScope === 'mine') {
                 // 我的订单：
-                // - 派单组：按归属城市匹配订单
-                // - 其他角色：保持原逻辑，按录入人admin_id匹配
+                // - 派单组：仅显示已派给自己的订单（避免多人归属城市重叠时列表重复）
+                // - 其他角色：按录入人admin_id匹配
                 if ($currentAdminRole === 'dispatcher') {
                     $dispatcherCityIds = $this->normalizeDispatcherCityIds($currentAdmin->city_id ?? null);
                     if (!empty($dispatcherCityIds)) {
-                        $where[] = ['city_id', 'in', $dispatcherCityIds];
+                        $where[] = ['dispatcher_id', '=', (int)$_SESSION['admin_id']];
                     } else {
                         // 派单员未配置归属城市时，不返回任何数据
                         $where[] = ['id', '=', -1];
@@ -1671,76 +1672,11 @@ class Tutor extends BaseController
     }
     
     /**
-     * 自动派单：轮动分配给派单组成员
+     * 自动派单：按订单城市匹配派单员归属城市；同工作量的候选派单员中随机指派（见 DispatcherAutoAssignService）
      */
     private function autoAssignOrder($order)
     {
-        try {
-            // 获取状态开启的派单组成员
-            $dispatchers = Admin::where('role', 'dispatcher')
-                ->where('status', 1)
-                ->order('id', 'asc')
-                ->select()
-                ->toArray();
-            
-            // 记录查询到的派单组成员
-            trace('自动派单 - 查询到的派单组成员: ' . json_encode($dispatchers), 'info');
-            
-            if (empty($dispatchers)) {
-                // 没有派单组成员，记录日志但不影响订单创建
-                trace('没有可用的派单组成员，订单ID: ' . $order->id, 'info');
-                return;
-            }
-            
-            // 获取当前派单员的工作量，选择工作量最少的
-            $dispatcherWorkloads = [];
-            foreach ($dispatchers as $dispatcher) {
-                // 计算该派单员当前负责的订单数量（用于轮派平衡）
-                $workload = TutorOrder::where('dispatcher_id', $dispatcher['id'])
-                    ->where('status', 1)
-                    ->count();
-                
-                $dispatcherWorkloads[] = [
-                    'id' => $dispatcher['id'],
-                    'nickname' => $dispatcher['nickname'] ?? $dispatcher['username'],
-                    'contact_info' => $dispatcher['contact'] ?? '',
-                    'workload' => $workload
-                ];
-            }
-            
-            // 按工作量排序，选择工作量最少的
-            usort($dispatcherWorkloads, function($a, $b) {
-                return $a['workload'] - $b['workload'];
-            });
-            
-            $selectedDispatcher = $dispatcherWorkloads[0];
-            
-            // 二次验证：确保该派单员确实是dispatcher角色且状态为启用
-            $dispatcher_info = Admin::where('id', $selectedDispatcher['id'])
-                ->where('role', 'dispatcher')
-                ->where('status', 1)
-                ->find();
-            
-            if (!$dispatcher_info) {
-                trace("警告：自动派单验证失败，派单员ID {$selectedDispatcher['id']} 不是有效的dispatcher或已禁用", 'warning');
-                return;
-            }
-            
-            // 记录选中的派单员详情
-            trace("订单 {$order->id} 自动派单给: ID={$selectedDispatcher['id']}, role={$dispatcher_info->role}, nickname={$selectedDispatcher['nickname']}, workload={$selectedDispatcher['workload']}", 'info');
-            
-            // 更新订单派单信息
-            $order->dispatcher_id = $selectedDispatcher['id'];
-            $order->contact_info = $selectedDispatcher['contact_info'];
-            $order->assigned_time = date('Y-m-d H:i:s');
-            $order->save();
-            
-            trace('订单自动派单成功，订单ID: ' . $order->id . '，派单员: ' . $selectedDispatcher['nickname'], 'info');
-            
-        } catch (\Exception $e) {
-            // 派单失败不影响订单创建，只记录错误
-            trace('自动派单失败，订单ID: ' . $order->id . '，错误: ' . $e->getMessage(), 'error');
-        }
+        DispatcherAutoAssignService::assignToDispatcher($order);
     }
     
     /**
@@ -1768,13 +1704,13 @@ class Tutor extends BaseController
             // 根据查看范围筛选
             if ($viewScope === 'mine') {
                 // 我的订单：
-                // - 派单组按归属城市统计
+                // - 派单组按已派单给自己统计（与列表一致）
                 // - 其他角色按录入人统计
                 $currentAdmin = Admin::field('id,role,city_id')->find($_SESSION['admin_id']);
                 if ($currentAdmin && $currentAdmin->role === 'dispatcher') {
                     $dispatcherCityIds = $this->normalizeDispatcherCityIds($currentAdmin->city_id ?? null);
                     if (!empty($dispatcherCityIds)) {
-                        $query->whereIn('o.city_id', $dispatcherCityIds);
+                        $query->where('o.dispatcher_id', (int)$_SESSION['admin_id']);
                     } else {
                         $query->where('o.id', '=', -1);
                     }
@@ -1897,15 +1833,6 @@ class Tutor extends BaseController
      */
     private function normalizeDispatcherCityIds($cityValue): array
     {
-        if (is_array($cityValue)) {
-            $raw = $cityValue;
-        } else {
-            $raw = explode(',', (string)($cityValue ?? ''));
-        }
-        $ids = array_map('intval', $raw);
-        $ids = array_filter($ids, function ($id) {
-            return $id > 0;
-        });
-        return array_values(array_unique($ids));
+        return DispatcherAutoAssignService::normalizeDispatcherCityIds($cityValue);
     }
 }

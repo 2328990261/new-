@@ -2,7 +2,7 @@
   <div class="application-detail-page" v-loading="loading">
     <!-- 内容区域 -->
     <div class="content-wrapper">
-      <div v-if="currentApplication && teacherResume" class="detail-content">
+      <div v-if="currentApplication" class="detail-content">
       <!-- 顶部导航栏 -->
       <div class="page-header">
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
@@ -14,11 +14,11 @@
           
           <!-- 操作按钮 - 右上角 -->
           <div style="display: flex; gap: 10px;">
-            <el-button type="primary" @click="copyResume">
+            <el-button type="primary" :disabled="!teacherResume" @click="copyResume">
               <el-icon style="margin-right: 4px;"><DocumentCopy /></el-icon>
               复制简历
             </el-button>
-            <el-button type="info" @click="viewTeacherMiniProgram">
+            <el-button type="info" :disabled="!teacherResume" @click="viewTeacherMiniProgram">
               <el-icon style="margin-right: 4px;"><View /></el-icon>
               查看老师小程序
             </el-button>
@@ -83,8 +83,8 @@
         </el-descriptions>
       </el-card>
 
-      <!-- 教师简历 -->
-      <el-card shadow="hover" style="margin-bottom: 20px;">
+      <!-- 教师简历（完整简历依赖教师详情接口） -->
+      <el-card v-if="teacherResume" shadow="hover" style="margin-bottom: 20px;">
         <template #header>
           <span style="font-weight: 600; font-size: 16px;">教师简历</span>
         </template>
@@ -236,11 +236,36 @@
             </el-tag>
           </el-descriptions-item>
         </el-descriptions>
+      </el-card>
 
-        <!-- 审核信息 -->
-        <el-divider content-position="left">
+      <el-card v-else-if="!loading" shadow="hover" style="margin-bottom: 20px;">
+        <template #header>
+          <span style="font-weight: 600; font-size: 16px;">教师简历</span>
+        </template>
+        <el-alert
+          type="warning"
+          :closable="false"
+          show-icon
+          title="未能加载该教师的完整简历"
+          style="margin-bottom: 16px;"
+        />
+        <p style="color: #606266; margin: 0 0 16px; line-height: 1.6;">
+          常见原因：投递未关联教师、教师已删除、教师详情接口失败。以下为该条投递记录中的教师摘要（来自列表联表字段）。
+        </p>
+        <el-descriptions :column="2" border>
+          <el-descriptions-item label="教师 ID">{{ currentApplication.teacher_id != null && currentApplication.teacher_id !== '' ? currentApplication.teacher_id : '—' }}</el-descriptions-item>
+          <el-descriptions-item label="姓名">{{ currentApplication.teacher_name || '—' }}</el-descriptions-item>
+          <el-descriptions-item label="手机">{{ currentApplication.teacher_phone || '—' }}</el-descriptions-item>
+          <el-descriptions-item label="学历">{{ currentApplication.teacher_education || '—' }}</el-descriptions-item>
+          <el-descriptions-item label="学校" :span="2">{{ currentApplication.teacher_school || '—' }}</el-descriptions-item>
+          <el-descriptions-item label="科目" :span="2">{{ currentApplication.teacher_subjects || '—' }}</el-descriptions-item>
+        </el-descriptions>
+      </el-card>
+
+      <el-card shadow="hover" style="margin-bottom: 20px;">
+        <template #header>
           <span style="font-weight: 600; font-size: 16px;">审核信息</span>
-        </el-divider>
+        </template>
         <el-descriptions :column="2" border>
           <el-descriptions-item label="投递ID">{{ currentApplication.id }}</el-descriptions-item>
           <el-descriptions-item label="投递时间">{{ currentApplication.apply_time || '' }}</el-descriptions-item>
@@ -252,12 +277,13 @@
         </el-descriptions>
       </el-card>
       </div>
+      <el-empty v-else-if="!loading" description="未找到该投递记录或加载失败" />
     </div>
   </div>
 </template>
 
 <script setup>
-import { ref, onMounted, computed } from 'vue'
+import { ref, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { DocumentCopy, View, Lock, Location } from '@element-plus/icons-vue'
@@ -293,10 +319,16 @@ const loadData = async () => {
     if (res.success || res.code === 200) {
       currentApplication.value = res.data || res
       
-      // 加载教师简历
-      if (currentApplication.value.teacher_id) {
-        await loadTeacherResume(currentApplication.value.teacher_id)
+      // 加载教师简历（teacher_id 为 0 / null / undefined 时不请求）
+      const tid = currentApplication.value.teacher_id
+      if (tid != null && tid !== '' && Number(tid) > 0) {
+        await loadTeacherResume(tid)
+      } else {
+        teacherResume.value = null
       }
+    } else {
+      currentApplication.value = null
+      ElMessage.error(res.message || '获取投递详情失败')
     }
   } catch (error) {
     console.error('加载数据失败:', error)
@@ -310,7 +342,7 @@ const loadData = async () => {
 const loadTeacherResume = async (teacherId) => {
   try {
     const res = await getTeacherDetail(teacherId)
-    if (res.success) {
+    if (res.success || res.code === 200) {
       teacherResume.value = res.data
       
       // 处理照片数据
@@ -361,9 +393,14 @@ const loadTeacherResume = async (teacherId) => {
       if (teacherResume.value.district_names && typeof teacherResume.value.district_names === 'string') {
         teacherResume.value.district_names = teacherResume.value.district_names.split(',')
       }
+    } else {
+      teacherResume.value = null
+      ElMessage.warning(res.message || res.error || '获取教师详情失败，已显示投递中的摘要信息')
     }
   } catch (error) {
     console.error('获取教师信息失败:', error)
+    teacherResume.value = null
+    ElMessage.warning('获取教师详情失败，已显示投递中的摘要信息')
   }
 }
 

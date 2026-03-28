@@ -28,17 +28,8 @@
         </div>
 
         <div class="form-group">
-          <label class="form-label">支付人联系方式</label>
-          <div class="form-input-wrapper">
-            <input 
-              type="text" 
-              class="form-input" 
-              v-model="formData.payerContact"
-              placeholder="请输入手机号或邮箱" 
-            />
-          </div>
           <button 
-            v-if="formData.orderNo && formData.payerContact" 
+            v-if="formData.orderNo" 
             @click="loadPaymentInfo"
             class="query-btn"
             :disabled="loading"
@@ -180,7 +171,6 @@ const fileInput = ref(null)
 // 表单数据
 const formData = ref({
   orderNo: '',
-  payerContact: '',
   refundAmount: '',
   refundReason: '',
   agreeTerms: false
@@ -207,18 +197,12 @@ const loadPaymentInfo = async () => {
     return
   }
   
-  if (!formData.value.payerContact) {
-    ElMessage.warning('请输入支付人联系方式')
-    return
-  }
-  
   loading.value = true
   
   try {
     const response = await request.get('/refund/payment', {
       params: {
-        order_no: formData.value.orderNo,
-        payer_contact: formData.value.payerContact
+        order_no: formData.value.orderNo
       }
     })
     
@@ -331,7 +315,6 @@ const submitRefund = async () => {
   try {
     const response = await request.post('/refund/apply', {
       order_no: formData.value.orderNo,
-      payer_contact: formData.value.payerContact,
       refund_amount: parseFloat(formData.value.refundAmount),
       refund_reason: formData.value.refundReason,
       refund_voucher: JSON.stringify(uploadedImages.value)
@@ -341,7 +324,7 @@ const submitRefund = async () => {
       // 保存退费信息到 localStorage
       localStorage.setItem('refundOrder', JSON.stringify({
         tutor_info: paymentInfo.value.tutor_name || '家教订单',
-        real_name: formData.value.payerContact,
+        real_name: '用户',
         staff_name: '客服',
         apply_time: new Date().toLocaleString('zh-CN'),
         amount: paymentInfo.value.amount,

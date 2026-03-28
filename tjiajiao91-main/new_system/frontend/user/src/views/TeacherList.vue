@@ -115,7 +115,7 @@
       </div>
       
       <!-- 实际内容 -->
-      <div v-else>
+      <template v-else>
         <el-card
           v-for="teacher in teacherList"
           :key="teacher.id"
@@ -188,7 +188,7 @@
             </div>
           </div>
         </el-card>
-      </div>
+      </template>
     </div>
 
     <!-- 空状态 -->

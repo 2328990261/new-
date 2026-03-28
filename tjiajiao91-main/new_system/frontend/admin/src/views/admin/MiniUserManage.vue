@@ -136,6 +136,22 @@
             <el-tag v-else type="danger" size="small">禁用</el-tag>
           </template>
         </el-table-column>
+        <el-table-column prop="platform" label="平台" width="140" align="center">
+          <template #default="{ row }">
+            <el-tag v-if="row.platform === 'wechat_miniprogram' || row.platform === 'miniprogram'" type="success" size="small">
+              微信小程序
+            </el-tag>
+            <el-tag v-else-if="row.platform === 'alipay_miniprogram'" type="primary" size="small">
+              支付宝小程序
+            </el-tag>
+            <el-tag v-else-if="row.platform === 'h5'" type="info" size="small">
+              H5
+            </el-tag>
+            <el-tag v-else type="warning" size="small">
+              {{ row.platform || '未知' }}
+            </el-tag>
+          </template>
+        </el-table-column>
         <el-table-column prop="openid" label="OpenID" min-width="200" show-overflow-tooltip />
         <el-table-column prop="create_time" label="注册时间" width="180" align="center" />
         <el-table-column prop="update_time" label="最后登录" width="180" align="center" />
@@ -305,6 +321,12 @@
         </el-descriptions-item>
         <el-descriptions-item label="OpenID">
           {{ currentUser.openid }}
+        </el-descriptions-item>
+        <el-descriptions-item label="平台">
+          <el-tag v-if="currentUser.platform === 'wechat_miniprogram' || currentUser.platform === 'miniprogram'" type="success">微信小程序</el-tag>
+          <el-tag v-else-if="currentUser.platform === 'alipay_miniprogram'" type="primary">支付宝小程序</el-tag>
+          <el-tag v-else-if="currentUser.platform === 'h5'" type="info">H5</el-tag>
+          <el-tag v-else type="warning">{{ currentUser.platform || '未知' }}</el-tag>
         </el-descriptions-item>
         <el-descriptions-item label="注册时间">
           {{ currentUser.create_time }}

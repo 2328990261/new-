@@ -24,11 +24,12 @@ class MiniProgramUser extends BaseController
             // 确保status字段存在
             $this->ensureStatusField();
             
-            // 构建查询，关联微信用户表获取用户类型
+            // 构建查询：优先读取 fa_users.user_type（支付宝端会写入这里）
+            // 兼容历史：若 fa_users.user_type 为空，则回退到 fa_wechat_users.user_type
             $query = Db::name('users')
                 ->alias('u')
                 ->leftJoin('wechat_users w', 'u.openid = w.openid')
-                ->field('u.*, w.user_type');
+                ->field("u.*, IFNULL(NULLIF(u.user_type,''), w.user_type) AS user_type");
             
             // 搜索条件
             if (!empty($keyword)) {
@@ -105,11 +106,11 @@ class MiniProgramUser extends BaseController
             // 确保status字段存在
             $this->ensureStatusField();
             
-            // 关联查询获取用户类型
+            // 关联查询获取用户类型（同上：优先 users.user_type）
             $user = Db::name('users')
                 ->alias('u')
                 ->leftJoin('wechat_users w', 'u.openid = w.openid')
-                ->field('u.*, w.user_type')
+                ->field("u.*, IFNULL(NULLIF(u.user_type,''), w.user_type) AS user_type")
                 ->where('u.id', $id)
                 ->find();
             
@@ -186,27 +187,14 @@ class MiniProgramUser extends BaseController
                     Db::name('users')->where('id', $id)->update($userUpdateData);
                 }
                 
-                // 更新fa_wechat_users表的user_type字段
+                // 更新 user_type：优先写入 fa_users（支付宝端/统一口径）
                 if (isset($data['user_type'])) {
                     $openid = $user['openid'];
-                    
-                    // 检查fa_wechat_users表中是否存在该用户记录
-                    $wechatUser = Db::name('wechat_users')->where('openid', $openid)->find();
-                    
-                    if ($wechatUser) {
-                        // 更新现有记录
-                        Db::name('wechat_users')->where('openid', $openid)->update([
-                            'user_type' => $data['user_type']
-                        ]);
-                    } else {
-                        // 创建新记录
-                        Db::name('wechat_users')->insert([
-                            'openid' => $openid,
-                            'user_type' => $data['user_type'],
-                            'phone' => $user['phone'] ?? null,
-                            'nickname' => $user['nickname'] ?? null
-                        ]);
-                    }
+
+                    Db::name('users')->where('id', $id)->update([
+                        'user_type' => $data['user_type'],
+                        'update_time' => date('Y-m-d H:i:s'),
+                    ]);
                 }
                 
                 Db::commit();
@@ -342,8 +330,14 @@ class MiniProgramUser extends BaseController
             $monthEnd = date('Y-m-d 23:59:59');
             $monthUsers = (int)Db::name('users')->whereBetween('create_time', [$monthStart, $monthEnd])->count();
             
-            // 小程序用户数
-            $miniprogramUsers = (int)Db::name('users')->where('platform', 'miniprogram')->count();
+            // 各端小程序用户数（兼容历史 miniprogram）
+            $wechatMiniUsers = (int)Db::name('users')
+                ->whereIn('platform', ['wechat_miniprogram', 'miniprogram'])
+                ->count();
+            $alipayMiniUsers = (int)Db::name('users')
+                ->where('platform', 'alipay_miniprogram')
+                ->count();
+            $miniprogramUsers = $wechatMiniUsers + $alipayMiniUsers;
             
             // H5用户数
             $h5Users = (int)Db::name('users')->where('platform', 'h5')->count();
@@ -371,6 +365,8 @@ class MiniProgramUser extends BaseController
                 'weekUsers' => $weekUsers,
                 'monthUsers' => $monthUsers,
                 'miniprogramUsers' => $miniprogramUsers,
+                'wechatMiniUsers' => $wechatMiniUsers,
+                'alipayMiniUsers' => $alipayMiniUsers,
                 'h5Users' => $h5Users,
                 'dailyTrend' => $dailyTrend
             ];
@@ -392,6 +388,8 @@ class MiniProgramUser extends BaseController
                     'weekUsers' => 0,
                     'monthUsers' => 0,
                     'miniprogramUsers' => 0,
+                    'wechatMiniUsers' => 0,
+                    'alipayMiniUsers' => 0,
                     'h5Users' => 0,
                     'dailyTrend' => []
                 ]

@@ -166,10 +166,15 @@
             <p class="amount-tip">支付金额：¥{{ formData.amount }}</p>
             <p class="status-tip">支付完成后页面将自动跳转...</p>
             <div class="manual-confirm">
-              <button @click="manualConfirmPayment" class="confirm-btn">
-                我已完成支付
+              <button
+                type="button"
+                class="confirm-btn"
+                :disabled="manualStatusChecking"
+                @click="manualConfirmPayment"
+              >
+                {{ manualStatusChecking ? '正在查询支付结果…' : '我已完成支付' }}
               </button>
-              <p class="confirm-tip">如果支付完成后未自动跳转，请点击上方按钮</p>
+              <p class="confirm-tip">支付成功后如未自动跳转，可点此向服务器查询状态（未付款不会通过）</p>
             </div>
           </div>
         </div>
@@ -179,7 +184,7 @@
 </template>
 
 <script setup>
-import { ref, reactive, onMounted, onUnmounted } from 'vue'
+import { ref, reactive, onMounted, onUnmounted, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import request from '@/utils/request'
@@ -203,6 +208,10 @@ const showStaffDropdown = ref(false)
 const selectedStaffName = ref('')
 const qrCodeVisible = ref(false)
 const qrCodeData = ref(null)
+const manualStatusChecking = ref(false)
+const wechatOpenid = ref(localStorage.getItem('wechat_jsapi_openid') || '')
+const wechatAuthStatus = ref('idle') // idle|authorizing|ready|failed
+const wechatAuthError = ref('')
 const agreementContent = ref(`
 <div style="padding: 20px; line-height: 1.8; color: #333;">
   <h4>91家教接单协议</h4>
@@ -265,9 +274,11 @@ const countdown = ref(5)
 const canAgree = ref(false)
 const agreeButtonText = ref('请阅读完整协议内容')
 let countdownTimer = null
+const isWechatBrowser = computed(() => /MicroMessenger/i.test(navigator.userAgent))
 
 // 初始化
 onMounted(async () => {
+  await ensureWechatOpenid()
   await loadAgreement()
   
   // 配置微信分享
@@ -326,20 +337,43 @@ const handleSubmit = async () => {
   loading.value = true
 
   try {
+    await ensureWechatOpenid()
+
     // 获取选中的客服名称
     const selectedStaff = staffList.value.find(s => s.id === formData.staffId)
     const staffName = selectedStaff ? selectedStaff.name : ''
-    
-    const response = await request.post('/payment/create', {
+
+    const isWechat = isWechatBrowser.value
+    const payload = {
       amount: parseFloat(formData.amount),
       real_name: formData.realName,
       tutor_info: formData.tutorInfo,
       staff_id: formData.staffId,
       agree_terms: formData.agreeTerms,
       payment_method: 'wechat',
-      trade_type: 'h5', // 使用H5支付
       redirect_url: window.location.origin + '/payment-success' // 支付成功后跳转地址
-    })
+    }
+
+    if (isWechat) {
+      if (!wechatOpenid.value) {
+        if (wechatAuthStatus.value === 'authorizing') {
+          ElMessage.warning('正在进行微信授权，请稍候再点支付')
+        } else {
+          ElMessage.warning('未获取到微信授权，请先完成授权后再支付')
+          if (wechatAuthError.value) {
+            ElMessage.error(`授权失败原因：${wechatAuthError.value}`)
+          }
+          await retryWechatAuth()
+        }
+        return
+      }
+      payload.trade_type = 'jsapi'
+      payload.openid = wechatOpenid.value
+    } else {
+      payload.trade_type = 'h5'
+    }
+
+    const response = await request.post('/payment/create', payload)
 
     if (response.code === 200 && response.data) {
       // 保存订单信息到 localStorage
@@ -351,8 +385,11 @@ const handleSubmit = async () => {
         order_no: response.data.order_no
       }))
       
-      // 优先处理H5支付URL
-      if (response.data.mweb_url) {
+      // 微信内优先调起JSAPI
+      if (response.data.jsapi_params && isWechat) {
+        invokeWechatPay(response.data.jsapi_params)
+      } else if (response.data.mweb_url) {
+        // H5支付跳转
         window.location.href = response.data.mweb_url
       } else if (response.data.payment_url) {
         // 兼容旧版本
@@ -365,13 +402,108 @@ const handleSubmit = async () => {
         router.push('/payment-success')
       }
     } else {
-      ElMessage.error(response.message || '支付失败')
+      const detailMessage = response.error_detail ? `${response.message}（${response.error_detail}）` : (response.message || '支付失败')
+      ElMessage.error(detailMessage)
+      if (response.error_detail) {
+        console.error('支付失败详情:', response.error_detail)
+      }
     }
   } catch (error) {
     console.error('支付请求失败:', error)
     ElMessage.error('支付请求失败')
   } finally {
     loading.value = false
+  }
+}
+
+const ensureWechatOpenid = async () => {
+  if (!isWechatBrowser.value) return
+  if (wechatOpenid.value) {
+    wechatAuthStatus.value = 'ready'
+    return
+  }
+
+  const url = new URL(window.location.href)
+  const code = url.searchParams.get('code')
+
+  if (code) {
+    wechatAuthStatus.value = 'authorizing'
+    try {
+      const response = await request.get('/payment/wechat-openid', { params: { code } })
+      if (response.code === 200 && response.data?.openid) {
+        wechatOpenid.value = response.data.openid
+        localStorage.setItem('wechat_jsapi_openid', response.data.openid)
+        wechatAuthStatus.value = 'ready'
+        wechatAuthError.value = ''
+
+        // 清理URL中的code/state，避免重复换取
+        url.searchParams.delete('code')
+        url.searchParams.delete('state')
+        const cleanedSearch = url.searchParams.toString()
+        const cleanUrl = url.pathname + (cleanedSearch ? `?${cleanedSearch}` : '') + url.hash
+        window.history.replaceState({}, '', cleanUrl)
+      } else {
+        wechatAuthStatus.value = 'failed'
+        wechatAuthError.value = response.error_detail || response.message || '微信授权失败，未获取到OpenID'
+      }
+    } catch (error) {
+      console.error('获取微信openid失败:', error)
+      wechatAuthStatus.value = 'failed'
+      wechatAuthError.value = error?.response?.data?.message || '微信授权失败，请检查公众号配置后重试'
+      ElMessage.error(wechatAuthError.value)
+    }
+    return
+  }
+
+  // 微信内首次进入且无openid时，跳转静默授权
+  wechatAuthStatus.value = 'authorizing'
+  try {
+    const currentUrl = window.location.origin + window.location.pathname + window.location.search
+    const response = await request.get('/payment/wechat-oauth-url', {
+      params: { redirect_uri: currentUrl }
+    })
+    if (response.code === 200 && response.data?.auth_url) {
+      window.location.href = response.data.auth_url
+    } else {
+      wechatAuthStatus.value = 'failed'
+      wechatAuthError.value = response.error_detail || response.message || '未获取到微信授权地址'
+      ElMessage.error(wechatAuthError.value)
+    }
+  } catch (error) {
+    console.error('获取微信授权地址失败:', error)
+    wechatAuthStatus.value = 'failed'
+    wechatAuthError.value = error?.response?.data?.message || '微信授权地址获取失败，请稍后重试'
+    ElMessage.error(wechatAuthError.value)
+  }
+}
+
+const retryWechatAuth = async () => {
+  localStorage.removeItem('wechat_jsapi_openid')
+  wechatOpenid.value = ''
+  wechatAuthStatus.value = 'idle'
+  wechatAuthError.value = ''
+  await ensureWechatOpenid()
+}
+
+const invokeWechatPay = (jsapiParams) => {
+  const onBridgeReady = () => {
+    window.WeixinJSBridge.invoke('getBrandWCPayRequest', jsapiParams, (res) => {
+      if (res.err_msg === 'get_brand_wcpay_request:ok') {
+        ElMessage.success('支付成功')
+        router.push('/payment-success')
+      } else if (res.err_msg === 'get_brand_wcpay_request:cancel') {
+        ElMessage.warning('已取消支付')
+      } else {
+        ElMessage.error('支付失败，请重试')
+        console.error('JSAPI支付失败:', res)
+      }
+    })
+  }
+
+  if (typeof window.WeixinJSBridge === 'undefined') {
+    document.addEventListener('WeixinJSBridgeReady', onBridgeReady, false)
+  } else {
+    onBridgeReady()
   }
 }
 
@@ -417,26 +549,42 @@ const checkPaymentStatus = async (orderNo) => {
   }
 }
 
-// 手动确认支付（用于本地测试）
+/**
+ * 用户点击「我已完成支付」：仅查询服务端真实订单状态，绝不调用 manual-confirm 伪造成功
+ */
 const manualConfirmPayment = async () => {
-  if (!qrCodeData.value) return
-  
+  const orderNo = qrCodeData.value?.order_no
+  if (!orderNo || manualStatusChecking.value) return
+
+  manualStatusChecking.value = true
   try {
-    // 手动更新支付状态为成功
-    const response = await request.post('/payment/manual-confirm', {
-      order_no: qrCodeData.value.order_no
+    const response = await request.get('/payment/status', {
+      params: { order_no: orderNo }
     })
-    
-    if (response.code === 200) {
-      ElMessage.success('支付确认成功')
+
+    if (response.code === 200 && response.data?.status === 'success') {
+      ElMessage.success('支付成功')
       closeQRCodePayment()
       router.push('/payment-success')
-    } else {
-      ElMessage.error(response.message || '确认失败')
+      return
     }
+
+    if (response.code === 404) {
+      ElMessage.error(response.message || '订单不存在')
+      return
+    }
+
+    const statusText = response.data?.status ? `当前状态：${response.data.status}` : ''
+    ElMessage.warning(
+      statusText
+        ? `暂未查到支付成功，${statusText}。请确认已在微信完成付款，或稍候再试。`
+        : '暂未查到支付成功，请确认已在微信完成付款，或稍候再试。'
+    )
   } catch (error) {
-    console.error('手动确认支付失败:', error)
-    ElMessage.error('确认失败，请重试')
+    console.error('查询支付状态失败:', error)
+    ElMessage.error('查询支付状态失败，请稍后重试')
+  } finally {
+    manualStatusChecking.value = false
   }
 }
 
@@ -1241,8 +1389,13 @@ const selectStaff = (staff) => {
   margin-bottom: 10px;
 }
 
-.confirm-btn:hover {
+.confirm-btn:hover:not(:disabled) {
   background: #219a52;
+}
+
+.confirm-btn:disabled {
+  opacity: 0.65;
+  cursor: not-allowed;
 }
 
 .confirm-tip {

@@ -13,6 +13,8 @@ const EmailLogManage = () => import('@/views/admin/EmailLogManage.vue')
 const TeacherManage = () => import('@/views/admin/TeacherManage.vue')
 const TeacherDetail = () => import('@/views/admin/TeacherDetail.vue')
 const PaymentManage = () => import('@/views/admin/PaymentManage.vue')
+const PaymentDetail = () => import('@/views/admin/PaymentDetail.vue')
+const PaymentView = () => import('@/views/admin/PaymentView.vue')
 const PaymentDataPanel = () => import('@/views/admin/PaymentDataPanel.vue')
 const PaymentStats = () => import('@/views/admin/PaymentStats.vue')
 const ApplicationManage = () => import('@/views/admin/ApplicationManage.vue')
@@ -23,6 +25,7 @@ const DataImport = () => import('@/views/admin/DataImport.vue')
 const LeadManage = () => import('@/views/admin/LeadManage.vue')
 const LeadFollowDetail = () => import('@/views/admin/LeadFollowDetail.vue')
 const MiniUserManage = () => import('@/views/admin/MiniUserManage.vue')
+const MiniProgramConfigManage = () => import('@/views/admin/MiniProgramConfigManage.vue')
 const InvitationManage = () => import('@/views/admin/InvitationManage.vue')
 const Login = () => import('@/views/Login.vue')
 const ParentBooking = () => import('@/views/ParentBooking.vue')
@@ -106,6 +109,18 @@ const routes = [
         meta: { title: '支付管理', keepAlive: true }
       },
       {
+        path: 'payment/:id',
+        name: 'PaymentDetail',
+        component: PaymentDetail,
+        meta: { title: '退款详情', keepAlive: false }
+      },
+      {
+        path: 'payment-view/:id',
+        name: 'PaymentView',
+        component: PaymentView,
+        meta: { title: '支付详情', keepAlive: false }
+      },
+      {
         path: 'payment-data-panel',
         name: 'PaymentDataPanel',
         component: PaymentDataPanel,
@@ -164,6 +179,12 @@ const routes = [
         name: 'MiniUserManage',
         component: MiniUserManage,
         meta: { title: '小程序用户', keepAlive: true }
+      },
+      {
+        path: 'mini-program-config',
+        name: 'MiniProgramConfigManage',
+        component: MiniProgramConfigManage,
+        meta: { title: '小程序管理', keepAlive: true }
       },
       {
         path: 'invitation',

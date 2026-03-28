@@ -17,6 +17,10 @@ echo "DB_PASSWORD: " . env('DB_PASSWORD', 'NOT SET') . "\n";
 echo "DB_USER: " . env('DB_USER', 'NOT SET') . "\n";
 echo "DB_NAME: " . env('DB_NAME', 'NOT SET') . "\n\n";
 
+echo "=== 支付宝手机号解密相关 ===\n";
+$alipayAesKey = env('ALIPAY_PHONE_AES_KEY', '');
+echo "ALIPAY_PHONE_AES_KEY: " . ($alipayAesKey ? ('SET(len=' . strlen((string)$alipayAesKey) . ')') : 'NOT SET') . "\n";
+
 echo "=== 数据库配置文件实际使用的值 ===\n\n";
 
 $config = config('database');

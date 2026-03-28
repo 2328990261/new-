@@ -208,10 +208,10 @@
       </div>
 
       <el-table :data="paymentList" v-loading="loading" stripe border :default-sort="{ prop: 'paid_time', order: 'descending' }">
-        <el-table-column v-if="isColumnVisible('paid_time')" prop="paid_time" label="支付时间" width="160" sortable fixed="left" />
-        <el-table-column v-if="isColumnVisible('tutor_name')" prop="tutor_name" label="家教名称" min-width="200" show-overflow-tooltip />
-        <el-table-column v-if="isColumnVisible('teacher_name')" prop="teacher_name" label="老师姓名" width="100" />
-        <el-table-column v-if="isColumnVisible('status')" label="状态" width="120">
+        <el-table-column v-if="isColumnVisible('paid_time')" prop="paid_time" label="支付时间" min-width="150" sortable />
+        <el-table-column v-if="isColumnVisible('tutor_name')" prop="tutor_name" label="家教名称" min-width="180" show-overflow-tooltip />
+        <el-table-column v-if="isColumnVisible('teacher_name')" prop="teacher_name" label="老师姓名" min-width="90" />
+        <el-table-column v-if="isColumnVisible('status')" label="状态" min-width="96">
           <template #default="{ row }">
             <el-tag v-if="row.status === 'pending'" type="warning">待支付</el-tag>
             <el-tag v-else-if="(row.status === 'paid' || row.status === 'success') && !row.refund_status" type="success">已支付</el-tag>
@@ -221,64 +221,66 @@
             <el-tag v-else type="info">{{ row.status }}</el-tag>
           </template>
         </el-table-column>
-        <el-table-column v-if="isColumnVisible('contact_student')" prop="contact_student" label="对接的同学" width="120" show-overflow-tooltip />
-        <el-table-column v-if="isColumnVisible('amount')" prop="amount" label="信息费金额" width="110" align="right" sortable>
+        <el-table-column v-if="isColumnVisible('contact_student')" prop="contact_student" label="对接的同学" min-width="105" show-overflow-tooltip />
+        <el-table-column v-if="isColumnVisible('amount')" prop="amount" label="信息费金额" min-width="95" align="right" sortable>
           <template #default="{ row }">
             {{ row.amount ? row.amount.toFixed(2) : '0.00' }}
           </template>
         </el-table-column>
-        <el-table-column v-if="isColumnVisible('deposit_amount')" prop="deposit_amount" label="收到课酬" width="100" align="right">
+        <el-table-column v-if="isColumnVisible('deposit_amount')" prop="deposit_amount" label="收到课酬" min-width="90" align="right">
           <template #default="{ row }">
-            {{ row.deposit_amount ? row.deposit_amount.toFixed(2) : '-' }}
+            {{ Number(row.deposit_amount || 0) > 0 ? Number(row.deposit_amount).toFixed(2) : '' }}
           </template>
         </el-table-column>
-        <el-table-column v-if="isColumnVisible('refund_apply_amount')" prop="refund_apply_amount" label="申请应退" width="100" align="right">
+        <el-table-column v-if="isColumnVisible('refund_apply_amount')" prop="refund_apply_amount" label="申请应退" min-width="90" align="right">
           <template #default="{ row }">
-            {{ row.refund_apply_amount ? row.refund_apply_amount.toFixed(2) : '-' }}
+            {{ Number(row.refund_apply_amount || 0) > 0 ? Number(row.refund_apply_amount).toFixed(2) : '' }}
           </template>
         </el-table-column>
-        <el-table-column v-if="isColumnVisible('refunded_amount')" prop="refunded_amount" label="已退金额" width="100" align="right">
+        <el-table-column v-if="isColumnVisible('refunded_amount')" prop="refunded_amount" label="已退金额" min-width="90" align="right">
           <template #default="{ row }">
-            {{ row.refunded_amount ? row.refunded_amount.toFixed(2) : '-' }}
+            {{ Number(row.refunded_amount || 0) > 0 ? Number(row.refunded_amount).toFixed(2) : '' }}
           </template>
         </el-table-column>
-        <el-table-column v-if="isColumnVisible('refund_time')" prop="refund_time" label="退款时间" width="160" />
-        <el-table-column v-if="isColumnVisible('actual_amount')" prop="actual_amount" label="实收金额" width="110" align="right" sortable>
+        <el-table-column v-if="isColumnVisible('refund_time')" prop="refund_time" label="退款时间" min-width="150" />
+        <el-table-column v-if="isColumnVisible('actual_amount')" prop="actual_amount" label="实收金额" min-width="95" align="right" sortable>
           <template #default="{ row }">
             {{ row.actual_amount ? row.actual_amount.toFixed(2) : '0.00' }}
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="240" fixed="right">
+        <el-table-column label="操作" width="240">
           <template #default="{ row }">
-            <el-button type="primary" size="small" @click="handleView(row)">查看</el-button>
-            <el-button 
-              v-if="row.refund_status === 'pending'" 
-              type="success" 
-              size="small" 
-              @click="handleRefund(row)"
-            >
-              退费
-            </el-button>
-            <el-button 
-              v-if="row.refund_status === 'pending'" 
-              type="danger" 
-              size="small" 
-              @click="handleReject(row)"
-            >
-              驳回
-            </el-button>
-            <el-dropdown trigger="click" @command="(cmd) => handleMoreAction(cmd, row)">
-              <el-button type="info" size="small">
-                更多<el-icon class="el-icon--right"><MoreFilled /></el-icon>
+            <div class="operation-actions">
+              <el-button type="primary" size="small" @click="handleView(row)">查看</el-button>
+              <el-button 
+                v-if="row.refund_status === 'pending'" 
+                type="success" 
+                size="small" 
+                @click="handleRefund(row)"
+              >
+                退费
               </el-button>
-              <template #dropdown>
-                <el-dropdown-menu>
-                  <el-dropdown-item command="query">查询</el-dropdown-item>
-                  <el-dropdown-item command="remark">备注</el-dropdown-item>
-                  <el-dropdown-item command="export">导出</el-dropdown-item>
-                </el-dropdown-menu>
-              </template>
-            </el-dropdown>
+              <el-button 
+                v-if="row.refund_status === 'pending'" 
+                type="danger" 
+                size="small" 
+                @click="handleReject(row)"
+              >
+                驳回
+              </el-button>
+              <el-dropdown trigger="click" @command="(cmd) => handleMoreAction(cmd, row)">
+                <el-button type="info" size="small">
+                  更多<el-icon class="el-icon--right"><MoreFilled /></el-icon>
+                </el-button>
+                <template #dropdown>
+                  <el-dropdown-menu>
+                    <el-dropdown-item command="query">查询</el-dropdown-item>
+                    <el-dropdown-item command="remark">备注</el-dropdown-item>
+                    <el-dropdown-item command="export">导出</el-dropdown-item>
+                  </el-dropdown-menu>
+                </template>
+              </el-dropdown>
+            </div>
           </template>
         </el-table-column>
       </el-table>
@@ -298,7 +300,7 @@
     <!-- 查看详情弹窗 -->
     <el-dialog v-model="viewDialogVisible" title="支付详情" width="700px">
       <el-descriptions :column="2" border v-if="currentPayment">
-        <el-descriptions-item label="订单号">{{ currentPayment.order_no }}</el-descriptions-item>
+        <el-descriptions-item label="订单号">{{ displayOrderNo(currentPayment) }}</el-descriptions-item>
         <el-descriptions-item label="支付时间">{{ currentPayment.paid_time }}</el-descriptions-item>
         <el-descriptions-item label="家教名称">{{ currentPayment.tutor_name }}</el-descriptions-item>
         <el-descriptions-item label="老师姓名">{{ currentPayment.teacher_name }}</el-descriptions-item>
@@ -387,7 +389,6 @@ const router = useRouter()
 import { 
   getPaymentList, 
   getPaymentStatistics,
-  getPaymentDetail, 
   processRefund,
   rejectRefund,
   getDispatchers
@@ -494,10 +495,11 @@ const allColumns = ref([
   { prop: 'status', label: '状态', visible: true, required: true },
   { prop: 'contact_student', label: '对接的同学', visible: true, required: false },
   { prop: 'amount', label: '信息费金额', visible: true, required: true },
-  { prop: 'deposit_amount', label: '收到课酬', visible: false, required: false },
-  { prop: 'refund_apply_amount', label: '申请应退', visible: false, required: false },
-  { prop: 'refunded_amount', label: '已退金额', visible: false, required: false },
-  { prop: 'refund_time', label: '退款时间', visible: false, required: false },
+  // 与旧版管理端保持一致：默认展示退款关键字段
+  { prop: 'deposit_amount', label: '收到课酬', visible: true, required: true },
+  { prop: 'refund_apply_amount', label: '申请应退', visible: true, required: true },
+  { prop: 'refunded_amount', label: '已退金额', visible: true, required: true },
+  { prop: 'refund_time', label: '退款时间', visible: true, required: true },
   { prop: 'actual_amount', label: '实收金额', visible: true, required: false }
 ])
 
@@ -506,11 +508,21 @@ const visibleColumns = ref([])
 
 // 初始化可见列
 const initVisibleColumns = () => {
+  const defaultVisible = allColumns.value.filter(col => col.visible).map(col => col.prop)
+  const requiredColumns = allColumns.value.filter(col => col.required).map(col => col.prop)
   const savedColumns = localStorage.getItem('payment_visible_columns')
   if (savedColumns) {
-    visibleColumns.value = JSON.parse(savedColumns)
+    let parsed = []
+    try {
+      parsed = JSON.parse(savedColumns)
+      if (!Array.isArray(parsed)) parsed = []
+    } catch (e) {
+      parsed = []
+    }
+    // 兼容历史列配置：补齐新增默认列与必选列，避免页面升级后看不到关键字段
+    visibleColumns.value = Array.from(new Set([...parsed, ...defaultVisible, ...requiredColumns]))
   } else {
-    visibleColumns.value = allColumns.value.filter(col => col.visible).map(col => col.prop)
+    visibleColumns.value = defaultVisible
   }
 }
 
@@ -583,6 +595,11 @@ const pagination = reactive({
 const viewDialogVisible = ref(false)
 const currentPayment = ref(null)
 
+const displayOrderNo = (payment) => {
+  if (!payment) return '-'
+  return payment.order_no || payment.orderNo || payment.transaction_id || (payment.id ? `ID:${payment.id}` : '-')
+}
+
 // 退款
 const refundDialogVisible = ref(false)
 const refundLoading = ref(false)
@@ -611,10 +628,12 @@ const handleTabClick = (tab) => {
     searchForm.status = ''
     delete searchForm.refund_status
   } else if (tab.props.name === 'paid') {
-    searchForm.status = 'paid'
+    // 后端支付成功状态使用 success（不是 paid）
+    searchForm.status = 'success'
     delete searchForm.refund_status
   } else {
-    searchForm.status = 'paid'
+    // 退款相关状态仅在已支付(success)数据上筛选
+    searchForm.status = 'success'
     searchForm.refund_status = tab.props.name
   }
   pagination.page = 1
@@ -747,27 +766,51 @@ const handleReset = () => {
   getStatistics()
 }
 
-// 查看详情
-const handleView = async (row) => {
-  try {
-    const res = await getPaymentDetail(row.id)
-    if (res.success || res.code === 200) {
-      currentPayment.value = res.data
-      viewDialogVisible.value = true
+// 查看详情（新建标签页）
+const handleView = (row) => {
+  router.push({
+    path: `/payment-view/${row.id}`,
+    query: {
+      order_no: row.order_no || '',
+      paid_time: row.paid_time || '',
+      tutor_name: row.tutor_name || '',
+      teacher_name: row.teacher_name || '',
+      contact_student: row.contact_student || '',
+      amount: row.amount ?? '',
+      deposit_amount: row.deposit_amount ?? '',
+      refund_apply_amount: row.refund_apply_amount ?? '',
+      refunded_amount: row.refunded_amount ?? '',
+      refund_time: row.refund_time || '',
+      actual_amount: row.actual_amount ?? '',
+      refund_status: row.refund_status || '',
+      customer_service: row.customer_service || '',
+      refund_reason: row.refund_reason || '',
+      reject_reason: row.reject_reason || '',
+      refund_voucher: row.refund_voucher || '',
+      remark: row.remark || ''
     }
-  } catch (error) {
-    
-    ElMessage.error('获取支付详情失败')
-  }
+  })
 }
 
-// 退费
+// 退费（进入退费申请处理页）
 const handleRefund = (row) => {
-  currentPayment.value = row
-  refundForm.id = row.id
-  refundForm.refundAmount = row.refund_apply_amount || (row.amount - row.refunded_amount)
-  refundForm.remark = ''
-  refundDialogVisible.value = true
+  router.push({
+    path: `/payment/${row.id}`,
+    query: {
+      tutor_name: row.tutor_name || '',
+      teacher_name: row.teacher_name || '',
+      amount: row.amount ?? '',
+      deposit_amount: row.deposit_amount ?? '',
+      refund_apply_amount: row.refund_apply_amount ?? '',
+      refunded_amount: row.refunded_amount ?? '',
+      refund_apply_time: row.refund_apply_time || '',
+      contact_student: row.contact_student || '',
+      customer_service: row.customer_service || '',
+      refund_reason: row.refund_reason || '',
+      refund_voucher: row.refund_voucher || '',
+      refund_status: row.refund_status || ''
+    }
+  })
 }
 
 // 确认退款
@@ -1189,6 +1232,20 @@ const loadMore = () => {
 /* 表格按钮优化 */
 .payment-manage :deep(.el-table .el-button + .el-button) {
   margin-left: 5px;
+}
+
+.payment-manage .operation-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: nowrap;
+}
+
+.payment-manage .operation-actions :deep(.el-button) {
+  margin-left: 0 !important;
+  min-width: 50px;
+  padding-left: 8px;
+  padding-right: 8px;
 }
 
 .payment-manage :deep(.el-table .el-button--small) {

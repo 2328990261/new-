@@ -19,19 +19,16 @@ class RefundApi extends BaseController
     {
         try {
             $orderNo = $this->request->get('order_no', '');
-            $payerContact = $this->request->get('payer_contact', '');
             
-            if (!$orderNo || !$payerContact) {
+            if (!$orderNo) {
                 return json([
                     'success' => false,
-                    'message' => '请提供订单号和支付人联系方式'
+                    'message' => '请提供订单号'
                 ]);
             }
             
             // 查询支付记录
-            $payment = Payment::where('order_no', $orderNo)
-                ->where('payer_contact', $payerContact)
-                ->find();
+            $payment = Payment::where('order_no', $orderNo)->find();
             
             if (!$payment) {
                 return json([
@@ -41,7 +38,7 @@ class RefundApi extends BaseController
             }
             
             // 检查支付状态
-            if ($payment->status !== 'paid') {
+            if (!in_array($payment->status, ['paid', 'success'])) {
                 return json([
                     'success' => false,
                     'message' => '该订单未支付或已取消，无法申请退款'
@@ -89,16 +86,15 @@ class RefundApi extends BaseController
     {
         try {
             $orderNo = $this->request->post('order_no', '');
-            $payerContact = $this->request->post('payer_contact', '');
             $refundAmount = $this->request->post('refund_amount/f', 0);
             $refundReason = $this->request->post('refund_reason', '');
             $refundVoucher = $this->request->post('refund_voucher', ''); // JSON字符串
             
             // 验证参数
-            if (!$orderNo || !$payerContact) {
+            if (!$orderNo) {
                 return json([
                     'success' => false,
-                    'message' => '请提供订单号和支付人联系方式'
+                    'message' => '请提供订单号'
                 ]);
             }
             
@@ -117,9 +113,7 @@ class RefundApi extends BaseController
             }
             
             // 查询支付记录
-            $payment = Payment::where('order_no', $orderNo)
-                ->where('payer_contact', $payerContact)
-                ->find();
+            $payment = Payment::where('order_no', $orderNo)->find();
             
             if (!$payment) {
                 return json([
@@ -129,7 +123,7 @@ class RefundApi extends BaseController
             }
             
             // 检查支付状态
-            if ($payment->status !== 'paid') {
+            if (!in_array($payment->status, ['paid', 'success'])) {
                 return json([
                     'success' => false,
                     'message' => '该订单未支付或已取消，无法申请退款'
@@ -233,19 +227,16 @@ class RefundApi extends BaseController
     {
         try {
             $orderNo = $this->request->get('order_no', '');
-            $payerContact = $this->request->get('payer_contact', '');
             
-            if (!$orderNo || !$payerContact) {
+            if (!$orderNo) {
                 return json([
                     'success' => false,
-                    'message' => '请提供订单号和支付人联系方式'
+                    'message' => '请提供订单号'
                 ]);
             }
             
             // 查询支付记录
-            $payment = Payment::where('order_no', $orderNo)
-                ->where('payer_contact', $payerContact)
-                ->find();
+            $payment = Payment::where('order_no', $orderNo)->find();
             
             if (!$payment) {
                 return json([

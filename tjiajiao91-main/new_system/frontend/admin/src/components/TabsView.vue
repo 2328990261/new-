@@ -50,30 +50,30 @@ const cachedViews = computed(() => tabsStore.cachedViews)
 
 // 初始化标签页
 onMounted(() => {
-  const currentPath = route.path
-  if (!tabs.value.some(tab => tab.path === currentPath)) {
+  const currentFullPath = route.fullPath
+  if (!tabs.value.some(tab => tab.path === currentFullPath)) {
     // 如果当前路径不在默认标签中，添加新标签
-    const title = tabsStore.getPageTitle(currentPath)
-    const closable = tabsStore.isDetailPage(currentPath)
-    tabsStore.addTab(currentPath, title, closable)
+    const title = tabsStore.getPageTitle(currentFullPath)
+    const closable = tabsStore.isDetailPage(currentFullPath)
+    tabsStore.addTab(currentFullPath, title, closable)
   } else {
-    tabsStore.setActiveTab(currentPath)
+    tabsStore.setActiveTab(currentFullPath)
   }
 })
 
 // 监听路由变化
-watch(() => route.path, (newPath) => {
-  if (newPath && newPath !== activeTab.value) {
-    const title = tabsStore.getPageTitle(newPath)
-    const closable = tabsStore.isDetailPage(newPath)
-    tabsStore.addTab(newPath, title, closable)
+watch(() => route.fullPath, (newFullPath) => {
+  if (newFullPath && newFullPath !== activeTab.value) {
+    const title = tabsStore.getPageTitle(newFullPath)
+    const closable = tabsStore.isDetailPage(newFullPath)
+    tabsStore.addTab(newFullPath, title, closable)
   }
 })
 
 // 切换标签页
 const switchTab = (path) => {
   tabsStore.setActiveTab(path)
-  if (route.path !== path) {
+  if (route.fullPath !== path) {
     router.push(path)
   }
 }

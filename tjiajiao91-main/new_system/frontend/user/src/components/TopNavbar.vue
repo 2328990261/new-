@@ -1,6 +1,6 @@
 <template>
   <!-- 顶部导航栏 -->
-  <header v-if="!isSpecialPage" class="top-navbar">
+  <header v-if="!isSpecialPage" class="top-navbar" :class="{ 'city-light-navbar': isCityLightPage }">
     <div class="navbar-container">
       <div class="navbar-left">
         <div class="logo-section" @click="goHome">
@@ -142,6 +142,9 @@ const isSpecialPage = computed(() => {
   return route.meta.hideNavbar === true
 })
 
+// 点亮城市页使用深色导航风格，贴合页面背景
+const isCityLightPage = computed(() => route.path === '/city-light')
+
 const goHome = () => {
   router.push('/')
 }
@@ -184,6 +187,43 @@ watch(() => route.path, () => {
   opacity: 1;
   visibility: visible;
   transition: none;
+}
+
+/* 点亮城市页导航：半透明深色，和深色背景更协调 */
+.top-navbar.city-light-navbar {
+  background: rgba(10, 18, 40, 0.72);
+  box-shadow: 0 2px 18px rgba(0, 0, 0, 0.35);
+  border-bottom: 1px solid rgba(148, 163, 184, 0.24);
+}
+
+.top-navbar.city-light-navbar .logo-icon {
+  color: #a5b4fc;
+  filter: drop-shadow(0 2px 8px rgba(165, 180, 252, 0.35));
+}
+
+.top-navbar.city-light-navbar .logo-text {
+  background: linear-gradient(135deg, #c7d2fe 0%, #a78bfa 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.top-navbar.city-light-navbar .nav-item {
+  color: rgba(226, 232, 240, 0.9);
+}
+
+.top-navbar.city-light-navbar .nav-item:hover {
+  color: #e2e8f0;
+  background: rgba(99, 102, 241, 0.25);
+}
+
+.top-navbar.city-light-navbar .nav-item.active {
+  color: #eef2ff;
+  background: rgba(99, 102, 241, 0.35);
+}
+
+.top-navbar.city-light-navbar .mobile-menu-btn {
+  color: #c7d2fe;
 }
 
 .navbar-container {

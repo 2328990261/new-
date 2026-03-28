@@ -184,8 +184,8 @@
           :total="total"
           :page-sizes="[10, 20, 50, 100]"
           layout="total, sizes, prev, pager, next, jumper"
-          @size-change="handleSearch"
-          @current-change="handleSearch"
+          @size-change="handleSizeChange"
+          @current-change="handleCurrentChange"
         />
       </div>
     </el-card>
@@ -1012,12 +1012,14 @@ const batchReviewForm = reactive({
 })
 
 // 方法
-const loadData = async () => {
+const loadData = async (override = {}) => {
   try {
     loading.value = true
+    const resolvedPage = override.page ?? currentPage.value
+    const resolvedPageSize = override.pageSize ?? pageSize.value
     const params = {
-      page: currentPage.value,
-      page_size: pageSize.value,
+      page: resolvedPage,
+      page_size: resolvedPageSize,
       view_scope: viewScope.value
     }
     
@@ -1068,7 +1070,20 @@ const handleTabChange = () => {
 
 const handleSearch = () => {
   currentPage.value = 1
-  loadData()
+  loadData({ page: 1 })
+}
+
+// 分页：切页不重置到第一页
+const handleCurrentChange = (page) => {
+  currentPage.value = page
+  loadData({ page })
+}
+
+// 分页：切换每页条数时回到第一页
+const handleSizeChange = (size) => {
+  pageSize.value = size
+  currentPage.value = 1
+  loadData({ page: 1, pageSize: size })
 }
 
 const handleReset = () => {
@@ -1077,14 +1092,14 @@ const handleReset = () => {
   searchForm.status = ''
   searchForm.dateRange = null
   currentPage.value = 1
-  loadData()
+  loadData({ page: 1 })
 }
 
 // 顶部统计卡片：我的投递 / 全部投递
 const handleScopeClick = (scope) => {
   viewScope.value = scope
   currentPage.value = 1
-  loadData()
+  loadData({ page: 1 })
   loadStatistics()
 }
 

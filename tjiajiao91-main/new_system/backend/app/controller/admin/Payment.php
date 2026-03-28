@@ -8,6 +8,7 @@ use app\model\PaymentConfig;
 use app\model\Admin;
 use think\facade\Db;
 use think\facade\Log;
+use app\service\WechatPayService;
 
 class Payment extends BaseController
 {
@@ -20,7 +21,7 @@ class Payment extends BaseController
             $page = $this->request->param('page', 1);
             $limit = $this->request->param('limit', 10);
             
-            $query = PaymentModel::order('paid_time', 'desc');
+            $query = PaymentModel::with(['dispatcher'])->order('paid_time', 'desc');
             
             // 筛选条件
             $tutorName = $this->request->param('tutor_name');
@@ -88,6 +89,9 @@ class Payment extends BaseController
             $items = $list->items();
             foreach ($items as &$item) {
                 $item['actual_amount'] = $item['amount'] - $item['refunded_amount'];
+                if (empty($item['contact_student']) && !empty($item['dispatcher'])) {
+                    $item['contact_student'] = $item['dispatcher']['nickname'] ?: ($item['dispatcher']['username'] ?? '');
+                }
             }
             
             return json([
@@ -224,7 +228,7 @@ class Payment extends BaseController
     {
         try {
             $id = $this->request->param('id');
-            $payment = PaymentModel::find($id);
+            $payment = PaymentModel::with(['dispatcher'])->find($id);
             
             if (!$payment) {
                 return json(['code' => 404, 'message' => '支付记录不存在']);
@@ -232,6 +236,9 @@ class Payment extends BaseController
             
             // 计算实收金额
             $payment['actual_amount'] = $payment['amount'] - $payment['refunded_amount'];
+            if (empty($payment['contact_student']) && !empty($payment['dispatcher'])) {
+                $payment['contact_student'] = $payment['dispatcher']['nickname'] ?: ($payment['dispatcher']['username'] ?? '');
+            }
             
             return json(['code' => 200, 'message' => '获取成功', 'data' => $payment]);
         } catch (\Exception $e) {
@@ -247,7 +254,7 @@ class Payment extends BaseController
     {
         try {
             $id = $this->request->post('id');
-            $refundAmount = $this->request->post('refund_amount');
+            $refundAmount = (float)$this->request->post('refund_amount');
             $remark = $this->request->post('remark', '');
             
             $payment = PaymentModel::find($id);
@@ -265,15 +272,67 @@ class Payment extends BaseController
             if ($refundAmount > $canRefundAmount) {
                 return json(['code' => 400, 'message' => '退款金额超过可退金额']);
             }
-            
-            // 更新退款信息
-            $payment->refund_status = 'completed';
-            $payment->refunded_amount = $payment->refunded_amount + $refundAmount;
-            $payment->refund_time = date('Y-m-d H:i:s');
-            if ($remark) {
-                $payment->remark = $remark;
+
+            if ($refundAmount <= 0) {
+                return json(['code' => 400, 'message' => '退款金额必须大于0']);
             }
-            $payment->save();
+
+            // 用户已填申请金额时，实际退款不得超过申请（防止前端误传或篡改多退）
+            $applyAmt = (float)($payment->refund_apply_amount ?? 0);
+            if ($applyAmt > 0 && $refundAmount > $applyAmt + 0.0001) {
+                return json([
+                    'code' => 400,
+                    'message' => '退款金额不能超过用户申请金额 ¥' . number_format($applyAmt, 2, '.', ''),
+                ]);
+            }
+            
+            // 微信支付必须先调用微信退款接口，成功后再落库
+            $refundExtraRemark = '';
+            if (($payment->payment_method ?? '') === 'wechat') {
+                $wechatService = new WechatPayService();
+                $refundNo = 'REF' . date('YmdHis') . str_pad((string)$payment->id, 6, '0', STR_PAD_LEFT);
+                $refundRes = $wechatService->refund([
+                    'order_no' => $payment->order_no,
+                    'refund_no' => $refundNo,
+                    'total_amount' => (float)$payment->amount,
+                    'refund_amount' => $refundAmount,
+                    'refund_reason' => $remark ?: '管理员处理退款',
+                    'transaction_id' => $payment->transaction_id ?? ''
+                ]);
+
+                if (empty($refundRes['success'])) {
+                    $msg = $refundRes['message'] ?? '微信退款失败';
+                    Log::error('管理员退款调用微信接口失败: ' . $msg . '，order_no=' . ($payment->order_no ?? ''));
+                    return json(['code' => 500, 'message' => '微信退款失败：' . $msg]);
+                }
+
+                $wechatRefundId = $refundRes['data']['refund_id'] ?? '';
+                $refundExtraRemark = $wechatRefundId ? ('微信退款单号:' . $wechatRefundId) : ('商户退款单号:' . $refundNo);
+            }
+
+            Db::startTrans();
+            try {
+                // 更新退款信息
+                $payment->refund_status = 'completed';
+                $payment->refunded_amount = $payment->refunded_amount + $refundAmount;
+                $payment->refund_time = date('Y-m-d H:i:s');
+
+                $remarkParts = [];
+                if ($remark) {
+                    $remarkParts[] = $remark;
+                }
+                if ($refundExtraRemark) {
+                    $remarkParts[] = $refundExtraRemark;
+                }
+                if (!empty($remarkParts)) {
+                    $payment->remark = implode(' | ', $remarkParts);
+                }
+                $payment->save();
+                Db::commit();
+            } catch (\Throwable $txe) {
+                Db::rollback();
+                throw $txe;
+            }
             
             return json(['code' => 200, 'message' => '退款成功']);
         } catch (\Exception $e) {

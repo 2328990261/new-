@@ -64,23 +64,37 @@
     <div class="filter-section">
       <!-- 第一排：搜索和重置 -->
       <div class="filter-row filter-row-top">
-        <!-- 搜索按钮（点击弹窗） -->
-        <el-button 
-          @click="showSearchDialog" 
-          class="search-btn"
-          icon="Search"
-        >
-          {{ filters.keyword ? `搜索: ${filters.keyword}` : '搜索' }}
-        </el-button>
+        <div class="search-input-wrap">
+          <el-input
+            v-model="filters.keyword"
+            clearable
+            placeholder="输入关键词搜索家教单"
+            class="search-input"
+            @keyup.enter="handleSearch"
+            @clear="handleSearch"
+          >
+            <template #prefix>
+              <el-icon><Search /></el-icon>
+            </template>
+          </el-input>
+          <el-button class="search-action-btn" type="primary" @click="handleSearch">
+            搜索
+          </el-button>
+        </div>
 
         <!-- 重置按钮 -->
         <el-button 
           @click="handleReset" 
           class="reset-btn"
-          icon="RefreshLeft"
         >
+          <el-icon><RefreshLeft /></el-icon>
           重置
         </el-button>
+      </div>
+
+      <div v-if="filters.keyword" class="keyword-tip-row">
+        <span class="keyword-tip-label">当前搜索</span>
+        <span class="keyword-tip-value">{{ filters.keyword }}</span>
       </div>
 
       <!-- 第二排：筛选条件 -->
@@ -181,31 +195,6 @@
         <span class="tip-text">可长按复制单条或多条家教信息</span>
       </div>
     </div>
-
-    <!-- 搜索对话框 -->
-    <el-dialog
-      v-model="searchDialogVisible"
-      title="搜索家教信息"
-      width="90%"
-      :close-on-click-modal="false"
-    >
-      <el-input
-        v-model="searchKeyword"
-        type="textarea"
-        :rows="3"
-        placeholder="输入关键词搜索（支持多个关键词，用空格或逗号分隔）&#10;例如：深圳 初三 数学"
-        clearable
-        @keyup.enter="handleDialogSearch"
-        autofocus
-      />
-      <div style="margin-top: 8px; font-size: 12px; color: #909399;">
-        提示：支持多关键词搜索，会搜索包含所有关键词的家教信息
-      </div>
-      <template #footer>
-        <el-button @click="searchDialogVisible = false">取消</el-button>
-        <el-button type="primary" @click="handleDialogSearch">搜索</el-button>
-      </template>
-    </el-dialog>
 
     <!-- 家教列表 -->
     <div class="tutor-list-section">
@@ -427,9 +416,6 @@ const filters = reactive({
   teacher_type: ''  // 老师类型筛选
 })
 
-const searchDialogVisible = ref(false)
-const searchKeyword = ref('')
-
 const cities = ref([])
 const districts = ref([])
 const subjects = ref([])
@@ -619,30 +605,12 @@ const onCityChange = async () => {
 }
 
 
-// 搜索
-const showSearchDialog = () => {
-  searchKeyword.value = filters.keyword
-  searchDialogVisible.value = true
-}
-
-const handleDialogSearch = () => {
-  // 处理多关键词：去除多余空格，支持空格和逗号分隔
-  const keyword = searchKeyword.value.trim()
-  if (keyword) {
-    // 将逗号替换为空格，然后按空格分割，过滤空字符串，再用空格连接
-    filters.keyword = keyword
-      .replace(/[,，、]/g, ' ')  // 支持中英文逗号和顿号
-      .split(/\s+/)  // 按空格分割
-      .filter(k => k.length > 0)  // 过滤空字符串
-      .join(' ')  // 用空格连接
-  } else {
-    filters.keyword = ''
-  }
-  searchDialogVisible.value = false
-  handleSearch()
-}
-
 const handleSearch = () => {
+  // 支持多关键词：统一分隔符并压缩多余空格
+  const keyword = (filters.keyword || '').trim()
+  filters.keyword = keyword
+    ? keyword.replace(/[,，、]/g, ' ').split(/\s+/).filter(k => k.length > 0).join(' ')
+    : ''
   resetAndReload()
 }
 
@@ -662,7 +630,6 @@ const handleReset = () => {
     teacher_type: ''
   })
   districts.value = []
-  searchKeyword.value = ''
   resetAndReload()
 }
 
@@ -1419,10 +1386,11 @@ const copyWithExecCommand = (text, isMobile = false, isIOS = false) => {
 /* 筛选区域 - 两排布局 */
 .filter-section {
   background: white;
-  border-radius: 8px;
-  padding: 10px;
+  border-radius: 12px;
+  padding: 12px;
   margin-bottom: 16px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+  box-shadow: 0 2px 12px rgba(15, 23, 42, 0.08);
+  border: 1px solid #eef2f7;
   position: relative;
   z-index: 1;
 }
@@ -1430,21 +1398,87 @@ const copyWithExecCommand = (text, isMobile = false, isIOS = false) => {
 .filter-row {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
 }
 
 .filter-row-top {
-  margin-bottom: 8px;
+  margin-bottom: 10px;
 }
 
-.search-btn {
+.search-input-wrap {
   flex: 3;
   min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.search-input {
+  flex: 1;
+  min-width: 0;
+}
+
+.search-input :deep(.el-input__wrapper) {
+  height: 40px;
+  border-radius: 10px;
+  box-shadow: none;
+  border: 1px solid #c7d2fe;
+  background: #f8faff;
+}
+
+.search-input :deep(.el-input__wrapper.is-focus) {
+  border-color: #818cf8;
+  box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.12);
+}
+
+.search-action-btn {
+  height: 40px;
+  padding: 0 14px;
+  border-radius: 10px;
+  font-weight: 600;
+  flex-shrink: 0;
 }
 
 .reset-btn {
   flex: 1;
   min-width: 0;
+  height: 40px;
+  border-radius: 10px;
+  border: 1px solid #d1d5db;
+  color: #4b5563;
+  background: #ffffff;
+  font-weight: 500;
+}
+
+.reset-btn:hover {
+  background: #f9fafb;
+  border-color: #9ca3af;
+}
+
+.keyword-tip-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 2px 0 10px 0;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: #f8fafc;
+  border: 1px dashed #cbd5e1;
+}
+
+.keyword-tip-label {
+  font-size: 12px;
+  color: #64748b;
+  flex-shrink: 0;
+}
+
+.keyword-tip-value {
+  font-size: 13px;
+  color: #0f172a;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .filter-row-bottom {
@@ -1455,6 +1489,19 @@ const copyWithExecCommand = (text, isMobile = false, isIOS = false) => {
 .filter-select {
   flex: 1;
   min-width: 0;
+}
+
+.filter-select :deep(.el-select__wrapper) {
+  min-height: 40px;
+  border-radius: 10px;
+  box-shadow: none;
+  border: 1px solid #e5e7eb;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.filter-select :deep(.el-select__wrapper.is-focused) {
+  border-color: #818cf8;
+  box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.12);
 }
 
 /* 操作提示 */
@@ -2054,27 +2101,44 @@ const copyWithExecCommand = (text, isMobile = false, isIOS = false) => {
 
   /* 筛选区域 - 移动端优化 */
   .filter-section {
-    padding: 8px;
+    padding: 10px;
     overflow: visible;
   }
 
   .filter-row {
-    gap: 6px;
+    gap: 8px;
   }
 
   .filter-row-top {
-    margin-bottom: 6px;
+    margin-bottom: 8px;
   }
 
   /* 第一排：搜索占大部分，重置占小部分 */
   .search-btn {
-    flex: 3;
+    flex: 1;
     min-width: 0;
+  }
+
+  .search-input-wrap {
+    gap: 6px;
+  }
+
+  .search-input :deep(.el-input__wrapper) {
+    min-height: 38px;
+    height: 38px;
+  }
+
+  .search-action-btn {
+    height: 38px;
+    padding: 0 12px;
+    font-size: 13px;
   }
 
   .reset-btn {
     flex: 1;
     min-width: 0;
+    height: 38px;
+    font-size: 13px;
   }
 
   /* 第二排：4个筛选项自动换行 */
@@ -2087,9 +2151,23 @@ const copyWithExecCommand = (text, isMobile = false, isIOS = false) => {
     min-width: 0;
   }
 
+  .keyword-tip-row {
+    margin-bottom: 8px;
+    padding: 7px 8px;
+  }
+
+  .keyword-tip-label {
+    font-size: 11px;
+  }
+
+  .keyword-tip-value {
+    font-size: 12px;
+  }
+
   /* 移动端下拉框修复 */
   .filter-select :deep(.el-select__wrapper) {
     width: 100%;
+    min-height: 38px;
   }
 
   /* 卡片样式 */
@@ -2111,6 +2189,27 @@ const copyWithExecCommand = (text, isMobile = false, isIOS = false) => {
     flex-direction: column;
     align-items: flex-start;
     gap: 8px;
+  }
+}
+
+@media (max-width: 480px) {
+  .filter-row-top {
+    flex-direction: row;
+    align-items: center;
+  }
+
+  .search-input-wrap {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .reset-btn {
+    flex: 0 0 auto;
+    padding: 0 10px;
+  }
+
+  .filter-select {
+    flex: 1 1 100%;
   }
 }
 </style>

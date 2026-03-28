@@ -56,9 +56,11 @@
             size="small" 
             text 
             type="primary"
+            class="dispatcher-copy-btn"
             @click.stop="copyText(dispatcherInfo.nickname || dispatcherInfo.username)"
           >
             <el-icon><DocumentCopy /></el-icon>
+            <span>复制</span>
           </el-button>
         </div>
         <div class="admin-item" v-if="dispatcherInfo.contact">
@@ -67,9 +69,11 @@
             size="small" 
             text 
             type="primary"
+            class="dispatcher-copy-btn"
             @click.stop="copyText(dispatcherInfo.contact)"
           >
             <el-icon><DocumentCopy /></el-icon>
+            <span>复制</span>
           </el-button>
         </div>
       </div>
@@ -395,6 +399,34 @@ const viewDetail = () => {
 
 .admin-item .el-button {
   padding: 4px 8px;
+}
+
+.admin-item :deep(.el-button.dispatcher-copy-btn) {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #4a56a6;
+  background: #eef2ff;
+  border: 1px solid #c7d2fe;
+  border-radius: 6px;
+  padding: 4px 8px;
+  line-height: 1;
+}
+
+.admin-item :deep(.el-button.dispatcher-copy-btn:hover) {
+  color: #374151;
+  background: #e0e7ff;
+  border-color: #a5b4fc;
+}
+
+.dispatcher-copy-btn :deep(.el-icon) {
+  font-size: 13px;
+}
+
+.dispatcher-copy-btn :deep(span) {
+  color: inherit;
 }
 
 /* 操作按钮 */

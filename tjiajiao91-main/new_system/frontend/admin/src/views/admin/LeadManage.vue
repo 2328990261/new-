@@ -2678,12 +2678,12 @@ const formatDateTime = (dateStr) => {
   }
 }
 
-/* 分页器样式修复 - 当前页文字颜色 */
-.el-pagination .el-pager li.is-active {
+/* 分页器样式修复 - 仅作用于线索管理页，避免影响全站分页 */
+.lead-manage .el-pagination .el-pager li.is-active {
   color: #ffffff !important;
 }
 
-.el-pagination .el-pager li:not(.is-disabled).is-active:hover {
+.lead-manage .el-pagination .el-pager li:not(.is-disabled).is-active:hover {
   color: #ffffff !important;
 }
 </style>

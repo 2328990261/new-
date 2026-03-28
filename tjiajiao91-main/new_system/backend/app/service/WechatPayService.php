@@ -32,6 +32,74 @@ class WechatPayService
             trace('获取微信支付配置失败: ' . $e->getMessage(), 'warning');
         }
     }
+
+    /**
+     * 解析统一下单使用的 notify_url（微信对格式很严格：公网 HTTPS、完整路径）
+     * 优先级：payment_config.notify_url > 环境变量 PAYMENT_NOTIFY_URL > 当前请求域名 + /api/payment/notify
+     */
+    private function resolveNotifyUrl(): string
+    {
+        $candidates = [];
+        $envUrl = env('PAYMENT_NOTIFY_URL', '');
+        if ($envUrl !== '') {
+            $candidates[] = trim((string) $envUrl);
+        }
+        if ($this->config && !empty($this->config->notify_url)) {
+            $candidates[] = trim((string) $this->config->notify_url);
+        }
+        try {
+            if (function_exists('request') && request()) {
+                $candidates[] = rtrim(request()->domain(), '/') . '/api/payment/notify';
+            }
+        } catch (\Throwable $e) {
+            // ignore
+        }
+
+        foreach ($candidates as $raw) {
+            if ($raw === '') {
+                continue;
+            }
+            $url = $this->normalizeNotifyUrl($raw);
+            if ($url !== '' && filter_var($url, FILTER_VALIDATE_URL)) {
+                if (stripos($url, 'https://') === 0) {
+                    return $url;
+                }
+            }
+        }
+
+        return '';
+    }
+
+    /**
+     * http 转 https（非本机）；仅域名无路径时补全回调路径
+     */
+    private function normalizeNotifyUrl(string $url): string
+    {
+        $url = trim($url);
+        if ($url === '') {
+            return '';
+        }
+        if (preg_match('#^http://#i', $url)) {
+            $host = parse_url($url, PHP_URL_HOST);
+            if ($host && !preg_match('/^(127\.0\.0\.1|localhost)$/i', (string) $host)) {
+                $url = preg_replace('#^http://#i', 'https://', $url, 1);
+            }
+        }
+        $parts = parse_url($url);
+        if ($parts === false || empty($parts['host'])) {
+            return $url;
+        }
+        $path = $parts['path'] ?? '';
+        if ($path === '' || $path === '/') {
+            $scheme = ($parts['scheme'] ?? 'https') === 'http' ? 'http' : 'https';
+            $base = $scheme . '://' . $parts['host'];
+            if (!empty($parts['port'])) {
+                $base .= ':' . $parts['port'];
+            }
+            return $base . '/api/payment/notify';
+        }
+        return $url;
+    }
     
     /**
      * 测试配置有效性
@@ -291,6 +359,84 @@ class WechatPayService
         
         return $sign === $mySign;
     }
+
+    /**
+     * 微信「查询订单」接口（按商户订单号 out_trade_no）
+     * @return array{success:bool,trade_state?:string,transaction_id?:string,message?:string}
+     */
+    public function queryOrderByOutTradeNo(string $outTradeNo): array
+    {
+        if (!$this->config) {
+            return ['success' => false, 'message' => '微信支付配置未设置'];
+        }
+        if ($outTradeNo === '') {
+            return ['success' => false, 'message' => '订单号为空'];
+        }
+
+        try {
+            $params = [
+                'appid' => $this->config->app_id,
+                'mch_id' => $this->config->mch_id,
+                'out_trade_no' => $outTradeNo,
+                'nonce_str' => $this->getNonceStr(),
+            ];
+            $params['sign'] = $this->generateSign($params);
+            $xml = $this->arrayToXml($params);
+            $response = $this->httpPost($this->apiUrl . '/pay/orderquery', $xml, 15);
+            $result = $this->xmlToArray($response);
+
+            if (($result['return_code'] ?? '') !== 'SUCCESS') {
+                return [
+                    'success' => false,
+                    'message' => $result['return_msg'] ?? '通信失败',
+                ];
+            }
+            if (!$this->verifySign($result)) {
+                Log::error('微信查单响应验签失败: ' . json_encode($result, JSON_UNESCAPED_UNICODE));
+                return ['success' => false, 'message' => '查单结果签名校验失败'];
+            }
+            if (($result['result_code'] ?? '') !== 'SUCCESS') {
+                return [
+                    'success' => false,
+                    'message' => $result['err_code_des'] ?? ($result['err_code'] ?? '查单失败'),
+                ];
+            }
+
+            return [
+                'success' => true,
+                'trade_state' => $result['trade_state'] ?? '',
+                'transaction_id' => $result['transaction_id'] ?? '',
+            ];
+        } catch (\Throwable $e) {
+            Log::warning('微信查单异常: ' . $e->getMessage());
+            return ['success' => false, 'message' => $e->getMessage()];
+        }
+    }
+
+    /**
+     * 若微信侧已支付，将本地 Payment 更新为 success（用于异步通知未到达时的补偿）
+     * @return array{updated:bool,trade_state?:string,error?:string}
+     */
+    public function syncPaymentIfWechatPaid(\app\model\Payment $payment): array
+    {
+        if ($payment->status === 'success') {
+            return ['updated' => false, 'trade_state' => 'LOCAL_SUCCESS'];
+        }
+        $q = $this->queryOrderByOutTradeNo($payment->order_no);
+        if (!$q['success']) {
+            return ['updated' => false, 'error' => $q['message'] ?? '查单失败'];
+        }
+        $state = $q['trade_state'] ?? '';
+        if ($state === 'SUCCESS') {
+            $payment->status = 'success';
+            $payment->transaction_id = $q['transaction_id'] ?: ($payment->transaction_id ?? '');
+            $payment->paid_time = date('Y-m-d H:i:s');
+            $payment->save();
+            Log::info('微信查单同步支付成功: ' . $payment->order_no);
+            return ['updated' => true, 'trade_state' => $state];
+        }
+        return ['updated' => false, 'trade_state' => $state];
+    }
     
     /**
      * 创建模拟支付订单（用于测试）
@@ -399,6 +545,11 @@ class WechatPayService
             if (!$this->config) {
                 throw new \Exception('微信支付配置未设置');
             }
+
+            $notifyUrl = $this->resolveNotifyUrl();
+            if ($notifyUrl === '') {
+                throw new \Exception('支付回调 notify_url 无效，请在后台填写 https 公网地址，例如：https://你的域名/api/payment/notify');
+            }
             
             $url = $this->apiUrl . '/pay/unifiedorder';
             
@@ -411,7 +562,7 @@ class WechatPayService
                 'out_trade_no' => $orderData['order_no'],
                 'total_fee' => intval($orderData['amount'] * 100), // 金额转为分
                 'spbill_create_ip' => request()->ip(),
-                'notify_url' => $this->config->notify_url,
+                'notify_url' => $notifyUrl,
                 'trade_type' => 'NATIVE',
             ];
             
@@ -480,6 +631,11 @@ class WechatPayService
             if (empty($orderData['openid'])) {
                 throw new \Exception('JSAPI支付需要用户openid');
             }
+
+            $notifyUrl = $this->resolveNotifyUrl();
+            if ($notifyUrl === '') {
+                throw new \Exception('支付回调 notify_url 无效，请在后台填写 https 公网地址，例如：https://你的域名/api/payment/notify');
+            }
             
             $url = $this->apiUrl . '/pay/unifiedorder';
             
@@ -492,7 +648,7 @@ class WechatPayService
                 'out_trade_no' => $orderData['order_no'],
                 'total_fee' => intval($orderData['amount'] * 100), // 金额转为分
                 'spbill_create_ip' => request()->ip(),
-                'notify_url' => $this->config->notify_url,
+                'notify_url' => $notifyUrl,
                 'trade_type' => 'JSAPI',
                 'openid' => $orderData['openid'], // JSAPI必需参数
             ];
@@ -579,6 +735,11 @@ class WechatPayService
             if (!$this->config) {
                 throw new \Exception('微信支付配置未设置');
             }
+
+            $notifyUrl = $this->resolveNotifyUrl();
+            if ($notifyUrl === '') {
+                throw new \Exception('支付回调 notify_url 无效，请在后台填写 https 公网地址，例如：https://你的域名/api/payment/notify');
+            }
             
             $url = $this->apiUrl . '/pay/unifiedorder';
             
@@ -591,7 +752,7 @@ class WechatPayService
                 'out_trade_no' => $orderData['order_no'],
                 'total_fee' => intval($orderData['amount'] * 100), // 金额转为分
                 'spbill_create_ip' => request()->ip(),
-                'notify_url' => $this->config->notify_url,
+                'notify_url' => $notifyUrl,
                 'trade_type' => 'MWEB', // H5支付类型
             ];
             
@@ -671,14 +832,32 @@ class WechatPayService
                 throw new \Exception('微信支付配置未设置');
             }
             
-            // 检查证书
+            // 检查证书与私钥路径
             if (empty($this->config->cert_path)) {
                 throw new \Exception('退款需要配置证书路径');
             }
-            
-            $certPath = root_path() . ltrim($this->config->cert_path, '/');
+
+            if (empty($this->config->key_path)) {
+                throw new \Exception('退款需要配置密钥路径');
+            }
+
+            $certPath = root_path() . ltrim((string)$this->config->cert_path, '/');
+            $keyPath = root_path() . ltrim((string)$this->config->key_path, '/');
+
             if (!file_exists($certPath)) {
-                throw new \Exception('证书文件不存在');
+                throw new \Exception('证书文件不存在: ' . $certPath);
+            }
+
+            if (!file_exists($keyPath)) {
+                throw new \Exception('密钥文件不存在: ' . $keyPath);
+            }
+
+            if (!is_readable($certPath)) {
+                throw new \Exception('证书文件不可读: ' . $certPath);
+            }
+
+            if (!is_readable($keyPath)) {
+                throw new \Exception('密钥文件不可读: ' . $keyPath);
             }
             
             $url = $this->apiUrl . '/secapi/pay/refund';
@@ -708,7 +887,7 @@ class WechatPayService
             $xml = $this->arrayToXml($params);
             
             // 发送请求（需要证书）
-            $response = $this->httpPostWithCert($url, $xml, $certPath);
+            $response = $this->httpPostWithCert($url, $xml, $certPath, $keyPath);
             
             // 解析响应
             $result = $this->xmlToArray($response);
@@ -831,7 +1010,7 @@ class WechatPayService
     /**
      * POST请求（带证书）
      */
-    private function httpPostWithCert($url, $data, $certPath, $timeout = 10)
+    private function httpPostWithCert($url, $data, $certPath, $keyPath, $timeout = 10)
     {
         $ch = curl_init();
         curl_setopt($ch, CURLOPT_URL, $url);
@@ -846,7 +1025,7 @@ class WechatPayService
         curl_setopt($ch, CURLOPT_SSLCERTTYPE, 'PEM');
         curl_setopt($ch, CURLOPT_SSLCERT, $certPath);
         curl_setopt($ch, CURLOPT_SSLKEYTYPE, 'PEM');
-        curl_setopt($ch, CURLOPT_SSLKEY, $certPath);
+        curl_setopt($ch, CURLOPT_SSLKEY, $keyPath);
         
         $response = curl_exec($ch);
         

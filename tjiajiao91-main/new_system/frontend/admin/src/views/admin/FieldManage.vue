@@ -394,7 +394,13 @@ const loadBannerList = async () => {
   try {
     const res = await getBannerList({ limit: 100 })
     if (res.success) {
-      bannerList.value = res.data || []
+      const list = res.data || []
+      // 统一字段类型，避免 el-switch 因 "1"/"0" 字符串导致回弹
+      bannerList.value = list.map((item) => ({
+        ...item,
+        status: item && item.status !== undefined && item.status !== null ? Number(item.status) : 0,
+        sort_order: item && item.sort_order !== undefined && item.sort_order !== null ? Number(item.sort_order) : 0
+      }))
     }
   } catch (error) {
     console.error('加载横幅列表失败:', error)
@@ -489,7 +495,7 @@ const handleToggleStatus = async (row) => {
     const res = await toggleBannerStatus(row.id)
     if (res.success) {
       ElMessage.success('状态更新成功')
-      loadBannerList()
+      // 不强制立刻重刷列表，避免接口返回值类型/缓存导致 UI “回弹”
     } else {
       ElMessage.error(res.error || '状态更新失败')
       // 失败时恢复原状态

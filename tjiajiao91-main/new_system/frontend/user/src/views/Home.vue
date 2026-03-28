@@ -116,214 +116,10 @@
       </div>
     </div>
 
-    <!-- 搜索筛选区域 - 滚动时置顶 -->
-    <div class="sticky-search-area" :class="{ 'is-compact': isFilterCompact }">
-      <div class="container">
-        <!-- 筛选面板 - 玻璃态效果 -->
-        <div v-show="!isFilterCompact" class="filter-wrapper">
-          <FilterPanel @search="handleFilterSearch" @reset="handleReset" />
-        </div>
-        
-        <!-- 列表标题和Tab - 现代化设计 -->
-        <div class="list-section">
-          <div class="tab-row">
-            <!-- Tab容器 -->
-            <div class="tab-container">
-              <div class="tab-nav">
-                <div 
-                  class="tab-item"
-                  :class="{ 'active': activeTab === 'all' }"
-                  @click="changeTab('all')"
-                >
-                  <el-icon class="tab-icon"><Grid /></el-icon>
-                  <span class="tab-text">全部</span>
-                  <span class="tab-count">{{ total }}</span>
-                </div>
-                <div 
-                  class="tab-item tab-hot"
-                  :class="{ 'active': activeTab === 'recommend' }"
-                  @click="changeTab('recommend')"
-                >
-                  <el-icon class="tab-icon"><Sunny /></el-icon>
-                  <span class="tab-text">推荐</span>
-                  <div class="hot-indicator">
-                    <el-icon class="hot-icon"><Lightning /></el-icon>
-                    <span>HOT</span>
-                  </div>
-                </div>
-              </div>
-              <div class="tab-indicator" :style="indicatorStyle"></div>
-            </div>
-            
-            <!-- 统计信息（与Tab并排） -->
-            <div class="stats-info">
-              <span class="result-count">共 {{ total }} 条</span>
-            </div>
+    <!-- 首页布局重构占位区域（已移除筛选与家教信息单） -->
+    <div class="homepage-redesign-placeholder"></div>
 
-            <!-- 折叠后的快速筛选条（排在最右侧） -->
-            <div v-show="isFilterCompact" class="quick-filter-inline">
-                <el-button 
-                  type="primary" 
-                  size="small" 
-                  :icon="Filter" 
-                  @click="toggleFilter"
-                  class="expand-btn"
-                >
-                  展开筛选
-                </el-button>
-                <div class="current-filters" v-if="hasActiveFilters">
-                  <el-tag 
-                    v-if="searchParams.city_id" 
-                    closable 
-                    @close="clearFilter('city_id')"
-                    size="small"
-                  >
-                    {{ getCurrentFilterLabel('city') }}
-                  </el-tag>
-                  <el-tag 
-                    v-if="searchParams.district_id" 
-                    closable 
-                    @close="clearFilter('district_id')"
-                    size="small"
-                  >
-                    {{ getCurrentFilterLabel('district') }}
-                  </el-tag>
-                  <el-tag 
-                    v-if="searchParams.subject_id" 
-                    closable 
-                    @close="clearFilter('subject_id')"
-                    size="small"
-                  >
-                    {{ getCurrentFilterLabel('subject') }}
-                  </el-tag>
-                  <el-tag 
-                    v-if="searchParams.grade" 
-                    closable 
-                    @close="clearFilter('grade')"
-                    size="small"
-                  >
-                    {{ searchParams.grade }}
-                  </el-tag>
-                  <el-tag 
-                    v-if="searchParams.keyword" 
-                    closable 
-                    @close="clearFilter('keyword')"
-                    size="small"
-                    type="info"
-                  >
-                    "{{ searchParams.keyword }}"
-                  </el-tag>
-                </div>
-              </div>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <div class="container">
-
-      <!-- 家教列表 -->
-      <div v-loading="loading" class="tutor-list" element-loading-text="加载中...">
-        <el-row :gutter="20">
-          <el-col 
-            v-for="tutor in tutorList" 
-            :key="tutor.id" 
-            :xs="24" 
-            :sm="12" 
-            :md="8"
-            class="tutor-col"
-          >
-            <TutorCard :tutor="tutor" @view-detail="viewDetail" @show-contact="showContactDialog" />
-          </el-col>
-        </el-row>
-
-        <!-- 空状态 -->
-        <div v-if="!loading && tutorList.length === 0" class="empty-state">
-          <el-icon class="empty-icon"><DocumentDelete /></el-icon>
-          <p class="empty-text">暂无相关信息</p>
-          <p class="empty-tip">试试调整筛选条件或搜索关键词</p>
-          <el-button type="primary" @click="handleReset" plain>
-            <el-icon><RefreshRight /></el-icon>
-            重置筛选
-          </el-button>
-        </div>
-      </div>
-
-      <!-- 加载中提示 -->
-      <div class="loading-more" v-if="tutorList.length > 0 && hasMore && loadingMore">
-        <el-icon class="is-loading"><Loading /></el-icon>
-        <span>加载中...</span>
-      </div>
-
-      <!-- 滚动加载触发器 -->
-      <div class="load-trigger" ref="loadTrigger" v-if="tutorList.length > 0 && hasMore"></div>
-
-      <!-- 已加载全部 -->
-      <div class="no-more" v-if="tutorList.length > 0 && !hasMore && total > 0">
-        <el-divider>
-          <el-icon><Check /></el-icon>
-          已加载全部 {{ total }} 条信息
-        </el-divider>
-        <div class="load-tip">共 {{ total }} 条家教信息</div>
-      </div>
-    </div>
-
-    <!-- 返回顶部 - 火箭 -->
-    <el-backtop :right="30" :bottom="30" class="rocket-backtop">
-      <div class="rocket-icon">🚀</div>
-    </el-backtop>
-
-    <!-- 联系信息弹窗 -->
-    <el-dialog
-      v-model="contactDialogVisible"
-      title="派单组联系方式"
-      width="400px"
-      :close-on-click-modal="false"
-      center
-    >
-      <div class="contact-dialog">
-        <div class="contact-card" v-if="currentDispatcher">
-          <div class="contact-row">
-            <span class="contact-label-text">昵称</span>
-            <div class="contact-content">
-              <span class="contact-text">{{ currentDispatcher?.nickname || currentDispatcher?.username || '暂无' }}</span>
-              <el-button 
-                size="small" 
-                text
-                @click="copyText(currentDispatcher?.nickname || currentDispatcher?.username)"
-                class="copy-icon-btn"
-              >
-                <el-icon><DocumentCopy /></el-icon>
-              </el-button>
-            </div>
-          </div>
-
-          <div class="contact-row" v-if="currentDispatcher?.contact">
-            <span class="contact-label-text">微信号</span>
-            <div class="contact-content">
-              <span class="contact-text wechat">{{ currentDispatcher.contact }}</span>
-              <el-button 
-                size="small" 
-                text
-                @click="copyText(currentDispatcher.contact)"
-                class="copy-icon-btn"
-              >
-                <el-icon><DocumentCopy /></el-icon>
-              </el-button>
-            </div>
-          </div>
-        </div>
-
-        <div class="contact-tips">
-          <el-icon><InfoFilled /></el-icon>
-          <span>点击复制按钮可复制微信号，然后添加微信联系派单员</span>
-        </div>
-      </div>
-      
-      <template #footer>
-        <el-button @click="contactDialogVisible = false">关闭</el-button>
-      </template>
-    </el-dialog>
+    <SiteFooter />
   </div>
 </template>
 
@@ -341,6 +137,7 @@ import { getTutorList } from '@/api/tutor'
 import FilterPanel from '@/components/FilterPanel.vue'
 import TutorCard from '@/components/TutorCard.vue'
 import { initWechatShare, shareToWechatFriend, shareToWechatTimeline } from '@/utils/wechatShare'
+import SiteFooter from '@/components/SiteFooter.vue'
 
 const router = useRouter()
 
@@ -1110,6 +907,10 @@ const resetAndReload = () => {
   margin-top: -40px;
   position: relative;
   z-index: 2;
+}
+
+.homepage-redesign-placeholder {
+  min-height: 120px;
 }
 
 .stats-container {

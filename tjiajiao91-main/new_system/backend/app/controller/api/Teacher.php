@@ -36,6 +36,7 @@ class Teacher extends BaseController
             $query = Db::name('teachers')->alias('t'); // 实际表名为 fa_teachers，框架会自动加前缀
 
             // 关键词搜索：支持姓名、学校、专业、科目、自我介绍、教学经历
+            // 同时支持教师编号搜索：T1022 / 1022（teacher_no 或 id 精确匹配）
             if ($keyword !== '') {
                 $query->where(function($q) use ($keyword) {
                     $q->whereLike('t.name', "%{$keyword}%")
@@ -44,6 +45,15 @@ class Teacher extends BaseController
                       ->whereOr('t.subject_names', 'like', "%{$keyword}%")
                       ->whereOr('t.self_intro', 'like', "%{$keyword}%")
                       ->whereOr('t.experience', 'like', "%{$keyword}%");
+
+                    $k = trim((string)$keyword);
+                    if (preg_match('/^T?\d+$/i', $k)) {
+                        $num = (int)preg_replace('/\D+/', '', $k);
+                        if ($num > 0) {
+                            $q->whereOr('t.id', '=', $num)
+                              ->whereOr('t.teacher_no', '=', $num);
+                        }
+                    }
                 });
             }
             

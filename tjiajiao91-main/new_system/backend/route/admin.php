@@ -256,6 +256,14 @@ Route::group('admin/api', function () {
         Route::post('mini-users/:id/toggle-status', 'admin.MiniProgramUser/toggleStatus');
         Route::put('mini-users/:id', 'admin.MiniProgramUser/update');
         Route::delete('mini-users/:id', 'admin.MiniProgramUser/delete');
+
+        // 小程序配置管理（多端）
+        Route::get('mini-program-configs', 'admin.MiniProgramConfig/index');
+        Route::get('mini-program-configs/:id', 'admin.MiniProgramConfig/read');
+        Route::post('mini-program-configs', 'admin.MiniProgramConfig/save');
+        Route::put('mini-program-configs/:id', 'admin.MiniProgramConfig/update');
+        Route::put('mini-program-configs/:id/toggle', 'admin.MiniProgramConfig/toggle');
+        Route::put('mini-program-configs/:id/default', 'admin.MiniProgramConfig/setDefault');
         
         // 支付配置管理
         // 测试接口必须最先定义

@@ -87,14 +87,27 @@ class Invitation extends BaseController
                 ->select()
                 ->toArray();
             
-            // 获取排行榜（前10名）
-            $rankingList = Db::name('invitation_ranking')
-                ->field('nickname, avatar_url, verified_invitations, total_coupon_amount')
-                ->order('ranking_score', 'desc')
-                ->order('last_invite_time', 'desc')
+            // 获取排行榜（前10名）；展示信息以 users 表为准，避免 invitation_ranking 内快照过期
+            $rankingRows = Db::name('invitation_ranking')
+                ->alias('r')
+                ->leftJoin('users u', 'r.openid = u.openid')
+                ->field('r.nickname, r.avatar_url, r.verified_invitations, r.total_coupon_amount, u.nickname as join_nickname, u.avatar as join_avatar')
+                ->order('r.ranking_score', 'desc')
+                ->order('r.last_invite_time', 'desc')
                 ->limit(10)
                 ->select()
                 ->toArray();
+            $rankingList = [];
+            foreach ($rankingRows as $rr) {
+                $jn = $rr['join_nickname'] ?? '';
+                $ja = $rr['join_avatar'] ?? '';
+                $rankingList[] = [
+                    'nickname' => ($jn !== '' && $jn !== null) ? $jn : ($rr['nickname'] ?? ''),
+                    'avatar_url' => ($ja !== '' && $ja !== null) ? $ja : ($rr['avatar_url'] ?? ''),
+                    'verified_invitations' => $rr['verified_invitations'],
+                    'total_coupon_amount' => $rr['total_coupon_amount'],
+                ];
+            }
             
             // 统计总参与人数
             $totalParticipants = Db::name('invitation_ranking')->count();

@@ -252,6 +252,14 @@ class TeacherRegister extends BaseController
         
         $teacherId = $data['id'];
         unset($data['id']);
+
+        // 小程序端「正式提交简历/重新提交审核」时传 true；已通过教师即使数据与库中一致也要回到待审核
+        $submitForReview = false;
+        if (isset($data['submit_for_review'])) {
+            $v = $data['submit_for_review'];
+            $submitForReview = ($v === true || $v === 1 || $v === '1' || $v === 'true');
+        }
+        unset($data['submit_for_review']);
         
         try {
             // 查找教师记录
@@ -331,13 +339,27 @@ class TeacherRegister extends BaseController
             }
             
             // 更新时不再根据认证材料自动改为「已拒绝」，
-            // 审核结果只由后台人工审核接口决定，这里不动 review_status 及审核备注/时间
-            // 但若当前为「已拒绝」，用户重新提交后应回到「待审核」
+            // 审核结果主要由后台人工审核接口决定。
+            // 若当前为「已拒绝」，用户任意更新后应回到「待审核」
             if ($teacher->review_status === 'rejected') {
                 $updateData['review_status'] = 'pending';
                 $updateData['review_note'] = null;
                 $updateData['review_time'] = null;
                 $updateData['reviewer_id'] = null;
+            }
+
+            // 若当前为「已通过」：用户正式提交(submit_for_review) 或审核相关内容有变动 → 回到待审核
+            if ($teacher->review_status === 'approved') {
+                $contentChanged = $this->approvedTeacherAuditContentChanged($teacher, $updateData, $allowedFields);
+                if ($submitForReview || $contentChanged) {
+                    $updateData['review_status'] = 'pending';
+                    $updateData['review_note'] = null;
+                    $updateData['review_time'] = null;
+                    $updateData['reviewer_id'] = null;
+                    $updateData['real_name_verified'] = 0;
+                    $updateData['education_verified'] = 0;
+                    $updateData['teacher_verified'] = 0;
+                }
             }
             
             // 更新教师记录
@@ -873,6 +895,68 @@ class TeacherRegister extends BaseController
         } else {
             $data['birth_date'] = $value;
         }
+    }
+
+    /**
+     * 已通过审核的教师：本次更新是否改动了任意审核相关内容（与 allowedFields 对齐）
+     * 排除 openid、wechat_nickname（账号/微信同步字段，非用户编辑的简历与认证材料）
+     */
+    private function approvedTeacherAuditContentChanged(Teacher $teacher, array $updateData, array $allowedFields): bool
+    {
+        $auditFieldKeys = array_values(array_diff($allowedFields, ['openid', 'wechat_nickname']));
+        foreach ($auditFieldKeys as $field) {
+            if (!array_key_exists($field, $updateData)) {
+                continue;
+            }
+            $oldVal = $teacher->getData($field);
+            $newVal = $updateData[$field];
+            if (!$this->auditFieldValuesEqual($field, $oldVal, $newVal)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * 比较单字段是否与库中一致（JSON 字段做规范化后再比）
+     */
+    private function auditFieldValuesEqual(string $field, $oldVal, $newVal): bool
+    {
+        $jsonLike = ['photos', 'experience', 'advantage_tags'];
+        if (in_array($field, $jsonLike, true)) {
+            return $this->normalizeJsonForAuditCompare($oldVal) === $this->normalizeJsonForAuditCompare($newVal);
+        }
+        if (in_array($field, ['location_longitude', 'location_latitude', 'hourly_rate'], true)) {
+            $o = ($oldVal === null || $oldVal === '') ? null : (float) $oldVal;
+            $n = ($newVal === null || $newVal === '') ? null : (float) $newVal;
+            if ($o === null && $n === null) {
+                return true;
+            }
+            if ($o === null || $n === null) {
+                return false;
+            }
+            return abs($o - $n) < 0.0000001;
+        }
+        return trim((string) $oldVal) === trim((string) $newVal);
+    }
+
+    /**
+     * JSON 存储字段转可比较字符串（空与 null 视为一致）
+     */
+    private function normalizeJsonForAuditCompare($value): string
+    {
+        if ($value === null || $value === '') {
+            return '';
+        }
+        $str = is_string($value) ? $value : json_encode($value, JSON_UNESCAPED_UNICODE);
+        $decoded = json_decode($str, true);
+        if ($decoded === null && json_last_error() !== JSON_ERROR_NONE) {
+            return trim($str);
+        }
+        if (!is_array($decoded)) {
+            return trim((string) $value);
+        }
+        return json_encode($decoded, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
     }
 
     /**

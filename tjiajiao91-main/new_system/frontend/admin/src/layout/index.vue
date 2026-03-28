@@ -51,6 +51,10 @@
             <el-icon><Iphone /></el-icon>
             <template #title>小程序用户</template>
           </el-menu-item>
+          <el-menu-item index="/mini-program-config">
+            <el-icon><Setting /></el-icon>
+            <template #title>小程序管理</template>
+          </el-menu-item>
           <el-menu-item index="/invitation">
             <el-icon><Tickets /></el-icon>
             <template #title>邀请管理</template>
@@ -131,6 +135,10 @@
         <el-menu-item index="/mini-users">
           <el-icon><Iphone /></el-icon>
           <template #title>小程序用户</template>
+        </el-menu-item>
+        <el-menu-item index="/mini-program-config">
+          <el-icon><Setting /></el-icon>
+          <template #title>小程序管理</template>
         </el-menu-item>
         <el-menu-item index="/invitation">
           <el-icon><Tickets /></el-icon>
@@ -354,6 +362,7 @@ import {
   Fold,
   ArrowDown,
   Iphone,
+  Setting,
   Message,
   Notification,
   Close,
@@ -562,12 +571,12 @@ const getLogType = (type) => {
   return typeMap[type] || 'info'
 }
 
-// 监听路由变化，管理标签页
-watch(() => route.path, (newPath) => {
-  if (newPath) {
-    const title = tabsStore.getPageTitle(newPath)
+// 监听路由变化，管理标签页（使用 fullPath 保留 query）
+watch(() => route.fullPath, (newFullPath) => {
+  if (newFullPath) {
+    const title = tabsStore.getPageTitle(newFullPath)
     const closable = true  // 所有标签都可关闭
-    tabsStore.addTab(newPath, title, closable)
+    tabsStore.addTab(newFullPath, title, closable)
   }
   // 路由切换时关闭移动端 drawer
   if (isMobile.value) {

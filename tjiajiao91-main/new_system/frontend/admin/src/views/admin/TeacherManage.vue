@@ -46,7 +46,7 @@
           <el-form-item>
             <el-input 
               v-model="searchForm.keyword" 
-              placeholder="搜索姓名/手机号/微信号" 
+              placeholder="搜索编号/姓名/手机号/微信号" 
               clearable 
               style="width: 220px"
               prefix-icon="Search"
@@ -277,8 +277,8 @@
           :total="total"
           :page-sizes="[10, 20, 50, 100]"
           layout="total, sizes, prev, pager, next, jumper"
-          @size-change="handleSearch"
-          @current-change="handleSearch"
+          @size-change="handleSizeChange"
+          @current-change="handleCurrentChange"
         />
       </div>
     </el-card>
@@ -1275,26 +1275,26 @@
         <el-form-item label="当前审核状态">
           <div style="min-width: 80px; display: inline-block;">
             <el-tag 
-              v-if="reviewForm.current_status === 'pending'" 
+              v-if="reviewForm.review_status === 'pending'" 
               type="warning"
             >
               待审核
             </el-tag>
             <el-tag 
-              v-else-if="reviewForm.current_status === 'approved'" 
+              v-else-if="reviewForm.review_status === 'approved'" 
               type="success"
             >
               审核通过
             </el-tag>
             <el-tag 
-              v-else-if="reviewForm.current_status === 'rejected'" 
+              v-else-if="reviewForm.review_status === 'rejected'" 
               type="danger"
             >
               审核拒绝
             </el-tag>
           </div>
           <span style="margin-left: 12px; color: #909399; font-size: 13px;">
-            （至少一项认证通过即为审核通过）
+            （状态按钮可自由切换。选「审核通过」保存时若三项均未认证将提示并无法提交）
           </span>
         </el-form-item>
 
@@ -1309,9 +1309,9 @@
         
         <el-form-item label="审核结果说明">
           <div style="font-size: 13px; color: #606266; line-height: 1.8;">
-            系统会根据上方三个认证开关自动判定整体审核结果：
-            <br />- 任意一项认证开关为“已认证”时，整体审核结果为 <span style="color:#67c23a;font-weight:600;">审核通过</span>；
-            <br />- 三项认证均未开启时，整体审核结果为 <span style="color:#f56c6c;font-weight:600;">审核拒绝</span>，且如未填写备注会使用统一默认备注。
+            单选由管理员自行选择；点「保存」时校验并写入后端。
+            <br />- 保存时若选择 <span style="color:#67c23a;font-weight:600;">审核通过</span>，须至少一项认证为「已认证」，否则提示「请至少通过一项审核材料」且不会提交；
+            <br />- 保存时若选择 <span style="color:#f56c6c;font-weight:600;">审核拒绝</span> 且存在已通过材料，会二次确认后再提交；拒绝未填备注时仍用默认文案。
           </div>
         </el-form-item>
         
@@ -1335,9 +1335,10 @@
         >
           <template #default>
             <div style="font-size: 13px; line-height: 1.6;">
-              <p style="margin: 0 0 8px 0;">• 认证开关：控制各项认证状态，只有上传了对应证明材料才能开启认证</p>
-              <p style="margin: 0 0 8px 0;">• 审核状态：控制教师的整体审核结果</p>
-              <p style="margin: 0;">• 至少一项认证通过即可设置为"审核通过"</p>
+              <p style="margin: 0 0 8px 0;">• 认证开关：控制各项材料是否通过，只有上传了对应证明材料才能开启</p>
+              <p style="margin: 0 0 8px 0;">• 设置审核状态：保存到教师的整体审核结果（待审核/通过/拒绝）</p>
+              <p style="margin: 0 0 8px 0;">• 保存时若选「审核通过」，须至少一项认证为「已认证」，否则无法提交</p>
+              <p style="margin: 0;">• 保存时若选「审核拒绝」且存在已通过材料，会二次确认后再提交</p>
             </div>
           </template>
         </el-alert>
@@ -1568,6 +1569,19 @@ const handleTabChange = (tabName) => {
 
 // 搜索
 const handleSearch = () => {
+  currentPage.value = 1
+  loadData()
+}
+
+// 分页：切页不重置到第一页
+const handleCurrentChange = (page) => {
+  currentPage.value = page
+  loadData()
+}
+
+// 分页：切换每页条数时回到第一页
+const handleSizeChange = (size) => {
+  pageSize.value = size
   currentPage.value = 1
   loadData()
 }
@@ -1897,7 +1911,6 @@ const handleReview = (row) => {
     id_card_back: row.id_card_back || '',
     education_certificate: row.education_certificate || '',
     teacher_certificate: row.teacher_certificate || '',
-    current_status: row.review_status || 'pending', // 保存原始状态用于显示
     review_status: row.review_status || 'pending',
     real_name_verified: row.real_name_verified || 0,
     education_verified: row.education_verified || 0,
@@ -1905,18 +1918,11 @@ const handleReview = (row) => {
     review_note: row.review_note || ''
   }
 
-  // 打开弹窗时，根据三项认证自动推导当前审核结果，并填充默认备注
-  const hasAnyCertification =
-    !!reviewForm.value.real_name_verified ||
-    !!reviewForm.value.education_verified ||
-    !!reviewForm.value.teacher_verified
-  const status = hasAnyCertification ? 'approved' : 'rejected'
-  reviewForm.value.current_status = status
-  reviewForm.value.review_status = status
+  // 整体审核状态以列表数据为准（如用户重新提交后为待审核），不因三项认证未开启而误判为拒绝
   const note = (reviewForm.value.review_note || '').trim()
   const allDefaultNotes = Object.values(defaultReviewNotes)
   if (!note || allDefaultNotes.includes(note)) {
-    reviewForm.value.review_note = defaultReviewNotes[status] || ''
+    reviewForm.value.review_note = defaultReviewNotes[reviewForm.value.review_status] || ''
   }
 
   reviewVisible.value = true
@@ -1992,13 +1998,36 @@ const handleSaveReview = async () => {
     saveLoading.value = true
     const defaultRejectNote = '您的提交认证资料不齐全，请重新上传完整且有效的证件信息重新审核。'
 
-    // 根据认证开关自动判定审核结果
+    // 整体结果以单选为准；选「审核通过」时再校验至少一项材料认证
     const hasAnyCertification = !!(
       reviewForm.value.real_name_verified ||
       reviewForm.value.education_verified ||
       reviewForm.value.teacher_verified
     )
-    const finalStatus = hasAnyCertification ? 'approved' : 'rejected'
+    const finalStatus = reviewForm.value.review_status
+
+    if (finalStatus === 'approved' && !hasAnyCertification) {
+      ElMessage.warning('请至少通过一项审核材料')
+      saveLoading.value = false
+      return
+    }
+
+    if (finalStatus === 'rejected' && hasAnyCertification) {
+      try {
+        await ElMessageBox.confirm(
+          '当前审核材料存在已通过的材料，确定拒绝吗？',
+          '提示',
+          {
+            confirmButtonText: '确定拒绝',
+            cancelButtonText: '取消',
+            type: 'warning'
+          }
+        )
+      } catch {
+        saveLoading.value = false
+        return
+      }
+    }
 
     // 若为拒绝且未填写备注，则使用默认备注
     let finalReviewNote = (reviewForm.value.review_note || '').trim()
@@ -2021,7 +2050,6 @@ const handleSaveReview = async () => {
     if (res.success) {
       ElMessage.success('审核状态更新成功')
       reviewVisible.value = false
-      reviewForm.value.current_status = finalStatus
       // 重新加载数据
       await loadData()
       await loadStatistics()
@@ -2036,31 +2064,6 @@ const handleSaveReview = async () => {
   }
 }
 
-// 审核弹窗中：监听三个认证开关，自动联动整体审核状态，并根据状态设置默认备注
-watch(
-  () => [
-    reviewForm.value?.real_name_verified,
-    reviewForm.value?.education_verified,
-    reviewForm.value?.teacher_verified
-  ].filter(v => v !== undefined),
-  (vals) => {
-    // 组件初始挂载时，reviewForm 还未通过 handleReview 填充，此时不做任何处理
-    if (!reviewVisible.value || !reviewForm.value || !reviewForm.value.id) return
-    if (!vals || vals.length === 0) return
-
-    const hasAny = vals.some(v => Number(v) === 1)
-    const targetStatus = hasAny ? 'approved' : 'rejected'
-    reviewForm.value.current_status = targetStatus
-    reviewForm.value.review_status = targetStatus
-
-    const note = (reviewForm.value.review_note || '').trim()
-    const allDefaultNotes = Object.values(defaultReviewNotes)
-    if (!note || allDefaultNotes.includes(note)) {
-      reviewForm.value.review_note = defaultReviewNotes[targetStatus] || ''
-    }
-  }
-)
-
 // 审核弹窗中：监听“设置审核状态”单选切换，同步更新审核备注为对应状态的默认文案
 watch(
   () => reviewForm.value?.review_status,
@@ -2071,6 +2074,29 @@ watch(
     const allDefaultNotes = Object.values(defaultReviewNotes)
     if (!note || allDefaultNotes.includes(note)) {
       reviewForm.value.review_note = defaultReviewNotes[newStatus] || ''
+    }
+  }
+)
+
+// 审核弹窗内的前端便捷联动：
+// 当审核员将任一认证开关切为“已认证”时，自动将整体审核状态切到“审核通过”。
+// 该逻辑仅作用于当前弹窗交互，不参与后端自动判定，避免受用户重新提交影响。
+watch(
+  () => [
+    reviewForm.value?.real_name_verified,
+    reviewForm.value?.education_verified,
+    reviewForm.value?.teacher_verified
+  ],
+  (newValues, oldValues) => {
+    if (!reviewVisible.value || !reviewForm.value || !reviewForm.value.id) return
+    if (!Array.isArray(oldValues)) return
+
+    const hasAnyCertification = newValues.some(value => Number(value) === 1)
+    const switchedToCertified = newValues.some((value, idx) => Number(value) === 1 && Number(oldValues[idx]) !== 1)
+    if (!hasAnyCertification || !switchedToCertified) return
+
+    if (reviewForm.value.review_status !== 'approved') {
+      reviewForm.value.review_status = 'approved'
     }
   }
 )

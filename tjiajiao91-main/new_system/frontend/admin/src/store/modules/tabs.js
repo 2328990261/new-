@@ -8,6 +8,14 @@ export const useTabsStore = defineStore('tabs', {
   }),
   
   actions: {
+    getPathname(fullPath) {
+      try {
+        return new URL(fullPath, 'http://dummy.com').pathname
+      } catch (e) {
+        // 兜底：去掉 query/hash
+        return (fullPath || '').split('?')[0].split('#')[0]
+      }
+    },
     addTab(path, title, closable = true) {  // 默认改为 true，所有标签都可关闭
       const existingTab = this.tabs.find(tab => tab.path === path)
       if (!existingTab) {
@@ -151,59 +159,75 @@ export const useTabsStore = defineStore('tabs', {
     },
     
     getComponentName(path) {
-      if (path.startsWith('/leads/') && path !== '/leads') {
+      const pathname = this.getPathname(path)
+      if (pathname.startsWith('/leads/') && pathname !== '/leads') {
         return 'LeadFollowDetail'
       }
-      if (path === '/leads') {
+      if (pathname === '/leads') {
         return 'LeadManage'
       }
-      if (path === '/tutor') {
+      if (pathname === '/tutor') {
         return 'TutorManage'
       }
-      if (path === '/teachers') {
+      if (pathname === '/teachers') {
         return 'TeacherManage'
       }
-      if (path === '/orders') {
+      if (pathname === '/orders') {
         return 'OrderManage'
+      }
+      if (pathname === '/mini-program-config') {
+        return 'MiniProgramConfigManage'
       }
       return null
     },
     
     isDetailPage(path) {
-      return /\/leads\/\d+/.test(path) || 
-             /\/tutor\/\d+/.test(path) || 
-             /\/teachers\/\d+/.test(path) || 
-             /\/orders\/\d+/.test(path)
+      const pathname = this.getPathname(path)
+      return /\/leads\/\d+/.test(pathname) || 
+             /\/tutor\/\d+/.test(pathname) || 
+             /\/teachers\/\d+/.test(pathname) || 
+             /\/orders\/\d+/.test(pathname) ||
+             /\/payment\/\d+/.test(pathname) ||
+             /\/payment-view\/\d+/.test(pathname)
     },
     
     getPageTitle(path) {
       // 从 URL 中提取参数
       const url = new URL(path, 'http://dummy.com')
       const leadNo = url.searchParams.get('lead_no')
+      const pathname = url.pathname
       
-      if (path.startsWith('/leads/') && path !== '/leads') {
+      if (pathname.startsWith('/leads/') && pathname !== '/leads') {
         // 如果有线索编号参数，使用线索编号
         if (leadNo) {
           return `线索${leadNo}`
         }
         // 否则使用 ID
-        const id = path.split('/')[2].split('?')[0]
+        const id = pathname.split('/')[2]
         return `线索${id}`
       }
-      if (path.startsWith('/tutor/') && path !== '/tutor') {
-        const id = path.split('/')[2].split('?')[0]
+      if (pathname.startsWith('/tutor/') && pathname !== '/tutor') {
+        const id = pathname.split('/')[2]
         return `家教${id}`
       }
-      if (path.startsWith('/teachers/') && path !== '/teachers') {
-        const id = path.split('/')[2].split('?')[0]
+      if (pathname.startsWith('/teachers/') && pathname !== '/teachers') {
+        const id = pathname.split('/')[2]
         return `教师${id}`
       }
-      if (path.startsWith('/orders/') && path !== '/orders') {
-        const id = path.split('/')[2].split('?')[0]
+      if (pathname.startsWith('/orders/') && pathname !== '/orders') {
+        const id = pathname.split('/')[2]
         return `订单${id}`
       }
-      if (path.startsWith('/applications/') && path !== '/applications') {
-        const id = path.split('/')[2].split('?')[0]
+      if (pathname.startsWith('/payment/') && pathname !== '/payment') {
+        const id = pathname.split('/')[2]
+        return `退款${id}`
+      }
+      if (pathname.startsWith('/payment-view/') && pathname !== '/payment-view') {
+        const id = pathname.split('/')[2]
+        return `支付${id}`
+      }
+      if (pathname.startsWith('/applications/') && pathname !== '/applications') {
+        const id = pathname.split('/')[2]
         return `投递详情 #${id}`
       }
       
@@ -216,6 +240,7 @@ export const useTabsStore = defineStore('tabs', {
         '/dashboard': '仪表盘',
         '/admin': '管理员',
         '/mini-users': '小程序用户',
+        '/mini-program-config': '小程序管理',
         '/fields': '基础配置',
         '/notification': '通知配置',
         '/email-logs': '邮箱日志',
@@ -225,7 +250,7 @@ export const useTabsStore = defineStore('tabs', {
         '/city-lights': '城市点亮',
         '/data-import': '数据导入'
       }
-      return titleMap[path] || '未知页面'
+      return titleMap[pathname] || '未知页面'
     }
   }
 })

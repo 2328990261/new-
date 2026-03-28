@@ -1,0 +1,43 @@
+/* 使用 uni-ui 图标 */
+.iconfont {
+  font-family: 'uniicons' !important;
+  font-style: normal;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+.icon-search:before { content: '\e615'; }
+.icon-add:before { content: '\e61a'; }
+.icon-filter:before { content: '\e60e'; }
+.icon-time:before { content: '\e60f'; }
+.icon-money:before { content: '\e610'; }
+.icon-location:before { content: '\e611'; }
+.icon-edit:before { content: '\e612'; }
+.icon-delete:before { content: '\e613'; }
+.icon-close:before { content: '\e614'; }
+.icon-check:before { content: '\e616'; }
+.icon-arrow-right:before { content: '\e617'; }
+.icon-arrow-down:before { content: '\e618'; }
+.icon-home:before { content: '\e619'; }
+.icon-user:before { content: '\e61b'; }
+.icon-teacher:before { content: '\e61c'; }
+.icon-book:before { content: '\e61d'; }
+.icon-star:before { content: '\e61e'; }
+.icon-star-fill:before { content: '\e61f'; }
+.icon-heart:before { content: '\e620'; }
+.icon-heart-fill:before { content: '\e621'; }
+.icon-message:before { content: '\e622'; }
+.icon-phone:before { content: '\e623'; }
+.icon-setting:before { content: '\e624'; }
+.icon-help:before { content: '\e625'; }
+.icon-info:before { content: '\e626'; }
+.icon-wallet:before { content: '\e627'; }
+.icon-coupon:before { content: '\e628'; }
+.icon-order:before { content: '\e629'; }
+.icon-collect:before { content: '\e62a'; }
+.icon-shield:before { content: '\e62b'; }
+.icon-calendar:before { content: '\e62c'; }
+.icon-video:before { content: '\e62d'; }
+.icon-online:before { content: '\e62e'; }
+
+

@@ -415,11 +415,11 @@
             <el-divider content-position="left">审核状态</el-divider>
             <el-form-item label="当前审核状态">
               <div style="min-width: 80px; display: inline-block;">
-                <el-tag v-if="certForm.current_status === 'pending'" type="warning">待审核</el-tag>
-                <el-tag v-else-if="certForm.current_status === 'approved'" type="success">审核通过</el-tag>
-                <el-tag v-else-if="certForm.current_status === 'rejected'" type="danger">审核拒绝</el-tag>
+                <el-tag v-if="certForm.review_status === 'pending'" type="warning">待审核</el-tag>
+                <el-tag v-else-if="certForm.review_status === 'approved'" type="success">审核通过</el-tag>
+                <el-tag v-else-if="certForm.review_status === 'rejected'" type="danger">审核拒绝</el-tag>
               </div>
-              <span style="margin-left: 12px; color: #909399; font-size: 13px;">（至少一项认证通过即为审核通过）</span>
+              <span style="margin-left: 12px; color: #909399; font-size: 13px;">（下方单选可自由切换；点保存后写入后端。选「审核通过」保存时若三项均未认证将提示并无法提交）</span>
             </el-form-item>
             <el-form-item label="设置审核状态">
               <el-radio-group v-model="certForm.review_status">
@@ -447,9 +447,10 @@
             >
               <template #default>
                 <div style="font-size: 13px; line-height: 1.6;">
-                  <p style="margin: 0 0 8px 0;">• 认证开关：控制各项认证状态，只有上传了对应证明材料才能开启认证</p>
-                  <p style="margin: 0 0 8px 0;">• 审核状态：控制教师的整体审核结果，小程序端会展示审核拒绝备注</p>
-                  <p style="margin: 0;">• 至少一项认证通过即可设置为"审核通过"</p>
+                  <p style="margin: 0 0 8px 0;">• 认证开关：控制各项材料是否通过，只有上传了对应证明材料才能开启</p>
+                  <p style="margin: 0 0 8px 0;">• 设置审核状态：保存到教师的整体审核结果，小程序端会展示审核拒绝备注</p>
+                  <p style="margin: 0;">• 保存时若选「审核通过」，须至少一项认证为「已认证」，否则无法提交</p>
+                  <p style="margin: 8px 0 0 0;">• 保存时若选「审核拒绝」且存在已通过材料，会二次确认后再提交</p>
                 </div>
               </template>
             </el-alert>
@@ -898,7 +899,7 @@
 <script setup>
 import { ref, onMounted, computed, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import { Lock, View, ArrowLeft, ArrowRight, ArrowUp, ArrowDown, DocumentCopy, Plus, Download, Close } from '@element-plus/icons-vue'
 import { getTeacherDetail, getTeacherPrevNext, updateTeacher, generateTeacherPoster, reviewTeacher } from '@/api/teacher'
 import { useTabsStore } from '@/store/modules/tabs'
@@ -923,7 +924,6 @@ const certForm = ref({
   id_card_back: '',
   education_certificate: '',
   teacher_certificate: '',
-  current_status: 'pending',
   review_status: 'pending',
   review_note: ''
 })
@@ -1050,9 +1050,13 @@ const syncCertFormFromTeacher = () => {
     id_card_back: teacher.value.id_card_back || '',
     education_certificate: teacher.value.education_certificate || '',
     teacher_certificate: teacher.value.teacher_certificate || '',
-    current_status: status,
     review_status: status,
     review_note: noteFromServer || defaultNote
+  }
+  const n = (certForm.value.review_note || '').trim()
+  const allDefaultNotes = Object.values(defaultReviewNotes)
+  if (!n || allDefaultNotes.includes(n)) {
+    certForm.value.review_note = defaultReviewNotes[certForm.value.review_status] || ''
   }
 }
 
@@ -1063,22 +1067,6 @@ watch(activeTab, (tab) => {
 watch(teacher, (t) => {
   if (t && activeTab.value === 'certification') syncCertFormFromTeacher()
 }, { deep: true })
-
-// 监听三个认证开关：任一开启则自动将审核状态设为“审核通过”，全部关闭则为“审核拒绝”
-watch(
-  () => [
-    certForm.value.real_name_verified,
-    certForm.value.education_verified,
-    certForm.value.teacher_verified
-  ],
-  (vals) => {
-    const hasAnyVerified = vals.some(v => Number(v) === 1)
-    const targetStatus = hasAnyVerified ? 'approved' : 'rejected'
-    if (certForm.value.review_status !== targetStatus) {
-      certForm.value.review_status = targetStatus
-    }
-  }
-)
 
 // 审核状态变化时自动填充对应的默认备注（若当前备注为空或仍是旧的默认备注）
 const ensureReviewNoteForStatus = (status) => {
@@ -1202,6 +1190,31 @@ const saveCertEdit = async () => {
     if (!saveMaterialRes.success) {
       ElMessage.error(saveMaterialRes.error || '保存失败')
       return
+    }
+
+    const hasAnyCert =
+      !!certForm.value.real_name_verified ||
+      !!certForm.value.education_verified ||
+      !!certForm.value.teacher_verified
+    if (certForm.value.review_status === 'approved' && !hasAnyCert) {
+      ElMessage.warning('请至少通过一项审核材料')
+      return
+    }
+
+    if (certForm.value.review_status === 'rejected' && hasAnyCert) {
+      try {
+        await ElMessageBox.confirm(
+          '当前审核材料存在已通过的材料，确定拒绝吗？',
+          '提示',
+          {
+            confirmButtonText: '确定拒绝',
+            cancelButtonText: '取消',
+            type: 'warning'
+          }
+        )
+      } catch {
+        return
+      }
     }
 
     // 2) 再走“审核”接口，确保 review_time/reviewer_id 以及备注逻辑一致

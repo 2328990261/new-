@@ -8,6 +8,7 @@ use app\model\ServiceAgreement;
 use app\model\TutorOrder;
 use app\service\WechatPayService;
 use think\facade\Db;
+use think\facade\Log;
 use think\facade\Validate;
 
 /**
@@ -323,11 +324,16 @@ class Payment extends BaseController
                             ], $fallbackResult['data'])
                         ]);
                     } else {
-                        // 二维码支付也失败了，删除支付记录并返回错误
+                        // 二维码支付也失败了，删除支付记录并返回详细错误
                         $payment->delete();
+                        $primaryError = $payResult['message'] ?? '未知错误';
+                        $fallbackError = is_array($fallbackResult) ? ($fallbackResult['message'] ?? '未知错误') : '回退支付未执行';
+                        $debugMessage = '主支付失败：' . $primaryError . '；回退支付失败：' . $fallbackError;
+                        trace('支付创建失败: ' . $debugMessage, 'error');
                         return json([
                             'code' => 500,
-                            'message' => '支付服务暂时不可用，请联系客服处理'
+                            'message' => '支付服务暂时不可用，请联系客服处理',
+                            'error_detail' => $debugMessage
                         ]);
                     }
                 }
@@ -394,6 +400,17 @@ class Payment extends BaseController
             if (!$payment) {
                 return json(['code' => 404, 'message' => '支付订单不存在']);
             }
+
+            // 待支付时向微信查单并同步（补偿异步 notify 未到达的情况）
+            if ($payment->status === 'pending' && $payment->payment_method === 'wechat') {
+                try {
+                    $wx = new WechatPayService();
+                    $wx->syncPaymentIfWechatPaid($payment);
+                    $payment = PaymentModel::where('order_no', $orderNo)->find();
+                } catch (\Throwable $e) {
+                    Log::warning('支付状态查单同步跳过: ' . $e->getMessage());
+                }
+            }
             
             return json([
                 'code' => 200,
@@ -456,6 +473,88 @@ class Payment extends BaseController
         } catch (\Exception $e) {
             return json(['code' => 500, 'message' => '确认失败：' . $e->getMessage()]);
         }
+    }
+
+    /**
+     * 微信支付异步回调
+     * POST /api/payment/notify
+     */
+    public function notify()
+    {
+        // 允许浏览器直接访问做连通性检查
+        if (!$this->request->isPost()) {
+            return response('payment notify endpoint ok', 200, ['Content-Type' => 'text/plain; charset=utf-8']);
+        }
+
+        try {
+            $rawBody = file_get_contents('php://input');
+            if (empty($rawBody)) {
+                return response($this->wechatNotifyReply('FAIL', 'EMPTY_BODY'), 200, ['Content-Type' => 'application/xml; charset=utf-8']);
+            }
+
+            $xml = @simplexml_load_string($rawBody, 'SimpleXMLElement', LIBXML_NOCDATA);
+            if ($xml === false) {
+                return response($this->wechatNotifyReply('FAIL', 'INVALID_XML'), 200, ['Content-Type' => 'application/xml; charset=utf-8']);
+            }
+
+            $data = json_decode(json_encode($xml), true);
+            if (!is_array($data)) {
+                return response($this->wechatNotifyReply('FAIL', 'INVALID_DATA'), 200, ['Content-Type' => 'application/xml; charset=utf-8']);
+            }
+
+            // 先检查微信通信层
+            if (($data['return_code'] ?? '') !== 'SUCCESS') {
+                Log::warning('微信支付回调通信失败: ' . json_encode($data, JSON_UNESCAPED_UNICODE));
+                return response($this->wechatNotifyReply('FAIL', 'RETURN_FAIL'), 200, ['Content-Type' => 'application/xml; charset=utf-8']);
+            }
+
+            // 验签（配置正确时必须通过）
+            $wechatService = new WechatPayService();
+            if (!$wechatService->verifySign($data)) {
+                Log::error('微信支付回调验签失败: ' . json_encode($data, JSON_UNESCAPED_UNICODE));
+                return response($this->wechatNotifyReply('FAIL', 'SIGN_ERROR'), 200, ['Content-Type' => 'application/xml; charset=utf-8']);
+            }
+
+            $orderNo = $data['out_trade_no'] ?? '';
+            if ($orderNo === '') {
+                return response($this->wechatNotifyReply('FAIL', 'OUT_TRADE_NO_EMPTY'), 200, ['Content-Type' => 'application/xml; charset=utf-8']);
+            }
+
+            $payment = PaymentModel::where('order_no', $orderNo)->find();
+            if (!$payment) {
+                Log::error('微信支付回调未找到支付订单: ' . $orderNo);
+                return response($this->wechatNotifyReply('FAIL', 'ORDER_NOT_FOUND'), 200, ['Content-Type' => 'application/xml; charset=utf-8']);
+            }
+
+            // 业务成功时更新订单；失败则仅记录
+            if (($data['result_code'] ?? '') === 'SUCCESS') {
+                if ($payment->status !== 'success') {
+                    $payment->status = 'success';
+                    $payment->transaction_id = $data['transaction_id'] ?? ($payment->transaction_id ?? '');
+                    $payment->paid_time = date('Y-m-d H:i:s');
+                    $payment->save();
+                    Log::info('微信支付回调更新成功: ' . $orderNo);
+                }
+                return response($this->wechatNotifyReply('SUCCESS', 'OK'), 200, ['Content-Type' => 'application/xml; charset=utf-8']);
+            }
+
+            Log::warning('微信支付回调业务失败: ' . json_encode($data, JSON_UNESCAPED_UNICODE));
+            return response($this->wechatNotifyReply('SUCCESS', 'OK'), 200, ['Content-Type' => 'application/xml; charset=utf-8']);
+        } catch (\Throwable $e) {
+            Log::error('微信支付回调处理异常: ' . $e->getMessage());
+            return response($this->wechatNotifyReply('FAIL', 'SERVER_ERROR'), 200, ['Content-Type' => 'application/xml; charset=utf-8']);
+        }
+    }
+
+    /**
+     * 生成微信回调响应 XML
+     */
+    private function wechatNotifyReply($returnCode = 'SUCCESS', $returnMsg = 'OK')
+    {
+        return '<xml>'
+            . '<return_code><![CDATA[' . $returnCode . ']]></return_code>'
+            . '<return_msg><![CDATA[' . $returnMsg . ']]></return_msg>'
+            . '</xml>';
     }
     
     /**
@@ -601,6 +700,130 @@ class Payment extends BaseController
         } catch (\Exception $e) {
             trace('获取协议失败: ' . $e->getMessage(), 'error');
             return json(['success' => false, 'error' => '获取协议失败：' . $e->getMessage()]);
+        }
+    }
+
+    /**
+     * 获取微信网页静默授权URL（用于JSAPI）
+     * GET /api/payment/wechat-oauth-url
+     */
+    public function wechatOauthUrl()
+    {
+        try {
+            $config = Db::name('notification_config')->find(1);
+            if (!$config || empty($config['wechat_app_id'])) {
+                return json([
+                    'code' => 500,
+                    'message' => '微信公众号AppID未配置'
+                ]);
+            }
+
+            $redirectUri = $this->request->get('redirect_uri', '');
+            if (empty($redirectUri)) {
+                return json([
+                    'code' => 400,
+                    'message' => '缺少redirect_uri参数'
+                ]);
+            }
+
+            $state = substr(md5(uniqid('', true)), 0, 16);
+            $authUrl = 'https://open.weixin.qq.com/connect/oauth2/authorize?' . http_build_query([
+                'appid' => $config['wechat_app_id'],
+                'redirect_uri' => $redirectUri,
+                'response_type' => 'code',
+                'scope' => 'snsapi_base',
+                'state' => $state,
+            ]) . '#wechat_redirect';
+
+            return json([
+                'code' => 200,
+                'message' => '获取成功',
+                'data' => [
+                    'auth_url' => $authUrl,
+                    'state' => $state
+                ]
+            ]);
+        } catch (\Exception $e) {
+            return json([
+                'code' => 500,
+                'message' => '获取微信授权URL失败：' . $e->getMessage()
+            ]);
+        }
+    }
+
+    /**
+     * 微信网页授权 code 换 openid（用于JSAPI）
+     * GET /api/payment/wechat-openid
+     */
+    public function wechatOpenid()
+    {
+        try {
+            $code = $this->request->get('code', '');
+            if (empty($code)) {
+                return json([
+                    'code' => 400,
+                    'message' => '缺少code参数'
+                ]);
+            }
+
+            $config = Db::name('notification_config')->find(1);
+            if (!$config || empty($config['wechat_app_id']) || empty($config['wechat_app_secret'])) {
+                return json([
+                    'code' => 500,
+                    'message' => '微信公众号配置不完整，请检查AppID/AppSecret'
+                ]);
+            }
+
+            $tokenUrl = 'https://api.weixin.qq.com/sns/oauth2/access_token?' . http_build_query([
+                'appid' => $config['wechat_app_id'],
+                'secret' => $config['wechat_app_secret'],
+                'code' => $code,
+                'grant_type' => 'authorization_code'
+            ]);
+
+            $resp = @file_get_contents($tokenUrl);
+            if ($resp === false) {
+                return json([
+                    'code' => 500,
+                    'message' => '请求微信授权服务失败'
+                ]);
+            }
+
+            $result = json_decode($resp, true);
+            if (!is_array($result)) {
+                return json([
+                    'code' => 500,
+                    'message' => '微信授权返回格式错误'
+                ]);
+            }
+
+            if (isset($result['errcode'])) {
+                return json([
+                    'code' => 500,
+                    'message' => '获取openid失败',
+                    'error_detail' => ($result['errmsg'] ?? '未知错误') . '（errcode: ' . $result['errcode'] . '）'
+                ]);
+            }
+
+            if (empty($result['openid'])) {
+                return json([
+                    'code' => 500,
+                    'message' => '微信返回缺少openid'
+                ]);
+            }
+
+            return json([
+                'code' => 200,
+                'message' => '获取openid成功',
+                'data' => [
+                    'openid' => $result['openid']
+                ]
+            ]);
+        } catch (\Exception $e) {
+            return json([
+                'code' => 500,
+                'message' => '获取openid失败：' . $e->getMessage()
+            ]);
         }
     }
     

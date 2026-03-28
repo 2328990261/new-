@@ -89,7 +89,9 @@ Route::group('api', function () {
     Route::get('payment/agreement', 'api.Payment/agreement');
     Route::get('payment/status', 'api.Payment/status');
     Route::post('payment/manual-confirm', '\\app\\controller\\api\\Payment@manualConfirm');
-    Route::post('payment/notify', 'admin.Payment/notify');
+    Route::get('payment/wechat-oauth-url', 'api.Payment/wechatOauthUrl');
+    Route::get('payment/wechat-openid', 'api.Payment/wechatOpenid');
+    Route::rule('payment/notify', 'api.Payment/notify', 'POST|GET');
     
     // 新支付页面相关接口
     Route::get('dispatchers', 'api.Payment/dispatchers');
@@ -159,6 +161,7 @@ Route::group('api', function () {
     Route::get('config/customer-service', 'api.Config/getCustomerService');
     Route::get('site-config', 'api.SiteConfig/getConfig');
     Route::get('site-banners', 'api.SiteBanner/index');
+    Route::post('user/location', 'api.UserLocation/save');
     
     // 授课信息管理
     Route::get('teaching-info/get', 'api.TeachingInfo/getInfo');

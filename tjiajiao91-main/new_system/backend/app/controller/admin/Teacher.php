@@ -44,12 +44,23 @@ class Teacher extends BaseController
                     $query->where('name', 'like', '%' . $keyword . '%')
                           ->whereOr('phone', 'like', '%' . $keyword . '%')
                           ->whereOr('wechat_id', 'like', '%' . $keyword . '%')
+                          ->whereOr('teacher_no', 'like', '%' . $keyword . '%')
                           ->whereOr('school', 'like', '%' . $keyword . '%')
                           ->whereOr('hometown', 'like', '%' . $keyword . '%')
                           ->whereOr('major', 'like', '%' . $keyword . '%')
                           ->whereOr('personal_advantage', 'like', '%' . $keyword . '%')
                           ->whereOr('self_intro', 'like', '%' . $keyword . '%')
                           ->whereOr('experience', 'like', '%' . $keyword . '%');
+
+                    // 支持编号搜索：T1022 / 1022 -> teacher_no 或 id 精确匹配
+                    $k = trim((string)$keyword);
+                    if (preg_match('/^T?\d+$/i', $k)) {
+                        $num = (int)preg_replace('/\D+/', '', $k);
+                        if ($num > 0) {
+                            $query->whereOr('id', '=', $num)
+                                  ->whereOr('teacher_no', '=', $num);
+                        }
+                    }
                 };
             }
             
@@ -336,11 +347,20 @@ class Teacher extends BaseController
                     ->order('verify_time', 'desc')
                     ->order('create_time', 'desc')
                     ->find();
-                if ($invitation && !empty($invitation['inviter_openid'])) {
-                    $inviter = Db::name('users')
-                        ->where('openid', $invitation['inviter_openid'])
-                        ->field('nickname,avatar')
-                        ->find();
+                if ($invitation) {
+                    $inviter = null;
+                    if (!empty($invitation['inviter_openid'])) {
+                        $inviter = Db::name('users')
+                            ->where('openid', $invitation['inviter_openid'])
+                            ->field('nickname,avatar')
+                            ->find();
+                    }
+                    if (!$inviter && !empty($invitation['inviter_user_id'])) {
+                        $inviter = Db::name('users')
+                            ->where('id', (int) $invitation['inviter_user_id'])
+                            ->field('nickname,avatar')
+                            ->find();
+                    }
                     if ($inviter) {
                         $data['sharer_nickname'] = (string)($inviter['nickname'] ?? '');
                         $data['sharer_avatar'] = (string)($inviter['avatar'] ?? '');
@@ -445,12 +465,24 @@ class Teacher extends BaseController
             $teacherVerified = (int)$this->request->post('teacher_verified', 0);
             $reason = $this->request->post('reason', '');
             
-            // 根据认证开关自动判定整体审核结果：
-            // 任一认证通过 => 审核通过；全部未通过 => 审核拒绝
             $hasAnyCertification = ($realNameVerified || $educationVerified || $teacherVerified);
-            $status = $hasAnyCertification ? 'approved' : 'rejected';
             
-            // 当未通过且后台未填写备注时，使用统一的默认审核备注
+            // 整体审核状态以请求参数为准（与后台单选一致）；未传时兼容旧逻辑：按三项认证推导
+            $status = $this->request->post('status');
+            if ($status === null || $status === '') {
+                $status = $hasAnyCertification ? 'approved' : 'rejected';
+            } else {
+                $status = (string) $status;
+            }
+            if (!in_array($status, ['pending', 'approved', 'rejected'], true)) {
+                return json(['success' => false, 'error' => '审核状态参数错误']);
+            }
+            // 审核通过必须至少一项材料认证通过
+            if ($status === 'approved' && !$hasAnyCertification) {
+                return json(['success' => false, 'error' => '审核通过需至少一项认证材料通过']);
+            }
+            
+            // 拒绝且未填备注时使用默认文案；待审核、通过不要求默认备注
             if ($status === 'rejected' && $reason === '') {
                 $reason = '您的提交认证资料不齐全，请重新上传完整且有效的证件信息重新审核。';
             }

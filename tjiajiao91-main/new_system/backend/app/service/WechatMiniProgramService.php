@@ -2,9 +2,9 @@
 namespace app\service;
 
 use app\model\User;
+use app\service\MiniProgramConfigService;
 use think\facade\Cache;
 use think\facade\Db;
-use think\facade\Config;
 
 /**
  * 微信小程序服务类
@@ -17,9 +17,10 @@ class WechatMiniProgramService
     
     public function __construct()
     {
-        // 从环境变量或配置文件读取
-        $this->appId = env('WECHAT_MINI_APPID', '') ?: Config::get('wechat.mini_appid', '');
-        $this->appSecret = env('WECHAT_MINI_SECRET', '') ?: Config::get('wechat.mini_secret', '');
+        // 数据库优先，缺失时回退 .env / config
+        $runtimeConfig = (new MiniProgramConfigService())->getRuntimeConfig('wechat');
+        $this->appId = (string)($runtimeConfig['app_id'] ?? '');
+        $this->appSecret = (string)($runtimeConfig['app_secret'] ?? '');
     }
 
     private function assertWechatMiniConfig(): void
@@ -126,6 +127,11 @@ class WechatMiniProgramService
     private function getUserTypeFromWechatUsers($openid)
     {
         try {
+            // 优先读 fa_users.user_type（新口径：支付宝/微信统一写这里）
+            $u = Db::name('users')->where('openid', $openid)->find();
+            if ($u && in_array($u['user_type'] ?? '', ['teacher', 'parent'], true)) {
+                return (string)$u['user_type'];
+            }
             $row = Db::name('wechat_users')->where('openid', $openid)->find();
             return ($row && in_array($row['user_type'] ?? '', ['teacher', 'parent'], true))
                 ? $row['user_type'] : 'parent';
@@ -316,7 +322,8 @@ class WechatMiniProgramService
                 'phone' => $phone,
                 'nickname' => $nickname,
                 'avatar' => $avatar,
-                'platform' => 'miniprogram', // 标记为小程序用户
+                'user_type' => $userType,
+                'platform' => 'wechat_miniprogram', // 标记为微信小程序用户
                 'status' => 1, // 默认启用状态
                 'create_time' => date('Y-m-d H:i:s'),
                 'update_time' => date('Y-m-d H:i:s')
@@ -337,6 +344,10 @@ class WechatMiniProgramService
             
             // 更新手机号和其他信息
             $user->phone = $phone;
+            // 同步用户角色到 fa_users（新口径）
+            if (!empty($userType) && in_array($userType, ['teacher', 'parent'], true)) {
+                $user->user_type = $userType;
+            }
             // superior_openid：仅为空时写入一次（不覆盖）
             if ($superiorOpenid !== '' && $superiorOpenid !== $openid) {
                 $currentSuperior = trim((string)($user->superior_openid ?? ''));
@@ -349,6 +360,10 @@ class WechatMiniProgramService
             }
             if (!empty($avatar)) {
                 $user->avatar = $avatar;
+            }
+            // 历史用户升级：将通用 miniprogram 标识细分为微信小程序
+            if (empty($user->platform) || $user->platform === 'miniprogram') {
+                $user->platform = 'wechat_miniprogram';
             }
             $user->update_time = date('Y-m-d H:i:s');
             $user->save();
@@ -479,13 +494,23 @@ class WechatMiniProgramService
             return false;
         }
         try {
-            $n = Db::name('wechat_users')
+            // 1) 兼容旧表：fa_wechat_users
+            Db::name('wechat_users')
                 ->where('openid', $openid)
                 ->update([
                     'user_type' => $userType,
                     'update_time' => date('Y-m-d H:i:s'),
                 ]);
-            return $n > 0;
+
+            // 2) 新口径：fa_users
+            $n2 = Db::name('users')
+                ->where('openid', $openid)
+                ->update([
+                    'user_type' => $userType,
+                    'update_time' => date('Y-m-d H:i:s'),
+                ]);
+
+            return $n2 > 0;
         } catch (\Exception $e) {
             \think\facade\Log::warning('更新 user_type 失败: ' . $e->getMessage());
             return false;
@@ -717,6 +742,7 @@ class WechatMiniProgramService
     public function generateQRCode($page, $scene, $options = [])
     {
         try {
+            $runtimeConfig = (new MiniProgramConfigService())->getRuntimeConfig('wechat');
             $accessToken = $this->getAccessToken();
             $url = "https://api.weixin.qq.com/wxa/getwxacodeunlimit?access_token=" . $accessToken;
             
@@ -724,7 +750,7 @@ class WechatMiniProgramService
                 'page' => $page,
                 'scene' => $scene,
                 'check_path' => $options['check_path'] ?? false, // 默认关闭路径检查，避免因路径配置问题导致生成失败
-                'env_version' => $options['env_version'] ?? 'release', // release正式版, trial体验版, develop开发版
+                'env_version' => $options['env_version'] ?? ($runtimeConfig['env_version'] ?? 'release'), // release正式版, trial体验版, develop开发版
                 'width' => $options['width'] ?? 430,
                 'auto_color' => $options['auto_color'] ?? false,
                 'is_hyaline' => $options['is_hyaline'] ?? false

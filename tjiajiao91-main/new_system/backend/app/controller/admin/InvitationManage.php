@@ -402,12 +402,26 @@ class InvitationManage extends BaseController
         $pageSize = (int) $this->request->get('page_size', 20) ?: 20;
         try {
             $total = Db::name('invitation_ranking')->count();
+            // 昵称/头像以 fa_users 为准（排行榜表里是历史快照，用户改资料后不会自动更新）
             $list = Db::name('invitation_ranking')
-                ->order('ranking_score', 'desc')
-                ->order('last_invite_time', 'desc')
+                ->alias('r')
+                ->leftJoin('users u', 'r.openid = u.openid')
+                ->field('r.*, u.nickname as join_nickname, u.avatar as join_avatar')
+                ->order('r.ranking_score', 'desc')
+                ->order('r.last_invite_time', 'desc')
                 ->page($page, $pageSize)
                 ->select()
                 ->toArray();
+            foreach ($list as &$row) {
+                if (isset($row['join_nickname']) && $row['join_nickname'] !== '' && $row['join_nickname'] !== null) {
+                    $row['nickname'] = $row['join_nickname'];
+                }
+                if (isset($row['join_avatar']) && $row['join_avatar'] !== '' && $row['join_avatar'] !== null) {
+                    $row['avatar_url'] = $row['join_avatar'];
+                }
+                unset($row['join_nickname'], $row['join_avatar']);
+            }
+            unset($row);
             return json([
                 'code' => 200,
                 'message' => '获取成功',

@@ -7,6 +7,7 @@ use app\model\TutorOrder;
 use app\model\Admin;
 use app\model\User;
 use app\service\EmailService;
+use app\service\DispatcherAutoAssignService;
 use think\facade\Db;
 use think\facade\Validate;
 
@@ -681,56 +682,11 @@ class Order extends BaseController
     }
     
     /**
-     * 自动轮派给发单组
+     * 自动派单给派单组（按订单城市匹配归属城市，同工作量随机）
      */
     private function autoAssignToDispatcher($order)
     {
-        try {
-            // 获取状态开启的派单组成员
-            $dispatchers = Admin::where('role', 'dispatcher')
-                ->where('status', 1)
-                ->order('id', 'asc')
-                ->select()
-                ->toArray();
-            
-            if (empty($dispatchers)) {
-                trace('没有可用的派单组成员，订单ID: ' . $order->id, 'info');
-                return;
-            }
-            
-            // 获取当前派单员的工作量，选择工作量最少的
-            $dispatcherWorkloads = [];
-            foreach ($dispatchers as $dispatcher) {
-                $workload = TutorOrder::where('dispatcher_id', $dispatcher['id'])
-                    ->where('status', 1)
-                    ->count();
-                
-                $dispatcherWorkloads[] = [
-                    'id' => $dispatcher['id'],
-                    'nickname' => $dispatcher['nickname'] ?? $dispatcher['username'],
-                    'contact_info' => $dispatcher['contact'] ?? '',
-                    'workload' => $workload
-                ];
-            }
-            
-            // 按工作量排序，选择工作量最少的
-            usort($dispatcherWorkloads, function($a, $b) {
-                return $a['workload'] - $b['workload'];
-            });
-            
-            $selectedDispatcher = $dispatcherWorkloads[0];
-            
-            // 更新订单派单信息
-            $order->dispatcher_id = $selectedDispatcher['id'];
-            $order->contact_info = $selectedDispatcher['contact_info'];
-            $order->assigned_time = date('Y-m-d H:i:s');
-            $order->save();
-            
-            trace('订单自动派单成功，订单ID: ' . $order->id . '，派单员: ' . $selectedDispatcher['nickname'], 'info');
-            
-        } catch (\Exception $e) {
-            trace('自动派单失败，订单ID: ' . $order->id . '，错误: ' . $e->getMessage(), 'error');
-        }
+        DispatcherAutoAssignService::assignToDispatcher($order);
     }
     
     /**
