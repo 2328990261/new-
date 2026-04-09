@@ -434,7 +434,7 @@
 								<view class="cert-upload" @click="chooseCertImage('id_card_front')">
 									<image v-if="formData.id_card_front" :src="formData.id_card_front" class="cert-preview" mode="aspectFill" />
 									<view v-else class="cert-placeholder">
-										<image class="cert-type-icon" src="/static/register/身份证正面.png" mode="aspectFit"></image>
+										<image class="cert-type-icon" src="/static/register/id_card_front.png" mode="aspectFit"></image>
 										<text class="upload-text-small">上传正面</text>
 									</view>
 									<!-- 删除按钮 -->
@@ -449,7 +449,7 @@
 								<view class="cert-upload" @click="chooseCertImage('id_card_back')">
 									<image v-if="formData.id_card_back" :src="formData.id_card_back" class="cert-preview" mode="aspectFill" />
 									<view v-else class="cert-placeholder">
-										<image class="cert-type-icon" src="/static/register/身份证反面.png" mode="aspectFit"></image>
+										<image class="cert-type-icon" src="/static/register/id_card_back.png" mode="aspectFit"></image>
 										<text class="upload-text-small">上传反面</text>
 									</view>
 									<!-- 删除按钮 -->
@@ -473,7 +473,7 @@
 						<view class="cert-upload-single" @click="chooseCertImage('education_certificate')">
 							<image v-if="formData.education_certificate" :src="formData.education_certificate" class="cert-preview" mode="aspectFill" />
 							<view v-else class="cert-placeholder cert-placeholder-large">
-								<image class="cert-type-icon cert-type-icon-large" src="/static/register/资质证明-copy.png" mode="aspectFit"></image>
+								<image class="cert-type-icon cert-type-icon-large" src="/static/register/education_cert_icon.png" mode="aspectFit"></image>
 								<text class="upload-text-large">上传学历证明</text>
 							</view>
 							<!-- 删除按钮 -->

@@ -8,6 +8,11 @@ const routes = [
     component: Home,
     meta: { title: '首页' }
   },
+  // 仿站静态资源挂在 /www.gzpxy.com/；若链接在顶层打开该路径，避免 Router 报 “No match”
+  {
+    path: '/www.gzpxy.com/:pathMatch(.*)*',
+    redirect: '/'
+  },
   {
     path: '/detail/:id',
     name: 'TutorDetail',
@@ -19,6 +24,12 @@ const routes = [
     name: 'Subscribe',
     component: () => import('@/views/Subscribe.vue'),
     meta: { title: '邮件订阅' }
+  },
+  {
+    path: '/news',
+    name: 'News',
+    component: () => import('@/views/News.vue'),
+    meta: { title: '新闻资讯' }
   },
   {
     path: '/teachers',
@@ -54,7 +65,7 @@ const routes = [
     path: '/payment-success',
     name: 'PaymentSuccess',
     component: () => import('@/views/PaymentSuccess.vue'),
-    meta: { title: '支付成功', hideNavbar: true }
+    meta: { title: '支付凭证需保存', hideNavbar: true }
   },
   {
     path: '/booking/:adminId',
@@ -66,7 +77,7 @@ const routes = [
     path: '/refund',
     name: 'RefundApply',
     component: () => import('@/views/RefundApply.vue'),
-    meta: { title: '退款申请' }
+    meta: { title: '退费申请', hideNavbar: true }
   },
   {
     path: '/refund-test',
@@ -86,7 +97,7 @@ const routes = [
     path: '/refund-success',
     name: 'RefundSuccess',
     component: () => import('@/views/RefundSuccess.vue'),
-    meta: { title: '退款成功' }
+    meta: { title: '退费处理中', hideNavbar: true }
   },
   {
     path: '/wechat-bind',
@@ -148,6 +159,12 @@ const routes = [
     name: 'PartTimeJobMine',
     component: () => import('@/views/PartTimeJobMine.vue'),
     meta: { title: '我的发布' }
+  },
+  {
+    path: '/privacy-policy',
+    name: 'PrivacyPolicy',
+    component: () => import('@/views/PrivacyPolicy.vue'),
+    meta: { title: '隐私政策' }
   }
 ]
 
@@ -164,13 +181,14 @@ router.beforeEach((to, from, next) => {
   }
   
   // 立即通过DOM控制导航栏显示（在Vue渲染之前）
+  const root = document.documentElement
   const body = document.body
-  if (body) {  // 添加空值检查
-    if (to.meta.hideNavbar) {
-      body.classList.add('hide-navbar')
-    } else {
-      body.classList.remove('hide-navbar')
-    }
+  const shouldHide = to.meta.hideNavbar === true
+  if (root) {
+    root.classList.toggle('hide-navbar', shouldHide)
+  }
+  if (body) {
+    body.classList.toggle('hide-navbar', shouldHide)
   }
   
   next()

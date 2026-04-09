@@ -22,6 +22,7 @@ class PaymentConfig extends Model
         'cert_path'      => 'string',
         'key_path'       => 'string',
         'notify_url'     => 'string',
+        'refund_follow_qrcode' => 'string',
         'is_enabled'     => 'int',
         'create_time'    => 'datetime',
         'update_time'    => 'datetime',

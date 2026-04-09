@@ -227,6 +227,42 @@ export const teacherRegisterApi = {
 			method: 'POST',
 			data
 		})
+	},
+
+	// 获取公众号关注二维码（用于 mini_openid 绑定）
+	getOfficialQrcode(miniOpenid) {
+		return request({
+			url: '/api/wechat/official/qrcode',
+			method: 'POST',
+			data: { mini_openid: miniOpenid }
+		})
+	},
+
+	// 获取公众号 OAuth 绑定链接（迁移后兜底方案）
+	getOfficialBindAuthUrl(miniOpenid) {
+		return request({
+			url: '/api/wechat/official/bind-auth-url',
+			method: 'GET',
+			params: { mini_openid: miniOpenid }
+		})
+	},
+
+	// 查询公众号绑定状态（用于扫码后轮询）
+	getOfficialBindStatus(miniOpenid) {
+		return request({
+			url: '/api/wechat/official/bind-status',
+			method: 'GET',
+			params: { mini_openid: miniOpenid }
+		})
+	},
+
+	// 查询最近公众号扫码事件调试信息（用于排查回调是否到达）
+	getOfficialLatestEventDebug(miniOpenid) {
+		return request({
+			url: '/api/wechat/official/latest-event-debug',
+			method: 'GET',
+			params: { mini_openid: miniOpenid }
+		})
 	}
 }
 
@@ -367,7 +403,7 @@ export const applicationApi = {
 
 // 预约相关接口
 export const bookingApi = {
-	// 创建预约订单
+	// 创建预约订单；成功时 data 含 order_no、contact_qrcode_url、booking_service_phone、contact_admin_nickname（预约成功页展示）
 	createBooking(data) {
 		return request({
 			url: '/api/mini-booking/create',
@@ -423,11 +459,23 @@ export const subscribeMessageApi = {
 
 // Banner横幅API
 export const bannerApi = {
-	// 获取启用的横幅列表
-	getBannerList() {
+	// 获取启用的横幅列表；banner_scene: default=网站轮播，parent_mini_home=小程序家长端首页
+	getBannerList(params = {}) {
 		return request({
 			url: '/api/site-banners',
-			method: 'GET'
+			method: 'GET',
+			params
+		})
+	}
+}
+
+// 成功案例（家长端首页 / 列表 / 详情）
+export const successCaseApi = {
+	getList(params = {}) {
+		return request({
+			url: '/api/success-cases',
+			method: 'GET',
+			params
 		})
 	}
 }

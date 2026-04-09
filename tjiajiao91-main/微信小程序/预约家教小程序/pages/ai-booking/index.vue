@@ -173,6 +173,20 @@
 			</view>
 		</view>
 
+		<view v-if="showTimeSlotModal" class="timeslot-modal-mask" @click="closeTimeSlotModal">
+			<view class="timeslot-modal-box" @click.stop>
+				<view class="timeslot-title">设置可辅导时间段</view>
+				<available-time-slots
+					v-model="availableTimeSlots"
+					:duration-text="bookingData.duration || '2小时/次'"
+				/>
+				<view class="timeslot-actions">
+					<view class="timeslot-btn timeslot-cancel" @click="closeTimeSlotModal">取消</view>
+					<view class="timeslot-btn timeslot-confirm" @click="confirmTimeSlots">确认并预约</view>
+				</view>
+			</view>
+		</view>
+
 		<!-- 客服信息弹窗 - 渐变过渡风格 -->
 		<view v-if="showCustomerModal" class="wechat-modal-mask" @click="closeCustomerModal">
 			<view class="wechat-modal-box" @click.stop>
@@ -257,11 +271,14 @@ import envConfig from '@/config/env.js'
 import shareMixin from '@/mixins/share.js'
 import request from '@/utils/request.js'
 import CustomTabbar from '@/components/custom-tabbar/index.vue'
+import AvailableTimeSlots from '@/components/available-time-slots/index.vue'
+import { formatAvailableTimeSlotsForApi } from '@/utils/availableTimeSlotsFormat.js'
 import { getLocationCache, saveLocationCache, getLocationCacheRemainingDays } from '@/utils/location.js'
 
 export default {
 	components: {
-		CustomTabbar
+		CustomTabbar,
+		AvailableTimeSlots
 	},
 	mixins: [shareMixin],
 	data() {
@@ -285,6 +302,8 @@ export default {
 			showBudgetSlider: false,
 			showAddressInput: false,
 			showCustomerModal: false,
+			showTimeSlotModal: false,
+			availableTimeSlots: [],
 			
 			// 对话流程配置
 			conversationFlow: {
@@ -710,15 +729,7 @@ export default {
 		
 		handleFinalAction(action) {
 			if (action === 'confirm') {
-				// 检查是否登录
-				const token = uni.getStorageSync('token')
-				if (!token) {
-					// 未登录，跳转到登录页
-					auth.navigateToLogin()
-				} else {
-					// 已登录，提交预约
-					this.submitBooking()
-				}
+				this.openTimeSlotModal()
 			} else if (action === 'edit') {
 				// 修改需求
 				uni.showToast({
@@ -812,6 +823,10 @@ export default {
 					district_id: this.bookingData.district_id,
 					address: addressInfo,
 					...locationData,  // 展开位置坐标信息
+					available_time_slots: formatAvailableTimeSlotsForApi(
+						this.availableTimeSlots,
+						this.bookingData.duration || '2小时/次'
+					),
 					// 如果有指定教师，添加教师信息
 					selected_teacher_id: this.bookingData.selected_teacher_id || null,
 					selected_teacher_name: this.bookingData.selected_teacher_name || null
@@ -857,6 +872,21 @@ export default {
 		
 		showCustomerService() {
 			this.showCustomerModal = true
+		},
+		openTimeSlotModal() {
+			this.showTimeSlotModal = true
+		},
+		closeTimeSlotModal() {
+			this.showTimeSlotModal = false
+		},
+		confirmTimeSlots() {
+			this.showTimeSlotModal = false
+			const token = uni.getStorageSync('token')
+			if (!token) {
+				auth.navigateToLogin()
+				return
+			}
+			this.submitBooking()
 		},
 		
 		closeCustomerModal() {
@@ -2782,6 +2812,53 @@ ${this.bookingData.selected_teacher_name ? '指定教师：' + this.bookingData.
 	font-size: 28rpx;
 	color: #666;
 	text-align: center;
+}
+
+.timeslot-modal-mask {
+	position: fixed;
+	inset: 0;
+	background: rgba(0, 0, 0, 0.5);
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	z-index: 10001;
+}
+
+.timeslot-modal-box {
+	width: 88%;
+	max-height: 80vh;
+	overflow: auto;
+	background: #fff;
+	border-radius: 20rpx;
+	padding: 24rpx;
+}
+
+.timeslot-title {
+	font-size: 32rpx;
+	font-weight: 600;
+	margin-bottom: 16rpx;
+}
+
+.timeslot-actions {
+	display: flex;
+	gap: 12rpx;
+	margin-top: 20rpx;
+}
+
+.timeslot-btn {
+	flex: 1;
+	text-align: center;
+	padding: 18rpx 0;
+	border-radius: 10rpx;
+}
+
+.timeslot-cancel {
+	background: #F3F4F6;
+}
+
+.timeslot-confirm {
+	background: #52C9A6;
+	color: #fff;
 }
 
 </style>

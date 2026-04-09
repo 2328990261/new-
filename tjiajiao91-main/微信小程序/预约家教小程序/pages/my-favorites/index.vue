@@ -351,7 +351,7 @@ export default {
 		
 		goToTeacherLibrary() {
 			uni.navigateTo({
-				url: this.isParentRole ? '/pages/teacher-library/index' : '/pages/tutor-list/index'
+				url: this.isParentRole ? '/pages/parent-home/index' : '/pages/tutor-list/index'
 			})
 		},
 		

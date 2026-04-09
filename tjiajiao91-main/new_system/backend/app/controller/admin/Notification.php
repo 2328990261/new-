@@ -134,13 +134,18 @@ class Notification extends BaseController
         }
         
         $openid = $this->request->post('openid');
+        $apiType = $this->request->post('api_type', 'auto');
+        $templateId = $this->request->post('template_id', '');
         
         if (empty($openid)) {
             return json(['success' => false, 'error' => '请提供测试OpenID']);
         }
         
         try {
-            $result = WechatNotificationService::sendTestMessage($openid);
+            $result = WechatNotificationService::sendTestMessage($openid, [
+                'api_type' => $apiType,
+                'template_id' => $templateId
+            ]);
             return json($result);
             
         } catch (\Exception $e) {
@@ -171,6 +176,29 @@ class Notification extends BaseController
                 ]
             ]);
             
+        } catch (\Exception $e) {
+            return json(['success' => false, 'error' => $e->getMessage()]);
+        }
+    }
+
+    /**
+     * 诊断微信模板消息接口权限
+     */
+    public function debugWechatPermission()
+    {
+        if (session_status() === PHP_SESSION_NONE) {
+            session_start();
+        }
+        if (!isset($_SESSION['admin_id'])) {
+            return json(['success' => false, 'error' => '未登录']);
+        }
+
+        $openid = trim((string)$this->request->post('openid', ''));
+        $templateId = trim((string)$this->request->post('template_id', ''));
+
+        try {
+            $result = WechatNotificationService::debugTemplatePermission($openid, $templateId);
+            return json($result);
         } catch (\Exception $e) {
             return json(['success' => false, 'error' => $e->getMessage()]);
         }
@@ -300,9 +328,13 @@ class Notification extends BaseController
                     ->find();
                 
                 if (!$exists) {
+                    // template_code 字段长度仅 50，不能直接拼接完整 template_id
+                    // 使用稳定短码，避免 SQLSTATE[22001]（1406 Data too long）
+                    $templateCode = 'wx_tpl_' . substr(md5((string)$template['template_id']), 0, 16);
+
                     // 新增
                     Db::name('wechat_templates')->insert([
-                        'template_code' => 'template_' . $template['template_id'],
+                        'template_code' => $templateCode,
                         'template_name' => $template['title'],
                         'template_id' => $template['template_id'],
                         'title' => $template['title'],

@@ -51,6 +51,28 @@ const request = (options) => {
 		// 处理GET请求的params参数（拼接到URL上）
 		let requestUrl = fullUrl
 		let requestData = options.data || {}
+
+		// 仅用于排查：小程序预约提交是否带上 available_time_slots
+		// 不改变请求数据，仅打印关键信息（避免日志太大）
+		try {
+			if (
+				method === 'POST' &&
+				typeof options.url === 'string' &&
+				options.url.indexOf('/api/mini-booking/create') > -1
+			) {
+				const bd = requestData && requestData.booking_data
+				const slots = bd && bd.available_time_slots
+				const len = Array.isArray(slots) ? slots.length : (slots ? 1 : 0)
+				console.log('[mini-booking] payload keys:', Object.keys(requestData || {}))
+				console.log('[mini-booking] booking_data keys:', bd ? Object.keys(bd) : [])
+				console.log('[mini-booking] available_time_slots length:', len)
+				if (Array.isArray(slots) && slots[0]) {
+					console.log('[mini-booking] available_time_slots[0]:', JSON.stringify(slots[0]))
+				} else if (slots) {
+					console.log('[mini-booking] available_time_slots(raw):', JSON.stringify(slots).substring(0, 300))
+				}
+			}
+		} catch (e) {}
 		
 		if (method === 'GET' && options.params) {
 			// GET请求使用params，拼接到URL上

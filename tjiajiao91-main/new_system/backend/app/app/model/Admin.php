@@ -21,6 +21,7 @@ class Admin extends Model
         'status'   => 'int',    // 状态：0-禁用，1-启用
         'contact'  => 'string', // 联系方式，用于派单组
         'wechat_qrcode' => 'string', // 微信二维码URL，用于派单组成员
+        'booking_service_phone' => 'string', // 小程序预约成功页联系手机
         'email'    => 'string', // 邮箱地址，用于接收通知
         'openid'   => 'string', // 绑定的小程序用户openid
         'bind_time' => 'datetime', // 绑定时间

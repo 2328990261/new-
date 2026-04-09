@@ -21,8 +21,15 @@ class SubscribeMessage extends BaseController
             $openid = $this->request->post('openid');
             $templateId = $this->request->post('template_id', SubscribeMessageService::TEMPLATE_ID);
             
-            if (!$userId || !$openid) {
+            if (!$openid) {
                 return json(['code' => 400, 'message' => '参数错误']);
+            }
+
+            if (!$userId) {
+                $userId = Db::name('users')->where('openid', $openid)->value('id');
+                if (!$userId) {
+                    $userId = Db::name('fa_users')->where('openid', $openid)->value('id');
+                }
             }
             
             $result = SubscribeMessageService::recordSubscribe($userId, $openid, $templateId);

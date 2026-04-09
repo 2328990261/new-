@@ -104,6 +104,31 @@
               </template>
             </el-input>
           </el-form-item>
+          <el-form-item>
+            <el-select v-model="searchWeekDay" clearable placeholder="周几" style="width: 110px">
+              <el-option v-for="item in weekDayOptions" :key="item.value" :label="item.label" :value="item.value" />
+            </el-select>
+          </el-form-item>
+          <el-form-item>
+            <el-time-select
+              v-model="searchStartTimeFrom"
+              start="00:00"
+              step="00:30"
+              end="23:30"
+              placeholder="开始时间起"
+              style="width: 130px"
+            />
+          </el-form-item>
+          <el-form-item>
+            <el-time-select
+              v-model="searchStartTimeTo"
+              start="00:00"
+              step="00:30"
+              end="23:30"
+              placeholder="开始时间止"
+              style="width: 130px"
+            />
+          </el-form-item>
           <el-form-item class="search-actions">
             <el-button type="primary" @click="handleSearch">
               <el-icon><Search /></el-icon> 搜索
@@ -153,6 +178,10 @@
                   <div class="order-card__label">老师类型</div>
                   <div class="order-card__value">{{ row.teacher_type || '-' }}</div>
                 </div>
+                <div class="order-card__item order-card__item--full">
+                  <div class="order-card__label">可辅导时段</div>
+                  <div class="order-card__value">{{ formatTimeSlots(row.available_time_slots) || '-' }}</div>
+                </div>
                 <div class="order-card__item" v-if="canViewAllOrders">
                   <div class="order-card__label">分享者</div>
                   <div class="order-card__value">{{ getAdminDisplay(row) }}</div>
@@ -180,6 +209,7 @@
 
       <el-table
         v-else
+        ref="tableRef"
         :data="tableData"
         v-loading="loading"
         class="order-table"
@@ -219,6 +249,11 @@
         <el-table-column label="老师类型" min-width="90" align="center">
           <template #default="scope">
             {{ scope.row.teacher_type || '-' }}
+          </template>
+        </el-table-column>
+        <el-table-column label="可辅导时段" min-width="220" show-overflow-tooltip>
+          <template #default="scope">
+            {{ formatTimeSlots(scope.row.available_time_slots) || '-' }}
           </template>
         </el-table-column>
         <el-table-column label="状态" min-width="80" align="center">
@@ -326,6 +361,9 @@
         <el-descriptions-item label="分享者">
           {{ getAdminDisplay(currentOrder) }}
         </el-descriptions-item>
+        <el-descriptions-item label="可辅导时段">
+          {{ formatTimeSlots(currentOrder.available_time_slots) || '-' }}
+        </el-descriptions-item>
         <el-descriptions-item label="订单状态">
           <el-tag v-if="currentOrder.status === 'pending'" type="warning">待审核</el-tag>
           <el-tag v-else-if="currentOrder.status === 'approved'" type="success">已通过</el-tag>
@@ -333,7 +371,7 @@
           <el-tag v-else-if="currentOrder.status === 'cancelled'" type="info">已取消</el-tag>
         </el-descriptions-item>
         <el-descriptions-item v-if="currentOrder.tutor_id" label="关联家教ID">
-          <el-link type="primary" :underline="false">
+          <el-link type="primary" :underline="false" @click="openTutorDetail(currentOrder.tutor_id)">
             {{ currentOrder.tutor_id }}
           </el-link>
           <el-tag type="success" size="small" style="margin-left: 8px">已转化</el-tag>
@@ -377,6 +415,9 @@
         </el-form-item>
         <el-form-item label="上课时长">
           <el-input v-model="orderEditForm.duration" placeholder="例如：2小时" />
+        </el-form-item>
+        <el-form-item label="可辅导时段(JSON)">
+          <el-input v-model="orderEditForm.available_time_slots" type="textarea" :rows="3" placeholder='例如：[{"week_day":1,"start_time":"18:30","duration_minutes":90,"end_time":"20:00"}]' />
         </el-form-item>
         <el-form-item label="时薪范围">
           <el-input v-model="orderEditForm.salary" placeholder="例如：100-150元/小时" />
@@ -480,7 +521,7 @@ export default {
 </script>
 
 <script setup>
-import { ref, reactive, onMounted, onUnmounted, computed, h } from 'vue'
+import { ref, reactive, onMounted, onUnmounted, computed, h, nextTick, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { Refresh, RefreshLeft, List, Clock, CircleClose, CopyDocument, Connection, ArrowLeft, ArrowRight, User, Delete, Edit, Search } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
@@ -505,9 +546,106 @@ const checkMobile = () => {
 
 const loading = ref(false)
 const tableData = ref([])
+const tableRef = ref(null)
 const currentPage = ref(1)
 const pageSize = ref(20)
 const total = ref(0)
+
+// 横向滚动同步：表头 <-> 表体（解决“上下不同步”）
+let cleanupScrollSync = null
+const setupHorizontalScrollSync = async () => {
+  if (cleanupScrollSync) {
+    cleanupScrollSync()
+    cleanupScrollSync = null
+  }
+  // 移动端用卡片列表，不需要同步
+  if (isMobile.value) return
+  await nextTick()
+  const tableEl = tableRef.value?.$el
+  if (!tableEl) return
+  const header = tableEl.querySelector('.el-table__header-wrapper')
+  const body = tableEl.querySelector('.el-table__body-wrapper')
+  if (!header || !body) return
+
+  // ElementPlus 真正滚动的是 el-scrollbar__wrap，这里做兼容获取
+  const getScrollEl = (wrapper) => wrapper.querySelector('.el-scrollbar__wrap') || wrapper
+  const headerScrollEl = getScrollEl(header)
+  const bodyScrollEl = getScrollEl(body)
+
+  let syncing = false
+  const sync = (from, to) => {
+    if (syncing) return
+    syncing = true
+    to.scrollLeft = from.scrollLeft
+    requestAnimationFrame(() => {
+      syncing = false
+    })
+  }
+
+  const onHeaderScroll = () => sync(headerScrollEl, bodyScrollEl)
+  const onBodyScroll = () => sync(bodyScrollEl, headerScrollEl)
+
+  headerScrollEl.addEventListener('scroll', onHeaderScroll, { passive: true })
+  bodyScrollEl.addEventListener('scroll', onBodyScroll, { passive: true })
+
+  // 初次对齐
+  headerScrollEl.scrollLeft = bodyScrollEl.scrollLeft
+
+  // 允许“拖动表头区域”来滚动表体（含：左固定/右固定表头）
+  const headerDragTargets = [
+    header,
+    tableEl.querySelector('.el-table__fixed-header-wrapper'),
+    tableEl.querySelector('.el-table__right-fixed-header-wrapper'),
+    tableEl.querySelector('.el-table__fixed-right-patch'), // 某些版本会有补丁节点
+    tableEl.querySelector('.el-table__fixed'),
+    tableEl.querySelector('.el-table__fixed-right')
+  ].filter(Boolean)
+
+  let dragging = false
+  let startX = 0
+  let startLeft = 0
+  const onMouseDown = (e) => {
+    // 只在表头空白区域拖动时生效（点击排序/筛选不影响）
+    dragging = true
+    startX = e.clientX
+    startLeft = bodyScrollEl.scrollLeft
+  }
+  const onMouseMove = (e) => {
+    if (!dragging) return
+    const dx = e.clientX - startX
+    bodyScrollEl.scrollLeft = startLeft - dx
+    headerScrollEl.scrollLeft = bodyScrollEl.scrollLeft
+  }
+  const onMouseUp = () => {
+    dragging = false
+  }
+  // wheel 横向滚动也同步到 body（触控板/鼠标横滚）
+  const onWheel = (e) => {
+    // Shift + 滚轮 或触控板横滚：优先 deltaX
+    const dx = e.deltaX || (e.shiftKey ? e.deltaY : 0)
+    if (!dx) return
+    bodyScrollEl.scrollLeft += dx
+    headerScrollEl.scrollLeft = bodyScrollEl.scrollLeft
+  }
+
+  headerDragTargets.forEach((el) => {
+    el.addEventListener('mousedown', onMouseDown)
+    el.addEventListener('wheel', onWheel, { passive: true })
+  })
+  window.addEventListener('mousemove', onMouseMove)
+  window.addEventListener('mouseup', onMouseUp)
+
+  cleanupScrollSync = () => {
+    headerScrollEl.removeEventListener('scroll', onHeaderScroll)
+    bodyScrollEl.removeEventListener('scroll', onBodyScroll)
+    headerDragTargets.forEach((el) => {
+      el.removeEventListener('mousedown', onMouseDown)
+      el.removeEventListener('wheel', onWheel)
+    })
+    window.removeEventListener('mousemove', onMouseMove)
+    window.removeEventListener('mouseup', onMouseUp)
+  }
+}
 
 // 从 localStorage 读取上次选择的 Tab；超级管理员/客服组长默认显示「全部预约」，其他默认「我的预约」
 const getDefaultMainTab = () => {
@@ -533,6 +671,18 @@ const adminOptions = ref([])
 const adminOptionsLoading = ref(false)
 /** 列表搜索：电话、订单号、称呼（与后端 keyword 一致） */
 const searchKeyword = ref('')
+const searchWeekDay = ref('')
+const searchStartTimeFrom = ref('')
+const searchStartTimeTo = ref('')
+const weekDayOptions = [
+  { value: 1, label: '周一' },
+  { value: 2, label: '周二' },
+  { value: 3, label: '周三' },
+  { value: 4, label: '周四' },
+  { value: 5, label: '周五' },
+  { value: 6, label: '周六' },
+  { value: 7, label: '周日' }
+]
 
 /** 下拉选项：接口列表 + 当前订单原归属（避免不在列表里时无法显示） */
 const adminSelectOptions = computed(() => {
@@ -568,10 +718,17 @@ onMounted(() => {
   window.addEventListener('resize', checkMobile)
   loadData()
   loadStats()
+  setupHorizontalScrollSync()
 })
 
 onUnmounted(() => {
   window.removeEventListener('resize', checkMobile)
+  if (cleanupScrollSync) cleanupScrollSync()
+})
+
+watch([isMobile, tableData], async () => {
+  // 数据/布局变化时重新绑定（ElementPlus table 可能会重建 wrapper）
+  await setupHorizontalScrollSync()
 })
 
 // 获取城市区域
@@ -658,6 +815,10 @@ const generateTutorContent = (order) => {
   let content = `【${locationLine} ${grade} ${subject}】\n`
   content += `【学生情况】${studentGender}${studentGender && studentInfo ? '，' : ''}${studentInfo}\n`
   content += `【时间频率】${frequency}${frequency && duration ? '，' : ''}${duration}\n`
+  const timeSlotsText = formatTimeSlots(order.available_time_slots)
+  if (timeSlotsText) {
+    content += `【可辅导时段】${timeSlotsText}\n`
+  }
   content += `【时薪范围】${salary}\n`
   content += `【老师要求】${teacherType}${teacherType && teacherGender ? '，' : ''}${teacherGender}\n`
   content += `【家长称呼】${order.parent_name || ''}\n`
@@ -683,6 +844,23 @@ const copyTutorContent = (order) => {
   })
 }
 
+const formatTimeSlots = (rawSlots) => {
+  if (!rawSlots) return ''
+  let slots = rawSlots
+  if (typeof slots === 'string') {
+    try {
+      slots = JSON.parse(slots)
+    } catch (e) {
+      return ''
+    }
+  }
+  if (!Array.isArray(slots) || !slots.length) return ''
+  const weekMap = { 1: '周一', 2: '周二', 3: '周三', 4: '周四', 5: '周五', 6: '周六', 7: '周日' }
+  return slots
+    .map((slot) => `${weekMap[slot.week_day] || '周?'} ${slot.start_time || '--:--'}-${slot.end_time || '--:--'}`)
+    .join('；')
+}
+
 const loadData = async () => {
   loading.value = true
   try {
@@ -694,6 +872,9 @@ const loadData = async () => {
     if (kw) {
       params.keyword = kw
     }
+    if (searchWeekDay.value) params.week_day = searchWeekDay.value
+    if (searchStartTimeFrom.value) params.start_time_from = searchStartTimeFrom.value
+    if (searchStartTimeTo.value) params.start_time_to = searchStartTimeTo.value
     
     // 根据主Tab设置筛选条件
     if (mainTab.value === 'mine') {
@@ -800,6 +981,9 @@ const handleSearch = () => {
 
 const handleSearchReset = () => {
   searchKeyword.value = ''
+  searchWeekDay.value = ''
+  searchStartTimeFrom.value = ''
+  searchStartTimeTo.value = ''
   currentPage.value = 1
   loadData()
 }
@@ -819,6 +1003,15 @@ const openTeacherDetail = (teacherId) => {
   if (!teacherId) return
   const path = `/teachers/${teacherId}`
   const title = `教师${teacherId}`
+  tabsStore.addTab(path, title, true)
+  router.push(path)
+}
+
+// 打开家教单详情（跳转到家教信息管理，并用ID定位）
+const openTutorDetail = (tutorId) => {
+  if (!tutorId) return
+  const path = `/tutor?focus_id=${encodeURIComponent(String(tutorId))}`
+  const title = `家教单${tutorId}`
   tabsStore.addTab(path, title, true)
   router.push(path)
 }
@@ -866,6 +1059,9 @@ const startEdit = async () => {
     teacher_gender: currentOrder.value.teacher_gender || '',
     teaching_method: currentOrder.value.teaching_method || '上门辅导',
     address: currentOrder.value.address || '',
+    available_time_slots: typeof currentOrder.value.available_time_slots === 'string'
+      ? currentOrder.value.available_time_slots
+      : JSON.stringify(currentOrder.value.available_time_slots || []),
     remark: currentOrder.value.remark || '',
     admin_id: aidNum
   }

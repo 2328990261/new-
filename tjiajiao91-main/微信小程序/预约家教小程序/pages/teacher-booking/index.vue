@@ -100,6 +100,16 @@
 				</view>
 
 				<view class="form-item">
+					<text class="label">可辅导时间段</text>
+					<available-time-slots
+							ref="availableTimeSlotsRef"
+						v-model="formData.availableTimeSlots"
+						@input="onAvailableTimeSlotsInput"
+						:duration-text="formData.duration"
+					/>
+				</view>
+
+				<view class="form-item">
 					<text class="label">授课方式 <text class="required">*</text></text>
 					<view class="radio-group">
 						<view class="radio-item" :class="{ active: formData.teachingMethod === '线上授课' }" @click="formData.teachingMethod = '线上授课'">
@@ -191,8 +201,11 @@
 <script>
 import request from '@/utils/request.js'
 import auth from '@/utils/auth.js'
+import { formatAvailableTimeSlotsForApi } from '@/utils/availableTimeSlotsFormat.js'
+import AvailableTimeSlots from '@/components/available-time-slots/index.vue'
 
 export default {
+	components: { AvailableTimeSlots },
 	data() {
 		return {
 			statusBarHeight: 0,
@@ -215,8 +228,10 @@ export default {
 				teacherGender: '男女不限',
 				budgetMin: 130,
 				budgetMax: 150,
-				contact: ''
+				contact: '',
+				availableTimeSlots: []
 			},
+			_latestAvailableTimeSlots: [],
 			gradeLevels: ['幼儿', '小学', '初中', '高中', '成人'],
 			grades: [],
 			subjects: [],
@@ -279,6 +294,11 @@ export default {
 		}
 	},
 	methods: {
+		onAvailableTimeSlotsInput(v) {
+			// uni-app 某些端对深层对象数组变更同步不稳定，这里显式 $set 一次兜底
+			this._latestAvailableTimeSlots = Array.isArray(v) ? v : []
+			this.$set(this.formData, 'availableTimeSlots', this._latestAvailableTimeSlots)
+		},
 		goBack() {
 			uni.navigateBack({ delta: 1 })
 		},
@@ -469,7 +489,20 @@ export default {
 					latitude: this.formData.latitude,
 					longitude: this.formData.longitude,
 					selected_teacher_id: this.teacherInfo.id || null,
-					selected_teacher_name: this.teacherInfo.name || null
+					selected_teacher_name: this.teacherInfo.name || null,
+					available_time_slots: (() => {
+						const sourceSlots = (Array.isArray(this._latestAvailableTimeSlots) && this._latestAvailableTimeSlots.length)
+							? this._latestAvailableTimeSlots
+							: this.formData.availableTimeSlots
+						const fromModel = formatAvailableTimeSlotsForApi(sourceSlots, this.formData.duration)
+						if (Array.isArray(fromModel) && fromModel.length > 0) return fromModel
+						const ref = this.$refs.availableTimeSlotsRef
+						if (ref && typeof ref.formatForApi === 'function') {
+							const fromRef = ref.formatForApi()
+							return Array.isArray(fromRef) ? fromRef : []
+						}
+						return []
+					})()
 				}
 
 				const res = await request({

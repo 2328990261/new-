@@ -16,6 +16,72 @@ use think\facade\Validate;
  */
 class Order extends BaseController
 {
+    private function parseTimeToMinutes($time)
+    {
+        if (!preg_match('/^(\d{2}):(\d{2})$/', (string)$time, $m)) {
+            return null;
+        }
+        return intval($m[1]) * 60 + intval($m[2]);
+    }
+
+    private function normalizeAdminTimeSlots($slots)
+    {
+        if (is_string($slots) && $slots !== '') {
+            $decoded = json_decode($slots, true);
+            if (json_last_error() === JSON_ERROR_NONE) {
+                $slots = $decoded;
+            }
+        }
+        if (!is_array($slots)) {
+            return [false, '时间段格式错误', []];
+        }
+        $result = [];
+        foreach ($slots as $slot) {
+            if (!is_array($slot)) {
+                return [false, '时间段格式错误', []];
+            }
+            $weekDay = intval($slot['week_day'] ?? 0);
+            $startTime = trim((string)($slot['start_time'] ?? ''));
+            $durationMinutes = intval($slot['duration_minutes'] ?? 0);
+            $endTime = trim((string)($slot['end_time'] ?? ''));
+            if ($weekDay < 1 || $weekDay > 7) return [false, '周几范围应为1-7', []];
+            if (!preg_match('/^\d{2}:\d{2}$/', $startTime) || !preg_match('/^\d{2}:\d{2}$/', $endTime)) return [false, '时间格式必须为HH:mm', []];
+            if ($durationMinutes <= 0 || $durationMinutes % 30 !== 0) return [false, '时长必须为30分钟倍数', []];
+            $startTs = strtotime('2000-01-01 ' . $startTime . ':00');
+            $endTs = strtotime('2000-01-01 ' . $endTime . ':00');
+            if ($startTs === false || $endTs === false || $endTs <= $startTs) return [false, '结束时间必须晚于开始时间', []];
+            if ((int)(($endTs - $startTs) / 60) !== $durationMinutes) return [false, '结束时间与时长不一致', []];
+            $result[] = [
+                'week_day' => $weekDay,
+                'start_time' => $startTime,
+                'duration_minutes' => $durationMinutes,
+                'end_time' => $endTime
+            ];
+        }
+        return [true, '', $result];
+    }
+
+    private function formatTimeSlotsForText($rawSlots)
+    {
+        if (is_string($rawSlots)) {
+            $decoded = json_decode($rawSlots, true);
+            if (json_last_error() === JSON_ERROR_NONE) {
+                $rawSlots = $decoded;
+            }
+        }
+        if (!is_array($rawSlots) || empty($rawSlots)) return '';
+        $weekMap = [1 => '周一', 2 => '周二', 3 => '周三', 4 => '周四', 5 => '周五', 6 => '周六', 7 => '周日'];
+        $parts = [];
+        foreach ($rawSlots as $slot) {
+            $w = intval($slot['week_day'] ?? 0);
+            $start = $slot['start_time'] ?? '';
+            $end = $slot['end_time'] ?? '';
+            if ($w >= 1 && $w <= 7 && $start && $end) {
+                $parts[] = $weekMap[$w] . ' ' . $start . '-' . $end;
+            }
+        }
+        return implode('；', $parts);
+    }
     /**
      * 提交家长预约（公开接口）
      * POST /api/order/booking
@@ -112,6 +178,9 @@ class Order extends BaseController
             $isChannel = $this->request->get('is_channel', '');
             $adminId = $this->request->get('admin_id', ''); // 前端传递的admin_id参数
             $keyword = trim((string) $this->request->get('keyword', ''));
+            $weekDay = intval($this->request->get('week_day', 0));
+            $startTimeFrom = trim((string) $this->request->get('start_time_from', ''));
+            $startTimeTo = trim((string) $this->request->get('start_time_to', ''));
             
             // 如果没有登录，返回空数据
             if (!$admin) {
@@ -191,6 +260,32 @@ class Order extends BaseController
                     }
                 });
             }
+
+            if ($weekDay >= 1 && $weekDay <= 7) {
+                $query->where('available_time_slots', 'like', '%"week_day":' . $weekDay . '%');
+            }
+            $fromMinutes = $this->parseTimeToMinutes($startTimeFrom);
+            $toMinutes = $this->parseTimeToMinutes($startTimeTo);
+            if ($fromMinutes !== null || $toMinutes !== null) {
+                $candidateTimes = [];
+                for ($minutes = 0; $minutes < 24 * 60; $minutes += 30) {
+                    if ($fromMinutes !== null && $minutes < $fromMinutes) continue;
+                    if ($toMinutes !== null && $minutes > $toMinutes) continue;
+                    $candidateTimes[] = sprintf('%02d:%02d', intdiv($minutes, 60), $minutes % 60);
+                }
+                if (!empty($candidateTimes)) {
+                    $query->where(function ($timeQuery) use ($candidateTimes) {
+                        foreach ($candidateTimes as $idx => $timeValue) {
+                            $condition = ['available_time_slots', 'like', '%"start_time":"' . $timeValue . '"%'];
+                            if ($idx === 0) {
+                                $timeQuery->where($condition);
+                            } else {
+                                $timeQuery->whereOr($condition);
+                            }
+                        }
+                    });
+                }
+            }
             
             // 分页查询
             $result = $query->paginate([
@@ -247,6 +342,8 @@ class Order extends BaseController
             $list = [];
             foreach ($items as $order) {
                 $arr = $order->toArray();
+                // 前端既支持 string JSON，也支持 array；这里统一解码，避免某些场景下拿到空字符串/未解码导致“可辅导时段”展示为空
+                $arr['available_time_slots'] = json_decode((string)($arr['available_time_slots'] ?? '[]'), true) ?: [];
                 $rawAdminId = $order->getData('admin_id');
                 if ($rawAdminId > 0) {
                     $admin = Admin::field('id,username,nickname')->find($rawAdminId);
@@ -421,6 +518,8 @@ class Order extends BaseController
             }
             
             $data = $order->toArray();
+            // 统一返回数组结构，便于后台展示/筛选
+            $data['available_time_slots'] = json_decode((string)($data['available_time_slots'] ?? '[]'), true) ?: [];
             $rawAdminId = $order->getData('admin_id');
             if ($rawAdminId > 0) {
                 $admin = Admin::field('id,username,nickname')->find($rawAdminId);
@@ -524,22 +623,16 @@ class Order extends BaseController
                     ]);
                 }
 
-                // 获取下一个可用的ID（使用简单自增方式）
-                $maxId = TutorOrder::max('id') ?: 0;
-                $tutorId = $maxId + 1;
+                // 生成家教单ID：保持与家教单管理端一致的生成规则（字符串ID）
+                $tutorId = TutorOrder::generateOrderId(date('Y-m-d H:i:s'));
                 
                 // 构建家教单内容（使用原始格式）
                 $tutorContent = $this->buildTutorContentFromOrder($order);
                 
                 // 解析薪酬范围 - 直接使用预约单的时薪范围字段
-                $salaryValue = null;
                 $salaryStr = $order->salary ?: '';
                 if (empty($salaryStr) && $order->budget_min && $order->budget_max) {
                     $salaryStr = $order->budget_min . '-' . $order->budget_max . '元/小时';
-                }
-                // 提取最低薪酬数字用于排序
-                if (preg_match('/(\d+)/', $salaryStr, $matches)) {
-                    $salaryValue = intval($matches[1]);
                 }
                 
                 // 解析科目ID
@@ -591,20 +684,10 @@ class Order extends BaseController
                     'salary' => $salaryStr,  // 直接存储时薪范围字符串（如：130-150元/小时）
                     'teacher_type' => $teacherType,
                     'admin_id' => $order->admin_id ?: 0,
-                    'admin_openid' => null,  // 先设为null，后面根据admin_id填充
                     'is_urgent' => 0,
                     'status' => 1,
                     'booking_channel' => $order->booking_channel ?: '小程序'  // 预约渠道，用于标识预约单
                 ];
-                
-                // 如果预约订单有关联的管理员，填充 admin_openid
-                if ($order->admin_id > 0) {
-                    $orderAdmin = \app\model\Admin::find($order->admin_id);
-                    if ($orderAdmin && !empty($orderAdmin->openid)) {
-                        $openidTokens = \app\model\Admin::splitOpenids($orderAdmin->openid);
-                        $tutorData['admin_openid'] = $openidTokens[0] ?? null;
-                    }
-                }
                 
                 $tutor = TutorOrder::create($tutorData);
                 
@@ -743,6 +826,10 @@ class Order extends BaseController
         $content = "【{$title}】\n";
         $content .= "【学生情况】{$studentGender}" . ($studentGender && $studentInfo ? '，' : '') . "{$studentInfo}\n";
         $content .= "【时间频率】{$order->frequency}" . ($order->frequency && $order->duration ? '，' : '') . "{$order->duration}\n";
+        $timeSlotsText = $this->formatTimeSlotsForText($order->available_time_slots);
+        if ($timeSlotsText !== '') {
+            $content .= "【可辅导时段】" . $timeSlotsText . "\n";
+        }
         $content .= "【时薪范围】{$salary}\n";
         $content .= "【老师要求】{$teacherReq}";
         
@@ -852,6 +939,9 @@ class Order extends BaseController
         $content .= "【辅导科目】{$order->subject}\n";
         $content .= "【学生情况】{$order->student_info}\n";
         $content .= "【辅导频率】{$order->frequency}\n";
+        if (!empty($order->available_time_slots)) {
+            $content .= "【可辅导时段】" . $this->formatTimeSlotsForText($order->available_time_slots) . "\n";
+        }
         $content .= "【老师要求】{$order->teacher_requirement}\n";
         $content .= "【授课地址】{$order->address}\n";
         
@@ -1142,12 +1232,21 @@ class Order extends BaseController
                 $allowedFields = [
                     'grade', 'subject', 'student_info', 'frequency',
                     'teacher_requirement', 'address', 'parent_name',
-                    'parent_contact', 'salary', 'remark'
+                    'parent_contact', 'salary', 'remark', 'available_time_slots'
                 ];
                 
                 foreach ($allowedFields as $field) {
                     if (array_key_exists($field, $data)) {
-                        $order->$field = $data[$field];
+                        if ($field === 'available_time_slots') {
+                            list($slotValid, $slotMessage, $normalizedSlots) = $this->normalizeAdminTimeSlots($data[$field]);
+                            if (!$slotValid) {
+                                Db::rollback();
+                                return json(['code' => 400, 'message' => $slotMessage]);
+                            }
+                            $order->$field = json_encode($normalizedSlots, JSON_UNESCAPED_UNICODE);
+                        } else {
+                            $order->$field = $data[$field];
+                        }
                     }
                 }
                 

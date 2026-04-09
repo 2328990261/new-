@@ -29,11 +29,22 @@ class WechatMiniProgramService
             throw new \Exception('微信小程序配置缺失：请在后端 .env 配置 WECHAT_MINI_APPID / WECHAT_MINI_SECRET，或在 config/wechat.php 配置 mini_appid / mini_secret');
         }
     }
+
+    /**
+     * 粗判是否是 openid（避免把 openid 误当 unionid）
+     * openid 常见以 "o" 开头，长度约 28；这里放宽到 20-40
+     */
+    private function looksLikeOpenid(string $value): bool
+    {
+        $v = trim($value);
+        if ($v === '') return false;
+        return (bool)preg_match('/^o[A-Za-z0-9\\-_]{19,39}$/', $v);
+    }
     
     /**
      * 微信 code 换 openid/session_key（仅请求微信，不建用户）
      * @param string $code
-     * @return array [openid, session_key]
+     * @return array [openid, session_key, unionid]
      * @throws \Exception
      */
     private function getOpenidByCode($code)
@@ -46,14 +57,31 @@ class WechatMiniProgramService
             'js_code' => $code,
             'grant_type' => 'authorization_code'
         ];
+        
+        \think\facade\Log::info('请求微信 jscode2session', [
+            'appid' => $this->appId,
+            'code' => substr($code, 0, 10) . '...'
+        ]);
+        
         $response = $this->httpGet($url, $params);
         $result = json_decode($response, true);
+        
+        \think\facade\Log::info('微信 jscode2session 响应', [
+            'has_openid' => isset($result['openid']),
+            'has_session_key' => isset($result['session_key']),
+            'has_unionid' => isset($result['unionid']),
+            'errcode' => $result['errcode'] ?? 'none',
+            'errmsg' => $result['errmsg'] ?? 'none'
+        ]);
+        
         if (isset($result['errcode']) && $result['errcode'] != 0) {
             throw new \Exception($result['errmsg'] ?? '微信登录失败');
         }
+        
         return [
             'openid' => $result['openid'],
-            'session_key' => $result['session_key']
+            'session_key' => $result['session_key'],
+            'unionid' => $result['unionid'] ?? ''
         ];
     }
 
@@ -69,13 +97,26 @@ class WechatMiniProgramService
         $session = $this->getOpenidByCode($code);
         $openid = $session['openid'];
         $sessionKey = $session['session_key'];
+        $unionid = trim((string)($session['unionid'] ?? ''));
 
         // 缓存 session_key，用于后续解密手机号
         Cache::set('wechat_session_' . $openid, $sessionKey, 7200);
+        // 登录时优先补齐 unionid（若微信有返回）
+        $this->syncMiniUnionid($openid, $unionid, 'mini_login');
 
         $user = User::where('openid', $openid)->find();
 
         if ($user) {
+            // 登录补偿：即使未走手机号授权，也要确保 wechat_users / 绑定表有当前小程序身份
+            $userType = $this->getUserTypeFromWechatUsers($openid);
+            $this->ensureLoginBindingRows($openid, $unionid, (int)$user->id, $userType);
+
+            // 返回给前端的 unionid 以补齐后的库值为准（syncMiniUnionid 可能在微信未返回 unionid 时补写）
+            $dbUnionid = trim((string)(Db::name('wechat_users')->where('openid', $openid)->value('unionid') ?? ''));
+            if ($dbUnionid !== '' && !$this->looksLikeOpenid($dbUnionid)) {
+                $unionid = $dbUnionid;
+            }
+
             // superior_openid：登录时分享的管理员 openid，仅当用户表为空时补写
             $superiorOpenid = trim((string)($extraInfo['superior_openid'] ?? ''));
             if ($superiorOpenid !== '' && $superiorOpenid !== $openid) {
@@ -98,10 +139,10 @@ class WechatMiniProgramService
             }
 
             $token = $this->generateToken($user);
-            $userType = $this->getUserTypeFromWechatUsers($openid);
             return [
                 'openid' => $openid,
                 'session_key' => $sessionKey,
+                'unionid' => $unionid,
                 'token' => $token,
                 'userInfo' => [
                     'id' => $user->id,
@@ -117,7 +158,8 @@ class WechatMiniProgramService
         // 未注册：只返回 openid 和 session_key，需通过手机号登录接口完成注册
         return [
             'openid' => $openid,
-            'session_key' => $sessionKey
+            'session_key' => $sessionKey,
+            'unionid' => $unionid
         ];
     }
 
@@ -153,9 +195,21 @@ class WechatMiniProgramService
         if ($session['openid'] !== $openid) {
             throw new \Exception('openid 与本次登录不一致，请重新登录');
         }
+        $unionid = trim((string)($session['unionid'] ?? ''));
+        $this->syncMiniUnionid($openid, $unionid, 'mini_login_openid');
         $user = User::where('openid', $openid)->find();
         if (!$user) {
             throw new \Exception('用户不存在，请先完成登录');
+        }
+
+        // 静默登录补偿：确保 wechat_users / 绑定表有当前小程序身份
+        $userType = $this->getUserTypeFromWechatUsers($openid);
+        $this->ensureLoginBindingRows($openid, $unionid, (int)$user->id, $userType);
+
+        // 返回给前端的 unionid 以补齐后的库值为准（避免 jscode2session 未返回 unionid 时前端拿到空值）
+        $dbUnionid = trim((string)(Db::name('wechat_users')->where('openid', $openid)->value('unionid') ?? ''));
+        if ($dbUnionid !== '' && !$this->looksLikeOpenid($dbUnionid)) {
+            $unionid = $dbUnionid;
         }
 
         // superior_openid：登录时分享的管理员 openid，仅当用户表为空时写入一次，永不覆盖
@@ -169,10 +223,10 @@ class WechatMiniProgramService
             }
         }
 
-        $userType = $this->getUserTypeFromWechatUsers($openid);
         $token = $this->generateToken($user);
         return [
             'token' => $token,
+            'unionid' => $unionid,
             'userInfo' => [
                 'id' => $user->id,
                 'phone' => $user->phone ?? '',
@@ -224,10 +278,18 @@ class WechatMiniProgramService
                     $result = json_decode($response, true);
                     
                     if (isset($result['errcode']) && $result['errcode'] != 0) {
-                        throw new \Exception($result['errmsg'] ?? '获取手机号失败');
+                        $errmsg = (string)($result['errmsg'] ?? '获取手机号失败');
+                        if (stripos($errmsg, 'invalid ip') !== false && stripos($errmsg, 'whitelist') !== false) {
+                            throw new \Exception('微信接口拦截：服务器出口 IP 不在小程序 IP 白名单。请到微信公众平台 -> 开发 -> 开发设置 -> IP 白名单，添加当前后端服务器的公网出口 IP 后重试。原始错误：' . $errmsg);
+                        }
+                        throw new \Exception($errmsg ?: '获取手机号失败');
                     }
                 } else {
-                    throw new \Exception($result['errmsg'] ?? '获取手机号失败');
+                    $errmsg = (string)($result['errmsg'] ?? '获取手机号失败');
+                    if (stripos($errmsg, 'invalid ip') !== false && stripos($errmsg, 'whitelist') !== false) {
+                        throw new \Exception('微信接口拦截：服务器出口 IP 不在小程序 IP 白名单。请到微信公众平台 -> 开发 -> 开发设置 -> IP 白名单，添加当前后端服务器的公网出口 IP 后重试。原始错误：' . $errmsg);
+                    }
+                    throw new \Exception($errmsg ?: '获取手机号失败');
                 }
             }
             
@@ -251,6 +313,10 @@ class WechatMiniProgramService
             // 获取openid
             $loginResult = $this->login($code);
             $openid = $loginResult['openid'];
+            $unionid = trim((string)($loginResult['unionid'] ?? ''));
+            if ($unionid !== '' && empty($extraInfo['unionid'])) {
+                $extraInfo['unionid'] = $unionid;
+            }
             
             // 注册或更新用户
             return $this->registerOrUpdateUser($openid, $phone, $extraInfo);
@@ -284,6 +350,10 @@ class WechatMiniProgramService
         // 获取openid和session_key
         $loginResult = $this->login($code);
         $openid = $loginResult['openid'];
+        $unionid = trim((string)($loginResult['unionid'] ?? ''));
+        if ($unionid !== '' && empty($extraInfo['unionid'])) {
+            $extraInfo['unionid'] = $unionid;
+        }
         $sessionKey = $loginResult['session_key'];
         
         // 解密手机号
@@ -311,6 +381,7 @@ class WechatMiniProgramService
         $userType = $extraInfo['user_type'] ?? 'parent';
         $inviterOpenid = $extraInfo['inviter_openid'] ?? '';
         $superiorOpenid = trim((string)($extraInfo['superior_openid'] ?? ''));
+        $unionid = trim((string)($extraInfo['unionid'] ?? ''));
         
         $isNewUser = false;
         
@@ -385,7 +456,14 @@ class WechatMiniProgramService
         }
         
         // 同步保存到 fa_wechat_users 表
-        $this->saveToWechatUsers($openid, $phone, $nickname, $avatar, $userType, $user->id);
+        $this->saveToWechatUsers($openid, $phone, $nickname, $avatar, $userType, $user->id, $unionid);
+        $this->syncMiniUnionid($openid, $unionid, 'mini_phone_login');
+
+        // 返回给前端的 unionid 以补齐后的库值为准
+        $dbUnionid = trim((string)(Db::name('wechat_users')->where('openid', $openid)->value('unionid') ?? ''));
+        if ($dbUnionid !== '' && !$this->looksLikeOpenid($dbUnionid)) {
+            $unionid = $dbUnionid;
+        }
         
         // 按手机号匹配教师表并回写 openid/微信昵称（不依赖 user_type，只要该手机号在教师表存在就更新）
         $this->syncTeacherOpenid($openid, $phone, $nickname);
@@ -395,6 +473,7 @@ class WechatMiniProgramService
         
         return [
             'token' => $token,
+            'unionid' => $unionid,
             'userInfo' => [
                 'id' => $user->id,
                 'phone' => $phone,
@@ -416,7 +495,7 @@ class WechatMiniProgramService
      * @param string|null $userType
      * @param int|null $userId
      */
-    private function saveToWechatUsers($openid, $phone, $nickname, $avatar, $userType = null, $userId = null)
+    private function saveToWechatUsers($openid, $phone, $nickname, $avatar, $userType = null, $userId = null, $unionid = '')
     {
         try {
             $existing = Db::name('wechat_users')->where('openid', $openid)->find();
@@ -435,6 +514,10 @@ class WechatMiniProgramService
                 'user_id' => $userId,
                 'update_time' => date('Y-m-d H:i:s')
             ];
+            $unionid = trim((string)$unionid);
+            if ($unionid !== '') {
+                $data['unionid'] = $unionid;
+            }
             
             if ($existing) {
                 // 更新时以本次登录选择的身份为准，不再用“原记录为空则强制 parent”（否则退出登录改选老师后仍被写成 parent）
@@ -448,6 +531,249 @@ class WechatMiniProgramService
             // 记录错误但不影响主流程
             trace('保存到wechat_users表失败: ' . $e->getMessage(), 'error');
             \think\facade\Log::error('保存到wechat_users表失败: ' . $e->getMessage());
+        }
+    }
+
+    /**
+     * 在小程序登录链路补齐 unionid（wechat_users + wechat_openid_bindings）
+     * 若微信未直接返回 unionid，尝试通过公众号用户信息接口获取
+     */
+    private function syncMiniUnionid($miniOpenid, $unionid, $source = 'mini_login')
+    {
+        $miniOpenid = trim((string)$miniOpenid);
+        $unionid = trim((string)$unionid);
+
+        // 容错：unionid 被误写成 openid 时直接视为无效
+        if ($unionid !== '' && $this->looksLikeOpenid($unionid)) {
+            $unionid = '';
+        }
+        
+        // 如果微信接口未返回 unionid，尝试通过其他方式获取
+        if ($miniOpenid !== '' && $unionid === '') {
+            \think\facade\Log::info('微信未返回 unionid，尝试通过绑定关系获取', [
+                'mini_openid' => $miniOpenid,
+                'source' => $source
+            ]);
+            
+            // 1. 先查询绑定表是否已有 unionid
+            try {
+                $bind = Db::name('wechat_openid_bindings')->where('mini_openid', $miniOpenid)->find();
+                if ($bind && !empty($bind['unionid'])) {
+                    $cand = trim((string)$bind['unionid']);
+                    if ($cand !== '' && !$this->looksLikeOpenid($cand)) {
+                        $unionid = $cand;
+                    }
+                    \think\facade\Log::info('从绑定表获取到 unionid', ['unionid' => $unionid]);
+                }
+                
+                // 2. 如果绑定表有公众号 openid，尝试通过公众号接口获取用户信息（包含 unionid）
+                if ($unionid === '' && !empty($bind['mp_openid'])) {
+                    $mpOpenid = trim((string)$bind['mp_openid']);
+                    $userInfo = $this->getOfficialAccountUserInfo($mpOpenid);
+                    if (!empty($userInfo['unionid'])) {
+                        $cand = trim((string)$userInfo['unionid']);
+                        if ($cand !== '' && !$this->looksLikeOpenid($cand)) {
+                            $unionid = $cand;
+                        }
+                        \think\facade\Log::info('通过公众号接口获取到 unionid', [
+                            'mp_openid' => $mpOpenid,
+                            'unionid' => $unionid
+                        ]);
+                    }
+                }
+            } catch (\Throwable $e) {
+                \think\facade\Log::warning('尝试获取 unionid 失败: ' . $e->getMessage());
+            }
+        }
+        
+        if ($miniOpenid === '' || $unionid === '') {
+            \think\facade\Log::info('syncMiniUnionid 跳过', [
+                'mini_openid' => $miniOpenid ?: '(empty)',
+                'unionid' => $unionid ?: '(empty)',
+                'reason' => $miniOpenid === '' ? 'mini_openid为空' : 'unionid为空'
+            ]);
+            return;
+        }
+        
+        $now = date('Y-m-d H:i:s');
+        try {
+            $wu = Db::name('wechat_users')->where('openid', $miniOpenid)->find();
+            if ($wu) {
+                Db::name('wechat_users')->where('id', (int)$wu['id'])->update([
+                    'unionid' => $unionid,
+                    'update_time' => $now
+                ]);
+                \think\facade\Log::info('更新 wechat_users unionid', [
+                    'openid' => $miniOpenid,
+                    'unionid' => $unionid
+                ]);
+            } else {
+                Db::name('wechat_users')->insert([
+                    'openid' => $miniOpenid,
+                    'unionid' => $unionid,
+                    'subscribe' => 0,
+                    'create_time' => $now,
+                    'update_time' => $now
+                ]);
+                \think\facade\Log::info('插入 wechat_users 记录', [
+                    'openid' => $miniOpenid,
+                    'unionid' => $unionid
+                ]);
+            }
+
+            $bind = Db::name('wechat_openid_bindings')->where('mini_openid', $miniOpenid)->find();
+            if ($bind) {
+                Db::name('wechat_openid_bindings')->where('id', (int)$bind['id'])->update([
+                    'unionid' => $unionid,
+                    'update_time' => $now
+                ]);
+                \think\facade\Log::info('更新 wechat_openid_bindings unionid', [
+                    'mini_openid' => $miniOpenid,
+                    'unionid' => $unionid
+                ]);
+            } else {
+                Db::name('wechat_openid_bindings')->insert([
+                    'mini_openid' => $miniOpenid,
+                    'unionid' => $unionid,
+                    'scene_key' => 'mini_login_' . $miniOpenid,
+                    'is_subscribed' => 0,
+                    'create_time' => $now,
+                    'update_time' => $now
+                ]);
+                \think\facade\Log::info('插入 wechat_openid_bindings 记录', [
+                    'mini_openid' => $miniOpenid,
+                    'unionid' => $unionid
+                ]);
+            }
+        } catch (\Throwable $e) {
+            \think\facade\Log::error('syncMiniUnionid 失败: ' . $e->getMessage(), [
+                'mini_openid' => $miniOpenid,
+                'unionid' => $unionid,
+                'trace' => $e->getTraceAsString()
+            ]);
+        }
+    }
+    
+    /**
+     * 通过公众号接口获取用户信息（包含 unionid）
+     * @param string $mpOpenid 公众号 openid
+     * @return array
+     */
+    private function getOfficialAccountUserInfo($mpOpenid)
+    {
+        try {
+            // 使用 WechatNotificationService 的方法获取用户信息
+            $result = \app\service\WechatNotificationService::getUserInfo($mpOpenid);
+            
+            if (!empty($result['success']) && !empty($result['data'])) {
+                return $result['data'];
+            }
+            
+            return [];
+        } catch (\Throwable $e) {
+            \think\facade\Log::warning('获取公众号用户信息失败: ' . $e->getMessage());
+            return [];
+        }
+    }
+
+    /**
+     * 登录补偿：确保 wechat_users 与 wechat_openid_bindings 落库
+     * - 永远补写 mini_openid 到绑定表，避免“登录后绑定表仍为空”
+     * - 若存在 unionid，自动尝试反查并补写 mp_openid（已关注用户补偿）
+     */
+    private function ensureLoginBindingRows($miniOpenid, $unionid = '', $userId = 0, $userType = 'parent')
+    {
+        $miniOpenid = trim((string)$miniOpenid);
+        $unionid = trim((string)$unionid);
+        if ($miniOpenid === '') {
+            return;
+        }
+        $now = date('Y-m-d H:i:s');
+        try {
+            // 1) wechat_users 至少保证有当前 mini_openid 行
+            $wu = Db::name('wechat_users')->where('openid', $miniOpenid)->find();
+            $wuData = [
+                'openid' => $miniOpenid,
+                'user_type' => in_array((string)$userType, ['teacher', 'parent'], true) ? (string)$userType : 'parent',
+                'user_id' => $userId > 0 ? (int)$userId : null,
+                'subscribe' => (int)($wu['subscribe'] ?? 0),
+                'update_time' => $now
+            ];
+            if ($unionid !== '') {
+                $wuData['unionid'] = $unionid;
+            } elseif (empty($wu)) {
+                $wuData['unionid'] = null;
+            }
+            if ($wu) {
+                Db::name('wechat_users')->where('id', (int)$wu['id'])->update($wuData);
+            } else {
+                $wuData['create_time'] = $now;
+                Db::name('wechat_users')->insert($wuData);
+            }
+
+            // 2) 绑定表至少落 mini_openid
+            $bind = Db::name('wechat_openid_bindings')->where('mini_openid', $miniOpenid)->find();
+            if ($bind) {
+                $update = ['update_time' => $now];
+                if ($unionid !== '' && trim((string)($bind['unionid'] ?? '')) === '') {
+                    $update['unionid'] = $unionid;
+                }
+                if (trim((string)($bind['scene_key'] ?? '')) === '') {
+                    $update['scene_key'] = 'mini_login_' . $miniOpenid;
+                }
+                Db::name('wechat_openid_bindings')->where('id', (int)$bind['id'])->update($update);
+            } else {
+                Db::name('wechat_openid_bindings')->insert([
+                    'mini_openid' => $miniOpenid,
+                    'mp_openid' => null,
+                    'unionid' => $unionid !== '' ? $unionid : null,
+                    'scene_key' => 'mini_login_' . $miniOpenid,
+                    'is_subscribed' => 0,
+                    'create_time' => $now,
+                    'update_time' => $now
+                ]);
+                $bind = Db::name('wechat_openid_bindings')->where('mini_openid', $miniOpenid)->find();
+            }
+
+            // 3) 若有 unionid，尝试反查已关注公众号 openid 并补写 mp_openid
+            if ($unionid !== '') {
+                $mpOpenid = trim((string)($bind['mp_openid'] ?? ''));
+                if ($mpOpenid === '') {
+                    $candBind = Db::name('wechat_openid_bindings')
+                        ->where('unionid', $unionid)
+                        ->where('mp_openid', '<>', '')
+                        ->order('update_time', 'desc')
+                        ->find();
+                    if (!empty($candBind['mp_openid'])) {
+                        $mpOpenid = trim((string)$candBind['mp_openid']);
+                    }
+                }
+                if ($mpOpenid === '') {
+                    $candMp = Db::name('wechat_users')
+                        ->where('unionid', $unionid)
+                        ->where('subscribe', 1)
+                        ->where('openid', '<>', '')
+                        ->order('update_time', 'desc')
+                        ->order('create_time', 'desc')
+                        ->find();
+                    if (!empty($candMp['openid'])) {
+                        $mpOpenid = trim((string)$candMp['openid']);
+                    }
+                }
+                if ($mpOpenid !== '') {
+                    Db::name('wechat_openid_bindings')
+                        ->where('mini_openid', $miniOpenid)
+                        ->update([
+                            'mp_openid' => $mpOpenid,
+                            'unionid' => $unionid,
+                            'scene_key' => trim((string)($bind['scene_key'] ?? '')) ?: ('union_auto_' . $miniOpenid),
+                            'is_subscribed' => 1,
+                            'update_time' => $now
+                        ]);
+                }
+            }
+        } catch (\Throwable $e) {
+            \think\facade\Log::warning('ensureLoginBindingRows 失败: ' . $e->getMessage());
         }
     }
     

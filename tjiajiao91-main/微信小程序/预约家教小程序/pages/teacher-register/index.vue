@@ -434,7 +434,7 @@
 								<view class="cert-upload" @click="chooseCertImage('id_card_front')">
 									<image v-if="formData.id_card_front" :src="formData.id_card_front" class="cert-preview" mode="aspectFill" />
 									<view v-else class="cert-placeholder">
-										<image class="cert-type-icon" src="/static/register/身份证正面.png" mode="aspectFit"></image>
+										<image class="cert-type-icon" src="/static/register/id_card_front.png" mode="aspectFit"></image>
 										<text class="upload-text-small">上传正面</text>
 									</view>
 									<!-- 删除按钮 -->
@@ -449,7 +449,7 @@
 								<view class="cert-upload" @click="chooseCertImage('id_card_back')">
 									<image v-if="formData.id_card_back" :src="formData.id_card_back" class="cert-preview" mode="aspectFill" />
 									<view v-else class="cert-placeholder">
-										<image class="cert-type-icon" src="/static/register/身份证反面.png" mode="aspectFit"></image>
+										<image class="cert-type-icon" src="/static/register/id_card_back.png" mode="aspectFit"></image>
 										<text class="upload-text-small">上传反面</text>
 									</view>
 									<!-- 删除按钮 -->
@@ -473,7 +473,7 @@
 						<view class="cert-upload-single" @click="chooseCertImage('education_certificate')">
 							<image v-if="formData.education_certificate" :src="formData.education_certificate" class="cert-preview" mode="aspectFill" />
 							<view v-else class="cert-placeholder cert-placeholder-large">
-								<image class="cert-type-icon cert-type-icon-large" src="/static/register/资质证明-copy.png" mode="aspectFit"></image>
+								<image class="cert-type-icon cert-type-icon-large" src="/static/register/education_cert_icon.png" mode="aspectFit"></image>
 								<text class="upload-text-large">上传学历证明</text>
 							</view>
 							<!-- 删除按钮 -->
@@ -618,6 +618,27 @@
 				预览简历
 			</button>
 		</view>
+
+		<!-- 提交后关注公众号二维码弹窗 -->
+		<view v-if="showOfficialQrcodePopup" class="qrcode-popup-mask" @click="closeOfficialQrcodePopup">
+			<view class="qrcode-popup" @click.stop>
+				<view class="qrcode-popup-title">提交成功，请关注公众号</view>
+				<view class="qrcode-popup-desc">扫码关注后可接收审核结果通知</view>
+				<image
+					v-if="officialQrcodeUrl"
+					class="qrcode-image"
+					:src="officialQrcodeUrl"
+					mode="aspectFit"
+					:show-menu-by-longpress="true"
+				/>
+				<view v-else class="qrcode-placeholder">二维码加载中...</view>
+				<view class="qrcode-actions">
+					<button class="qrcode-btn qrcode-btn-secondary" @click="closeOfficialQrcodePopup">稍后关注</button>
+					<button class="qrcode-btn qrcode-btn-secondary" @click="copyOfficialBindLink">复制绑定链接</button>
+					<button class="qrcode-btn qrcode-btn-primary" @click="saveOfficialQrcode">保存二维码</button>
+				</view>
+			</view>
+		</view>
 	</view>
 </template>
 
@@ -743,7 +764,10 @@ export default {
 			// 籍贯选择器内列表的明确高度（px），安卓上 scroll-view 必须用固定高度才能滑动
 			hometownPickerScrollHeight: 360,
 			// 当前年份（用于出生年份验证）
-			currentYear: new Date().getFullYear()
+			currentYear: new Date().getFullYear(),
+			showOfficialQrcodePopup: false,
+			officialQrcodeUrl: '',
+			officialBindAuthUrl: ''
 		}
 	},
 	computed: {
@@ -2353,24 +2377,7 @@ export default {
 					// 清除本地存储
 					uni.removeStorageSync('teacher_register_progress')
 					// 提交后一律为待审核，不再弹「已拒绝」；若 5 分钟后三项认证仍为空，由后端自动改为已拒绝，用户进入页面时在简历预览/状态处可见
-					const title = this.isEditMode ? '更新成功' : '注册成功'
-					const content = this.isEditMode ? '您的信息已更新！' : '提交成功，等待审核'
-					
-					uni.showModal({
-						title: title,
-						content: content,
-						showCancel: false,
-						success: () => {
-							uni.navigateBack({
-								delta: 2,
-								fail: () => {
-									uni.reLaunch({
-										url: '/pages/profile/index'
-									})
-								}
-							})
-						}
-					})
+					await this.showSubmitSuccessWithOfficialQrcode()
 				} else {
 					uni.showToast({
 						title: res.error || '提交失败',
@@ -2385,6 +2392,111 @@ export default {
 					icon: 'none'
 				})
 			}
+		},
+
+		async showSubmitSuccessWithOfficialQrcode() {
+			const userInfo = uni.getStorageSync('userInfo') || {}
+			const miniOpenid = (userInfo.openid || '').trim()
+			if (!miniOpenid) {
+				uni.showModal({
+					title: '未获取到微信身份',
+					content: '当前用户openid为空，无法生成关注二维码。请重新登录后再提交。',
+					showCancel: false,
+					success: () => this.fallbackSubmitSuccess()
+				})
+				return
+			}
+
+			try {
+				const qrRes = await teacherRegisterApi.getOfficialQrcode(miniOpenid)
+				const qrcodeUrl = qrRes?.data?.url || ''
+				if (qrRes?.success && qrcodeUrl) {
+					this.officialQrcodeUrl = qrcodeUrl
+					try {
+						const bindRes = await teacherRegisterApi.getOfficialBindAuthUrl(miniOpenid)
+						this.officialBindAuthUrl = bindRes?.data?.auth_url || ''
+					} catch (e2) {
+						this.officialBindAuthUrl = ''
+					}
+					this.showOfficialQrcodePopup = true
+					return
+				}
+				uni.showModal({
+					title: '二维码生成失败',
+					content: (qrRes && (qrRes.message || qrRes.error)) ? String(qrRes.message || qrRes.error) : '接口未返回二维码地址',
+					showCancel: false
+				})
+			} catch (e) {
+				console.error('获取公众号二维码失败', e)
+				uni.showModal({
+					title: '二维码请求失败',
+					content: e?.message ? String(e.message) : '请检查接口 /api/wechat/official/qrcode 是否已部署到当前环境',
+					showCancel: false
+				})
+			}
+			this.fallbackSubmitSuccess()
+		},
+
+		fallbackSubmitSuccess() {
+			const title = this.isEditMode ? '更新成功' : '注册成功'
+			const content = this.isEditMode ? '您的信息已更新！' : '提交成功，等待审核'
+			uni.showModal({
+				title,
+				content,
+				showCancel: false,
+				success: () => this.goProfileAfterSubmit()
+			})
+		},
+
+		closeOfficialQrcodePopup() {
+			this.showOfficialQrcodePopup = false
+			this.goProfileAfterSubmit()
+		},
+
+		saveOfficialQrcode() {
+			if (!this.officialQrcodeUrl) return
+			uni.downloadFile({
+				url: this.officialQrcodeUrl,
+				success: (res) => {
+					if (res.statusCode === 200 && res.tempFilePath) {
+						uni.saveImageToPhotosAlbum({
+							filePath: res.tempFilePath,
+							success: () => {
+								uni.showToast({ title: '已保存到相册', icon: 'success' })
+							},
+							fail: () => {
+								uni.showToast({ title: '保存失败，请截图', icon: 'none' })
+							}
+						})
+					} else {
+						uni.showToast({ title: '下载失败，请截图', icon: 'none' })
+					}
+				},
+				fail: () => uni.showToast({ title: '下载失败，请截图', icon: 'none' })
+			})
+		},
+
+		copyOfficialBindLink() {
+			if (!this.officialBindAuthUrl) {
+				uni.showToast({ title: '绑定链接暂不可用', icon: 'none' })
+				return
+			}
+			uni.setClipboardData({
+				data: this.officialBindAuthUrl,
+				success: () => uni.showToast({ title: '已复制，微信中打开即可绑定', icon: 'none' }),
+				fail: () => uni.showToast({ title: '复制失败', icon: 'none' })
+			})
+		},
+
+		goProfileAfterSubmit() {
+			uni.navigateBack({
+				delta: 2,
+				fail: () => {
+					uni.reLaunch({
+						url: '/pages/profile/index'
+					})
+				}
+			})
 		},
 		
 		// 保存进度
@@ -3545,6 +3657,91 @@ export default {
 
 .btn-full {
 	flex: 2;
+}
+
+.qrcode-popup-mask {
+	position: fixed;
+	left: 0;
+	right: 0;
+	top: 0;
+	bottom: 0;
+	background: rgba(0, 0, 0, 0.55);
+	z-index: 2000;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	padding: 32rpx;
+}
+
+.qrcode-popup {
+	width: 100%;
+	max-width: 620rpx;
+	background: #fff;
+	border-radius: 20rpx;
+	padding: 32rpx;
+	box-sizing: border-box;
+}
+
+.qrcode-popup-title {
+	font-size: 34rpx;
+	font-weight: 600;
+	color: #222;
+	text-align: center;
+}
+
+.qrcode-popup-desc {
+	font-size: 26rpx;
+	color: #666;
+	text-align: center;
+	margin-top: 12rpx;
+	margin-bottom: 20rpx;
+}
+
+.qrcode-image {
+	width: 420rpx;
+	height: 420rpx;
+	display: block;
+	margin: 0 auto;
+	border-radius: 12rpx;
+	background: #f7f7f7;
+}
+
+.qrcode-placeholder {
+	width: 420rpx;
+	height: 420rpx;
+	margin: 0 auto;
+	border-radius: 12rpx;
+	background: #f7f7f7;
+	color: #999;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	font-size: 26rpx;
+}
+
+.qrcode-actions {
+	display: flex;
+	gap: 20rpx;
+	margin-top: 24rpx;
+}
+
+.qrcode-btn {
+	flex: 1;
+	height: 80rpx;
+	line-height: 80rpx;
+	border-radius: 40rpx;
+	font-size: 28rpx;
+	border: none;
+}
+
+.qrcode-btn-secondary {
+	background: #f2f3f5;
+	color: #555;
+}
+
+.qrcode-btn-primary {
+	background: linear-gradient(90deg, #52C9A6, #3BA888);
+	color: #fff;
 }
 
 /* 选择器输入框样式 */

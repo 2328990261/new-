@@ -44,7 +44,7 @@
 				const token = uni.getStorageSync('token')
 				const userRole = uni.getStorageSync('userRole')
 				if (token && userRole === 'parent') {
-					uni.reLaunch({ url: '/pages/teacher-library/index' })
+					uni.reLaunch({ url: '/pages/parent-home/index' })
 					return
 				}
 				if (token && userRole === 'teacher') {

@@ -63,6 +63,7 @@ export default {
 			switching: false, // 防止快速点击
 			// 仅属于家长端的 tab 页（老师端没有这些页）
 			parentOnlyPaths: [
+				'/pages/parent-home/index',
 				'/pages/teacher-library/index',
 				'/pages/step-booking/index',
 				'/pages/my-demands/index'
@@ -75,6 +76,11 @@ export default {
 			// 这里的 icon 字段对应 uni-icons 的 type
 			parentTabs: [
 				{ 
+					path: '/pages/parent-home/index', 
+					text: '首页', 
+					icon: 'home'
+				},
+				{ 
 					path: '/pages/teacher-library/index', 
 					text: '老师', 
 					icon: 'person'
@@ -83,11 +89,6 @@ export default {
 					path: '/pages/step-booking/index', 
 					text: '请家教', 
 					icon: 'compose'
-				},
-				{ 
-					path: '/pages/my-demands/index', 
-					text: '我的预约', 
-					icon: 'calendar'
 				},
 				{ 
 					path: '/pages/profile/index', 

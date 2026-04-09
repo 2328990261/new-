@@ -16,6 +16,13 @@ const testClick = () => {
 .refund-test {
   padding: 40px;
   text-align: center;
+  min-height: 100vh;
+  min-height: 100dvh;
+  height: 100dvh;
+  overflow-x: hidden;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
 }
 
 .refund-test h1 {

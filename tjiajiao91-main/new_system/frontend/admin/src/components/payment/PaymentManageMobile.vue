@@ -48,7 +48,7 @@
       <div class="filter-row">
         <el-input
           v-model="localFilters.keyword"
-          placeholder="搜索家教/老师"
+          placeholder="搜索家教标题/老师"
           clearable
           size="default"
           class="filter-input search-input"
@@ -168,6 +168,9 @@
         @view="$emit('view', $event)"
         @refund="$emit('refund', $event)"
         @reject="$emit('reject', $event)"
+        @pin="$emit('pin', $event)"
+        @remark="$emit('remark', $event)"
+        @remove="$emit('remove', $event)"
       />
 
       <el-empty v-if="!loading && payments.length === 0" description="暂无数据" />
@@ -230,6 +233,9 @@ const emit = defineEmits([
   'view',
   'refund',
   'reject',
+  'pin',
+  'remark',
+  'remove',
   'load-more',
   'go-to-data-panel'
 ])

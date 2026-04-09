@@ -7,7 +7,7 @@ console.log('=== 环境配置文件已加载 ===')
 // 设为 true 时始终使用下方 FORCE_ENV；设为 false 时按小程序版本自动判断
 const USE_FORCE_ENV = true
 // 强制环境：'development' = 本地/开发，'production' = 线上
-const FORCE_ENV = 'production'
+const FORCE_ENV ='production'
 // ====================================================
 
 /**
@@ -69,8 +69,8 @@ const getEnvironment = () => {
 const envConfig = {
 	development: {
 		// 开发环境配置（与后端 .env 的 APP_DOMAIN 一致，本地一般为 8000 端口）
-		API_BASE_URL: 'http://localhost:8000',
-		WS_BASE_URL: 'ws://localhost:8000',
+		API_BASE_URL: 'http://127.0.0.1:8000',
+		WS_BASE_URL: 'ws://127.0.0.1:8000',
 		DEBUG: true,
 		LOG_LEVEL: 'debug'
 	},

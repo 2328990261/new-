@@ -1,4 +1,4 @@
-﻿import request from '@/utils/request'
+import request from '@/utils/request'
 
 // 获取支付列表
 export function getPaymentList(params) {
@@ -117,5 +117,40 @@ export function getDispatchers() {
   return request({
     url: '/payments/dispatchers',
     method: 'get'
+  })
+}
+
+/** 管理端：更新支付记录备注 */
+export function updatePaymentRemark(id, remark) {
+  return request({
+    url: `/payments/${id}/remark`,
+    method: 'post',
+    data: { remark }
+  })
+}
+
+/** 管理端：更新订单备注（列表展示的备注） */
+export function updatePaymentOrderRemark(id, remark) {
+  return request({
+    url: `/payments/${id}/order-remark`,
+    method: 'post',
+    data: { remark }
+  })
+}
+
+/** 管理端：置顶 / 取消置顶 */
+export function setPaymentPinned(id, isPinned) {
+  return request({
+    url: `/payments/${id}/pin`,
+    method: 'post',
+    data: { is_pinned: isPinned ? 1 : 0 }
+  })
+}
+
+/** 管理端：软删除（移除列表显示） */
+export function removePayment(id) {
+  return request({
+    url: `/payments/${id}/remove`,
+    method: 'post'
   })
 }

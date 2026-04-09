@@ -1,11 +1,15 @@
-import { defineConfig } from 'vite'
+import { defineConfig, loadEnv } from 'vite'
 import vue from '@vitejs/plugin-vue'
 import path from 'path'
+import { fileURLToPath } from 'node:url'
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
 export default defineConfig(({ command }) => {
+  const env = loadEnv(command === 'build' ? 'production' : 'development', process.cwd(), '')
+  const backendTarget = env.VITE_BACKEND_URL || 'http://localhost:8000'
   const config = {
     base: command === 'build' ? '/user/' : '/',
-    // 减少控制台输出 - 设置为silent完全不显示
     logLevel: 'info',
     plugins: [
       vue({
@@ -26,18 +30,17 @@ export default defineConfig(({ command }) => {
       port: 3001,
       proxy: {
         '/api': {
-          target: 'http://localhost:8000',
+          target: backendTarget,
           changeOrigin: true
         },
         '/uploads': {
-          target: 'http://localhost:8000',
+          target: backendTarget,
           changeOrigin: true
         }
       }
     }
-  };
-  
-  // 生产环境特殊配置
+  }
+
   if (command === 'build') {
     config.build = {
       minify: 'terser',
@@ -48,19 +51,18 @@ export default defineConfig(({ command }) => {
           pure_funcs: ['console.log', 'console.info', 'console.debug']
         }
       },
-      // 浏览器兼容性设置
       target: 'es2015',
       cssTarget: 'chrome80',
       rollupOptions: {
         output: {
           manualChunks: {
-            'vendor': ['vue', 'vue-router', 'pinia', 'element-plus', '@element-plus/icons-vue'] // 打包所有第三方库到一起
+            vendor: ['vue', 'vue-router', 'pinia', 'element-plus', '@element-plus/icons-vue']
           }
         }
       },
-      chunkSizeWarningLimit: 1500 // 提高块大小警告限制
-    };
+      chunkSizeWarningLimit: 1500
+    }
   }
-  
-  return config;
-});
+
+  return config
+})

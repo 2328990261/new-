@@ -1,7 +1,7 @@
 <template>
   <div id="app">
-    <!-- 使用TopNavbar组件 -->
-    <TopNavbar />
+    <!-- 用户端导航栏：复用扒站首页结构与样式（局部抽取，避免全局污染） -->
+    <LegacyNavbar />
     
     <div class="main-content">
       <router-view />
@@ -10,23 +10,9 @@
 </template>
 
 <script setup>
-import { onMounted } from 'vue'
-import TopNavbar from './components/TopNavbar.vue'
-import { initWechatShare, setWechatShare } from './utils/wechatShare'
-
-onMounted(async () => {
-  // 应用初始化逻辑
-  // 用户端应用已启动
-  
-  // 初始化微信分享
-  try {
-    await initWechatShare()
-    // 设置默认分享信息
-    setWechatShare()
-  } catch (error) {
-    // 静默处理错误
-  }
-})
+import LegacyNavbar from './components/LegacyNavbar.vue'
+// 微信分享：不在此页统一 init/set，避免与 SPA 子路由 URL 不一致导致签名失败；
+// 各业务页在 onMounted 内 await initWechatShare() 后再 setWechatShare（见官方 JS-SDK 文档）。
 </script>
 
 <style>

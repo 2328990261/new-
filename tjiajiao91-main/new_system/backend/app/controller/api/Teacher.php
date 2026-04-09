@@ -7,6 +7,62 @@ use think\facade\Db;
 class Teacher extends BaseController
 {
     /**
+     * 解析为相对路径（去掉域名），并标记是否为教师上传目录
+     * @return array{path:string,is_teacher_upload:bool}
+     */
+    private function parseRelativePath(string $path): array
+    {
+        $p = trim((string)$path);
+        if ($p === '') {
+            return ['path' => '', 'is_teacher_upload' => false];
+        }
+
+        // 完整 URL -> 取 path
+        if (strpos($p, 'http://') === 0 || strpos($p, 'https://') === 0) {
+            $u = parse_url($p);
+            if (!empty($u['path'])) {
+                $p = (string)$u['path'];
+            }
+        }
+
+        // 确保以 / 开头
+        if ($p !== '' && strpos($p, '/') !== 0) {
+            $p = '/' . $p;
+        }
+
+        $isTeacher = (strpos($p, '/uploads/teacher/') === 0);
+        return ['path' => $p, 'is_teacher_upload' => $isTeacher];
+    }
+
+    /**
+     * 教师图片：优先水印版；若水印文件不存在则回退原图（避免历史数据全 404）
+     */
+    private function resolveTeacherImageUrl(string $path): string
+    {
+        $parsed = $this->parseRelativePath($path);
+        $rel = $parsed['path'];
+        if ($rel === '') {
+            return '';
+        }
+
+        $request = request();
+        $domain = $request->domain();
+
+        if (!$parsed['is_teacher_upload']) {
+            return $domain . $rel;
+        }
+
+        $wmRel = str_replace('/uploads/teacher/', '/uploads/teacher_wm/', $rel);
+
+        // 本地存储：检查水印文件是否存在，不存在就回退原图
+        $wmFsPath = app()->getRootPath() . 'public' . $wmRel;
+        if (file_exists($wmFsPath)) {
+            return $domain . $wmRel;
+        }
+        return $domain . $rel;
+    }
+
+    /**
      * 教师列表
      */
     public function list()
@@ -109,6 +165,11 @@ class Teacher extends BaseController
 
             if ($sort === 'latest') {
                 $query->order('t.create_time', 'desc')->order('t.id', 'desc');
+            } elseif ($sort === 'home_preview') {
+                // 首页精选：三项认证通过数优先，同分按新注册优先
+                $query->orderRaw('(IFNULL(t.real_name_verified,0)+IFNULL(t.education_verified,0)+IFNULL(t.teacher_verified,0)) DESC')
+                    ->order('t.create_time', 'desc')
+                    ->order('t.id', 'desc');
             } elseif ($sort === 'distance' && $userLatitude != 0.0 && $userLongitude != 0.0) {
                 // Haversine（公里），与 helper 中 calculate_distance 一致；无坐标教员排后
                 $ulat = $userLatitude;
@@ -380,22 +441,11 @@ class Teacher extends BaseController
         if (empty($path)) {
             return '';
         }
-        
-        // 如果已经是完整URL，直接返回
-        if (strpos($path, 'http://') === 0 || strpos($path, 'https://') === 0) {
-            return $path;
-        }
-        
-        // 获取请求的域名和协议
-        $request = request();
-        $domain = $request->domain();
-        
-        // 确保路径以/开头
-        if (strpos($path, '/') !== 0) {
-            $path = '/' . $path;
-        }
-        
-        return $domain . $path;
+
+        // 统一由 resolveTeacherImageUrl 处理：
+        // - 教师上传图：水印优先 + 文件不存在回退原图
+        // - 其他图：正常补全域名
+        return $this->resolveTeacherImageUrl((string)$path);
     }
 }
 

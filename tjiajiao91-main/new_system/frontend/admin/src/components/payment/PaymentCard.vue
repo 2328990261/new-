@@ -13,13 +13,13 @@
     <div class="card-content">
       <div class="info-row">
         <el-icon><Document /></el-icon>
-        <span class="label">家教：</span>
+        <span class="label">家教标题：</span>
         <span class="value">{{ payment.tutor_name }}</span>
       </div>
       <div class="info-row">
         <el-icon><User /></el-icon>
         <span class="label">老师：</span>
-        <span class="value">{{ payment.teacher_name }}</span>
+        <span class="value">{{ payment.teacher_name || payment.payer_name }}</span>
       </div>
       <div class="info-row" v-if="payment.contact_student">
         <el-icon><UserFilled /></el-icon>
@@ -44,23 +44,32 @@
 
     <div class="card-actions" @click.stop>
       <el-button type="info" size="small" plain @click="$emit('view', payment)">
-        详情
+        查看
       </el-button>
-      <el-button 
-        v-if="payment.refund_status === 'pending'" 
-        type="success" 
-        size="small" 
+      <el-button
+        v-if="hasRefundFlow(payment)"
+        type="success"
+        size="small"
         @click="$emit('refund', payment)"
       >
-        退费
+        审核
       </el-button>
-      <el-button 
-        v-if="payment.refund_status === 'pending'" 
-        type="danger" 
-        size="small" 
+      <el-button
+        v-if="payment.refund_status === 'pending'"
+        type="danger"
+        size="small"
         @click="$emit('reject', payment)"
       >
         驳回
+      </el-button>
+      <el-button type="warning" size="small" plain @click="$emit('pin', payment)">
+        {{ Number(payment.is_pinned) ? '取消置顶' : '置顶' }}
+      </el-button>
+      <el-button type="default" size="small" plain @click="$emit('remark', payment)">
+        备注
+      </el-button>
+      <el-button type="danger" size="small" plain @click="$emit('remove', payment)">
+        移除
       </el-button>
     </div>
   </el-card>
@@ -76,7 +85,14 @@ const props = defineProps({
   }
 })
 
-defineEmits(['view', 'refund', 'reject'])
+defineEmits(['view', 'refund', 'reject', 'pin', 'remark', 'remove'])
+
+const hasRefundFlow = (payment) => {
+  if (payment.refund_status) return true
+  if (Number(payment.refund_apply_amount) > 0) return true
+  if (Number(payment.refunded_amount) > 0) return true
+  return false
+}
 
 const getStatusType = (payment) => {
   if (payment.status === 'pending') return 'warning'

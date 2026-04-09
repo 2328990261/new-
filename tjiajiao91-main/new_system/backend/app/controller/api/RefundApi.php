@@ -5,6 +5,8 @@ use app\BaseController;
 use app\model\Payment;
 use app\service\EmailService;
 use app\service\UploadService;
+use app\service\WechatNotificationService;
+use think\facade\Db;
 use think\facade\Log;
 
 /**
@@ -13,62 +15,205 @@ use think\facade\Log;
 class RefundApi extends BaseController
 {
     /**
+     * 退费页：关注公众号二维码等门禁配置（公开）
+     * GET /api/refund/gate-config
+     */
+    public function gateConfig()
+    {
+        try {
+            $row = Db::name('payment_config')->where('payment_method', 'wechat')->find();
+            $raw = $row['refund_follow_qrcode'] ?? '';
+            $qrcodeUrl = '';
+            if ($raw !== null && $raw !== '') {
+                $qrcodeUrl = preg_match('#^https?://#i', (string) $raw)
+                    ? (string) $raw
+                    : rtrim((string) $this->request->domain(), '/') . '/' . ltrim((string) $raw, '/');
+            }
+
+            return json([
+                'success' => true,
+                'data' => [
+                    'qrcode_url' => $qrcodeUrl !== '' ? $qrcodeUrl : null,
+                ],
+            ]);
+        } catch (\Exception $e) {
+            Log::error('refund gate-config: ' . $e->getMessage());
+
+            return json(['success' => false, 'message' => '读取配置失败']);
+        }
+    }
+
+    /**
+     * 当前 openid 是否已关注公众号（与 OAuth 同源：notification_config）
+     * GET /api/refund/subscribe-status?openid=xxx
+     */
+    public function subscribeStatus()
+    {
+        try {
+            $openid = trim((string) $this->request->get('openid', ''));
+            if ($openid === '') {
+                return json(['success' => false, 'message' => '缺少 openid']);
+            }
+            if (strlen($openid) > 100) {
+                $openid = mb_substr($openid, 0, 100, 'UTF-8');
+            }
+
+            $res = WechatNotificationService::getUserInfo($openid);
+            if (empty($res['success'])) {
+                return json([
+                    'success' => false,
+                    'message' => $res['message'] ?? '无法获取关注状态，请检查公众号服务器 IP 白名单与接口权限',
+                ]);
+            }
+
+            $data = $res['data'] ?? [];
+            $sub = (int) ($data['subscribe'] ?? 0);
+
+            return json([
+                'success' => true,
+                'data' => [
+                    'subscribed' => $sub === 1,
+                ],
+            ]);
+        } catch (\Exception $e) {
+            Log::error('subscribe-status: ' . $e->getMessage());
+
+            return json(['success' => false, 'message' => '查询失败：' . $e->getMessage()]);
+        }
+    }
+
+    /**
      * 获取支付记录（用于申请退款）
+     * 支持 order_no；或仅 openid（微信内主路径）；或 phone/mobile（兼容）
      */
     public function getPaymentByOrderNo()
     {
         try {
-            $orderNo = $this->request->get('order_no', '');
-            
-            if (!$orderNo) {
+            // 列表查询（openid/手机号多笔）仅展示近 30 天；按订单号精确查询不受限
+            $refundListSince = date('Y-m-d H:i:s', strtotime('-30 days'));
+
+            $orderNo = trim((string)$this->request->get('order_no', ''));
+            $phoneRaw = (string)($this->request->get('phone', '') ?: $this->request->get('mobile', ''));
+            $phone = preg_replace('/\D/', '', $phoneRaw);
+            $openidParam = trim((string)$this->request->get('openid', ''));
+
+            if ($orderNo !== '') {
+                $payment = Payment::where('order_no', $orderNo)->find();
+                if (!$payment) {
+                    return json(['success' => false, 'message' => '未找到匹配的支付记录']);
+                }
+                $err = $this->assertPaymentRefundable($payment);
+                if ($err !== null) {
+                    return json(['success' => false, 'message' => $err]);
+                }
                 return json([
-                    'success' => false,
-                    'message' => '请提供订单号'
+                    'success' => true,
+                    'data' => array_merge($this->paymentToRefundSummary($payment), ['need_select' => false]),
                 ]);
             }
-            
-            // 查询支付记录
-            $payment = Payment::where('order_no', $orderNo)->find();
-            
-            if (!$payment) {
+
+            // 仅 openid：微信内退费主路径（不依赖手机号）
+            if ($phone === '' && $openidParam !== '') {
+                if (strlen($openidParam) > 100) {
+                    $openidParam = mb_substr($openidParam, 0, 100, 'UTF-8');
+                }
+                $listQuery = Payment::where('openid', $openidParam)
+                    ->whereIn('status', ['paid', 'success'])
+                    ->whereRaw('COALESCE(refunded_amount, 0) < amount')
+                    ->whereRaw('COALESCE(paid_time, create_time) >= ?', [$refundListSince]);
+
+                $list = $listQuery->order('paid_time', 'desc')
+                    ->order('id', 'desc')
+                    ->select();
+
+                if ($list->isEmpty()) {
+                    return json([
+                        'success' => false,
+                        'message' => '近一个月内未找到可退款的支付记录。仅支持在当前公众号内完成支付且已记录微信身份的订单；更早订单或扫码未绑定请联系客服。',
+                    ]);
+                }
+
+                if ($list->count() === 1) {
+                    $payment = $list[0];
+
+                    return json([
+                        'success' => true,
+                        'data' => array_merge($this->paymentToRefundSummary($payment), ['need_select' => false]),
+                    ]);
+                }
+
+                $payments = [];
+                foreach ($list as $p) {
+                    $payments[] = $this->paymentToRefundSummary($p);
+                }
+
                 return json([
-                    'success' => false,
-                    'message' => '未找到匹配的支付记录'
+                    'success' => true,
+                    'data' => [
+                        'need_select' => true,
+                        'payments' => $payments,
+                    ],
                 ]);
             }
-            
-            // 检查支付状态
-            if (!in_array($payment->status, ['paid', 'success'])) {
+
+            if ($phone === '') {
+                return json(['success' => false, 'message' => '请提供订单号，或在微信内授权后查询']);
+            }
+            if (!preg_match('/^1\d{10}$/', $phone)) {
+                return json(['success' => false, 'message' => '请填写正确的11位手机号']);
+            }
+
+            $openid = trim((string)$this->request->get('openid', ''));
+
+            $listQuery = Payment::where('payer_contact', $phone)
+                ->whereIn('status', ['paid', 'success'])
+                ->whereRaw('COALESCE(refunded_amount, 0) < amount');
+
+            // 有 openid（通常微信内）：只查该微信账号支付的订单，避免仅凭手机号看到他人订单
+            if ($openid !== '') {
+                if (strlen($openid) > 100) {
+                    $openid = mb_substr($openid, 0, 100, 'UTF-8');
+                }
+                $listQuery->where('openid', $openid);
+            } else {
+                // 未授权微信（如普通浏览器）：不返回已绑定 openid 的订单，仅可查询扫码/H5 等未落库 openid 的记录
+                $listQuery->whereRaw('(openid IS NULL OR openid = ?)', ['']);
+            }
+
+            $listQuery->whereRaw('COALESCE(paid_time, create_time) >= ?', [$refundListSince]);
+
+            $list = $listQuery->order('paid_time', 'desc')
+                ->order('id', 'desc')
+                ->select();
+
+            if ($list->isEmpty()) {
                 return json([
                     'success' => false,
-                    'message' => '该订单未支付或已取消，无法申请退款'
+                    'message' => $openid !== ''
+                        ? '近一个月内未找到与当前微信一致的可退款订单，请确认或联系客服'
+                        : '近一个月内该手机号下暂无可申请退款的已支付订单（若您在微信内支付，请在微信内打开本页并授权）',
                 ]);
             }
-            
-            // 检查是否已全额退款
-            if ($payment->refunded_amount >= $payment->amount) {
+
+            if ($list->count() === 1) {
+                $payment = $list[0];
                 return json([
-                    'success' => false,
-                    'message' => '该订单已全额退款'
+                    'success' => true,
+                    'data' => array_merge($this->paymentToRefundSummary($payment), ['need_select' => false]),
                 ]);
             }
-            
-            // 计算可退金额
-            $canRefundAmount = $payment->amount - $payment->refunded_amount;
-            
+
+            $payments = [];
+            foreach ($list as $p) {
+                $payments[] = $this->paymentToRefundSummary($p);
+            }
+
             return json([
                 'success' => true,
                 'data' => [
-                    'id' => $payment->id,
-                    'order_no' => $payment->order_no,
-                    'tutor_name' => $payment->tutor_name,
-                    'amount' => $payment->amount,
-                    'refunded_amount' => $payment->refunded_amount,
-                    'can_refund_amount' => $canRefundAmount,
-                    'paid_time' => $payment->paid_time,
-                    'refund_status' => $payment->refund_status,
-                    'refund_status_text' => $this->getRefundStatusText($payment->refund_status)
-                ]
+                    'need_select' => true,
+                    'payments' => $payments,
+                ],
             ]);
         } catch (\Exception $e) {
             Log::error('获取支付记录失败: ' . $e->getMessage());
@@ -85,10 +230,17 @@ class RefundApi extends BaseController
     public function applyRefund()
     {
         try {
-            $orderNo = $this->request->post('order_no', '');
-            $refundAmount = $this->request->post('refund_amount/f', 0);
-            $refundReason = $this->request->post('refund_reason', '');
-            $refundVoucher = $this->request->post('refund_voucher', ''); // JSON字符串
+            $orderNo = trim((string)$this->request->param('order_no', ''));
+            $refundAmount = (float)$this->request->param('refund_amount', 0);
+            $refundReason = (string)$this->request->param('refund_reason', '');
+            $refundVoucher = (string)$this->request->param('refund_voucher', '');
+            $receivedAmountRaw = trim((string)$this->request->param('received_amount', ''));
+            $queryPhone = preg_replace('/\D/', '', (string)$this->request->param('query_phone', ''));
+            if ($queryPhone === '') {
+                $queryPhone = preg_replace('/\D/', '', (string)(
+                    $this->request->param('phone', '') ?: $this->request->param('mobile', '')
+                ));
+            }
             
             // 验证参数
             if (!$orderNo) {
@@ -111,6 +263,24 @@ class RefundApi extends BaseController
                     'message' => '请填写退款原因'
                 ]);
             }
+
+            // 收到课酬：非必填；有值时做基础数值校验
+            $receivedAmount = null;
+            if ($receivedAmountRaw !== '') {
+                if (!is_numeric($receivedAmountRaw)) {
+                    return json([
+                        'success' => false,
+                        'message' => '收到课酬金额格式不正确'
+                    ]);
+                }
+                $receivedAmount = (float)$receivedAmountRaw;
+                if ($receivedAmount < 0) {
+                    return json([
+                        'success' => false,
+                        'message' => '收到课酬金额不能小于0'
+                    ]);
+                }
+            }
             
             // 查询支付记录
             $payment = Payment::where('order_no', $orderNo)->find();
@@ -120,6 +290,24 @@ class RefundApi extends BaseController
                     'success' => false,
                     'message' => '未找到匹配的支付记录'
                 ]);
+            }
+
+            if ($queryPhone !== '' && (string)$payment->payer_contact !== $queryPhone) {
+                return json([
+                    'success' => false,
+                    'message' => '手机号与所选支付订单不匹配，请重新查询',
+                ]);
+            }
+
+            $queryOpenid = trim((string)$this->request->param('query_openid', ''));
+            $storedOpenid = trim((string)($payment->openid ?? ''));
+            if ($storedOpenid !== '') {
+                if ($queryOpenid === '' || $storedOpenid !== $queryOpenid) {
+                    return json([
+                        'success' => false,
+                        'message' => '该订单需在微信内使用支付时的同一账号提交退款申请',
+                    ]);
+                }
             }
             
             // 检查支付状态
@@ -151,6 +339,13 @@ class RefundApi extends BaseController
                 return json([
                     'success' => false,
                     'message' => '退款金额不能超过可退金额：¥' . $canRefundAmount
+                ]);
+            }
+
+            if ($receivedAmount !== null && $receivedAmount > (float)$payment->amount) {
+                return json([
+                    'success' => false,
+                    'message' => '收到课酬金额不能超过信息费金额：¥' . $payment->amount
                 ]);
             }
             
@@ -355,6 +550,46 @@ class RefundApi extends BaseController
             'completed' => '退款已完成'
         ];
         return $statusMap[$status] ?? '无退款';
+    }
+
+    /**
+     * 单笔支付是否可申请退款；通过返回 null，否则返回错误文案
+     */
+    private function assertPaymentRefundable($payment): ?string
+    {
+        if (!in_array($payment->status, ['paid', 'success'])) {
+            return '该订单未支付或已取消，无法申请退款';
+        }
+        $refunded = (float)($payment->refunded_amount ?? 0);
+        if ($refunded >= $payment->amount) {
+            return '该订单已全额退款';
+        }
+        return null;
+    }
+
+    /**
+     * 退款页展示用的支付摘要
+     */
+    private function paymentToRefundSummary($payment): array
+    {
+        $refunded = (float)($payment->refunded_amount ?? 0);
+        $canRefundAmount = (float)$payment->amount - $refunded;
+
+        return [
+            'id' => $payment->id,
+            'order_no' => $payment->order_no,
+            'tutor_name' => $payment->tutor_name,
+            'amount' => $payment->amount,
+            'refunded_amount' => $payment->refunded_amount,
+            'can_refund_amount' => $canRefundAmount,
+            'paid_time' => $payment->paid_time,
+            'refund_status' => $payment->refund_status,
+            'refund_status_text' => $this->getRefundStatusText($payment->refund_status),
+            'payer_contact' => $payment->payer_contact,
+            'payer_name' => $payment->payer_name ?? '',
+            'teacher_name' => $payment->teacher_name ?? '',
+            'contact_student' => $payment->contact_student ?? '',
+        ];
     }
 }
 

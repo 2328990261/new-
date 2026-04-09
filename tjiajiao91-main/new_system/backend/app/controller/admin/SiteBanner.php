@@ -18,10 +18,14 @@ class SiteBanner extends BaseController
             $page = $this->request->param('page', 1);
             $limit = $this->request->param('limit', 20);
             $status = $this->request->param('status', '');
+            $bannerScene = trim((string)$this->request->param('banner_scene', ''));
             
             $where = [];
             if ($status !== '') {
                 $where[] = ['status', '=', $status];
+            }
+            if ($bannerScene !== '') {
+                $where[] = ['banner_scene', '=', $bannerScene];
             }
             
             $list = Db::name('site_banners')
@@ -92,7 +96,7 @@ class SiteBanner extends BaseController
             }
             
             // 过滤允许的字段
-            $allowFields = ['title', 'description', 'image_url', 'link_url', 'target', 'sort_order', 'status'];
+            $allowFields = ['banner_scene', 'title', 'description', 'image_url', 'link_url', 'target', 'sort_order', 'status'];
             $insertData = [];
             foreach ($allowFields as $field) {
                 if (isset($data[$field])) {
@@ -101,6 +105,9 @@ class SiteBanner extends BaseController
             }
             
             // 设置默认值
+            if (!isset($insertData['banner_scene']) || $insertData['banner_scene'] === '') {
+                $insertData['banner_scene'] = 'default';
+            }
             if (!isset($insertData['sort_order'])) {
                 $insertData['sort_order'] = 0;
             }
@@ -147,7 +154,7 @@ class SiteBanner extends BaseController
             }
             
             // 过滤允许更新的字段
-            $allowFields = ['title', 'description', 'image_url', 'link_url', 'target', 'sort_order', 'status'];
+            $allowFields = ['banner_scene', 'title', 'description', 'image_url', 'link_url', 'target', 'sort_order', 'status'];
             $updateData = [];
             foreach ($allowFields as $field) {
                 if (isset($data[$field])) {

@@ -13,6 +13,14 @@ Route::group('admin/api', function () {
     Route::post('leads/recognize', 'admin.Lead/recognize');  // 线索智能识别（无需登录）
     Route::post('tutors/recognize', 'admin.Tutor/recognize');  // 家教订单智能识别（无需登录）
     Route::post('tutors/test-batch-create', 'admin.Tutor/testBatchCreate');  // 测试批量录入路由
+
+    // 避免在浏览器地址栏用 GET 打开上传地址时，未命中路由被解析成「Admin 控制器」导致 404
+    Route::get('upload/image', function () {
+        return json([
+            'success' => false,
+            'message' => '此地址仅支持 POST 上传（multipart/form-data，字段名 file）。请勿在浏览器地址栏直接访问；请用管理后台上传或 Postman 发 POST。',
+        ]);
+    });
     
     // 需要认证的路由
     Route::group(function () {
@@ -97,6 +105,7 @@ Route::group('admin/api', function () {
         Route::post('notification/test-email', 'admin.Notification/testEmail');
         Route::post('notification/test-wechat', 'admin.Notification/testWechat');
         Route::get('notification/access-token', 'admin.Notification/getAccessToken');
+        Route::post('notification/debug-wechat-permission', 'admin.Notification/debugWechatPermission');
         Route::get('notification/wechat-templates', 'admin.Notification/getWechatTemplates');
         Route::post('notification/wechat-templates', 'admin.Notification/saveWechatTemplate');
         Route::delete('notification/wechat-templates/:id', 'admin.Notification/deleteWechatTemplate');
@@ -163,6 +172,10 @@ Route::group('admin/api', function () {
         Route::post('payments/refund/process', 'admin.Payment/processRefund');
         Route::post('payments/refund/reject', 'admin.Payment/rejectRefund');
         Route::get('payments/refund/:id', 'admin.Payment/refundDetail');
+        Route::post('payments/:id/remark', 'admin.Payment/updateRemark');
+        Route::post('payments/:id/order-remark', 'admin.Payment/updateOrderRemark');
+        Route::post('payments/:id/pin', 'admin.Payment/setPinned');
+        Route::post('payments/:id/remove', 'admin.Payment/softDelete');
         Route::get('payments', 'admin.Payment/list');
         Route::get('payments/:id', 'admin.Payment/read');
         
@@ -219,6 +232,15 @@ Route::group('admin/api', function () {
         Route::post('site-banners', 'admin.SiteBanner/save');
         Route::put('site-banners/:id', 'admin.SiteBanner/update');
         Route::delete('site-banners/:id', 'admin.SiteBanner/delete');
+
+        // 成功案例管理
+        Route::post('success-cases/batch-sort', 'admin.SuccessCase/batchUpdateSort');
+        Route::put('success-cases/:id/toggle', 'admin.SuccessCase/toggleStatus');
+        Route::get('success-cases', 'admin.SuccessCase/index');
+        Route::get('success-cases/:id', 'admin.SuccessCase/read');
+        Route::post('success-cases', 'admin.SuccessCase/save');
+        Route::put('success-cases/:id', 'admin.SuccessCase/update');
+        Route::delete('success-cases/:id', 'admin.SuccessCase/delete');
         
         // 文件上传
         Route::post('upload/image', 'admin.Upload/uploadImage');

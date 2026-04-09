@@ -12,6 +12,17 @@
 			}
 		},
 		{
+			"path": "pages/parent-home/index",
+			"style": {
+				"navigationBarTitleText": "91家教",
+				"navigationStyle": "custom",
+				"enablePullDownRefresh": true,
+				"backgroundColor": "#F5F7FA",
+				"backgroundColorTop": "#FFFFFF",
+				"backgroundColorBottom": "#F5F7FA"
+			}
+		},
+		{
 			"path": "pages/tutor-search-result/index",
 			"style": {
 				"navigationBarTitleText": "搜索结果",
@@ -34,11 +45,21 @@
 		{
 			"path": "pages/step-booking/index",
 			"style": {
-				"navigationBarTitleText": "预约家教",
+				"navigationBarTitleText": "免费找家教",
 				"navigationStyle": "custom",
+				"disableScroll": true,
 				"backgroundColor": "#F5F7FA",
 				"backgroundColorTop": "#FFFFFF",
 				"backgroundColorBottom": "#F5F7FA"
+			}
+		},
+		{
+			"path": "pages/booking-success/index",
+			"style": {
+				"navigationBarTitleText": "提交成功",
+				"navigationBarBackgroundColor": "#ffffff",
+				"navigationBarTextStyle": "black",
+				"backgroundColor": "#F5F7FA"
 			}
 		},
 		{
@@ -274,6 +295,21 @@
 				"backgroundColor": "#87CEEB",
 				"backgroundColorTop": "#87CEEB",
 				"backgroundColorBottom": "#F0F8FF"
+			}
+		},
+		{
+			"path": "pages/success-cases/index",
+			"style": {
+				"navigationBarTitleText": "成功案例",
+				"navigationBarBackgroundColor": "#ffffff",
+				"navigationBarTextStyle": "black",
+				"backgroundColor": "#F5F7FA"
+			}
+		},
+		{
+			"path": "pages/webview/index",
+			"style": {
+				"navigationBarTitleText": "加载中"
 			}
 		}
 	],

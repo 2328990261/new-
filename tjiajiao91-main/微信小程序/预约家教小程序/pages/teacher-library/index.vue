@@ -3,7 +3,7 @@
     <!-- 自定义导航栏 - 保持固定 -->
     <view class="nav-bar" :style="{paddingTop: statusBarHeight + 'px'}">
       <view class="nav-left"></view>
-      <view class="nav-title">优师精选</view>
+      <view class="nav-title">{{ navTitle }}</view>
       <view class="nav-right" @click="showShareMenu">
         <text class="share-icon">⋯</text>
       </view>
@@ -156,100 +156,11 @@
     <!-- 教师列表 -->
     <view class="teacher-list-container">
         <block v-for="(teacher, index) in teacherList" :key="index">
-          <view 
-            class="teacher-card"
-            @click="goToTeacherDetail(teacher.id)"
-          >
-            <view class="teacher-avatar-box">
-              <image 
-                v-if="teacher.avatar" 
-                :src="teacher.avatar" 
-                class="teacher-avatar-img" 
-                mode="aspectFill"
-                @error="handleImageError"
-                :data-index="index"
-              />
-              <view v-else class="teacher-icon-placeholder">
-                <text class="iconfont icon-teacher"></text>
-              </view>
-              <!-- 头像下方显示教师编号，格式 T+teacher_no（无则回退 T+id） -->
-              <view class="teacher-id-wrap" v-if="teacher.id != null || (teacher.teacher_no != null && teacher.teacher_no !== '')">
-                <text class="teacher-id-label">T{{ teacher.teacher_no != null && teacher.teacher_no !== '' ? teacher.teacher_no : teacher.id }}</text>
-              </view>
-              <!-- 精选标签 - 左上角 -->
-              <view class="teacher-top-badge" v-if="teacher.is_top">
-                <text class="badge-icon">⭐</text>
-                <text class="badge-text">精选</text>
-              </view>
-            </view>
-          <view class="teacher-info">
-            <!-- 第一行：姓名 + 认证 | 性别 | 身份类型 -->
-            <view class="teacher-row-1">
-              <view class="name-verify-group">
-                <text class="teacher-name">{{ (teacher.name && teacher.name.length >= 2) ? (teacher.name[0] + '*' + teacher.name.slice(2)) : (teacher.name || '') }}</text>
-                <view class="teacher-verify-inline" v-if="teacher.is_verified">
-                  <text class="verify-icon">✓</text>
-                  <text class="verify-text">已认证</text>
-                </view>
-              </view>
-              <view class="teacher-meta">
-                <image class="gender-icon-img" :src="teacher.gender === '男' ? icons.male : icons.female" mode="aspectFit"></image>
-                <text class="meta-text">{{ teacher.gender }}</text>
-                <text class="meta-divider">|</text>
-                <text class="meta-text">{{ getTeacherTypeLabel(teacher.teacher_type) }}</text>
-              </view>
-            </view>
-            
-            <!-- 第二行：学历 | 学校 | 专业 -->
-            <view class="teacher-row-2">
-              <text class="info-text" v-if="teacher.grade_level || teacher.education_level">
-                {{ teacher.grade_level ? getGradeLabel(teacher.grade_level) : getEducationLabel(teacher.education_level) }}
-              </text>
-              <text class="info-divider" v-if="teacher.school">|</text>
-              <text class="info-text" v-if="teacher.school">{{ teacher.school }}</text>
-              <text class="info-divider" v-if="teacher.major">|</text>
-              <text class="info-text" v-if="teacher.major">{{ teacher.major }}</text>
-            </view>
-            
-            <!-- 第三行：授课科目标签 -->
-            <view class="teacher-subjects" v-if="teacher.subjects && teacher.subjects.length > 0">
-              <view class="subjects-list">
-                <text 
-                  v-for="(subject, subIndex) in teacher.subjects.slice(0, 4)" 
-                  :key="subIndex"
-                  class="subject-tag"
-                >
-                  {{ subject }}
-                </text>
-                <text v-if="teacher.subjects.length > 4" class="subject-more">+{{ teacher.subjects.length - 4 }}</text>
-              </view>
-            </view>
-            
-            <!-- 第四行：优势标签 -->
-            <view class="advantage-tags" v-if="teacher.advantage_tags && teacher.advantage_tags.length > 0">
-              <text 
-                v-for="(tag, tagIndex) in teacher.advantage_tags.slice(0, 3)" 
-                :key="tagIndex"
-                class="advantage-tag"
-              >
-                {{ tag }}
-              </text>
-            </view>
-            
-            <!-- 第五行：个人优势介绍 -->
-            <view class="personal-advantage" v-if="teacher.personal_advantage">
-              <text class="advantage-text">{{ teacher.personal_advantage }}</text>
-            </view>
-            
-            <!-- 距离显示 - 右下角 -->
-            <view class="distance-badge" v-if="teacher.distance_text">
-              <view class="distance-icon">
-                <uni-icons type="location" size="18" color="#52C9A6" />
-              </view>
-              <text class="distance-value">{{ teacher.distance_text }}</text>
-            </view>
-          </view>
-        </view>
+          <teacher-card
+            :teacher="teacher"
+            @tap="goToTeacherDetail(teacher.id)"
+            @avatarError="handleImageError"
+          />
         
         <!-- 在第5个教师后插入banner -->
         <view v-if="index === 4" class="ai-banner" @click="goToAIBooking">
@@ -312,8 +223,9 @@
 </template>
 
 <script>
-import { teacherApi } from '@/utils/api.js'
+import { teacherApi, regionApi } from '@/utils/api.js'
 import CustomTabbar from '@/components/custom-tabbar/index.vue'
+import TeacherCard from '@/components/teacher-card/index.vue'
 import { getLocationCache, saveLocationCache } from '@/utils/location.js'
 import uniIcons from '@/uni_modules/uni-icons/components/uni-icons/uni-icons.vue'
 
@@ -326,11 +238,14 @@ const ICONS = {
 export default {
   components: {
     CustomTabbar,
+    TeacherCard,
     uniIcons
   },
   data() {
     return {
       statusBarHeight: 20, // 默认状态栏高度
+      navTitle: '优师精选',
+      cityName: '',
       searchKeyword: '',
       icons: ICONS,
       
@@ -415,6 +330,35 @@ export default {
     this.loadTeacherList()
   },
   methods: {
+    normalizeCityName(city) {
+      const raw = String(city || '').trim()
+      if (!raw) return ''
+      // 常见格式：肇庆市 / 北京市 / 阿拉善盟 / xx自治州 / xx地区
+      return raw.replace(/(市|盟|地区|自治州)$/, '')
+    },
+
+    updateNavTitleFromCity(city) {
+      const c = this.normalizeCityName(city)
+      if (!c) return
+      this.cityName = c
+      this.navTitle = `${c}家教老师`
+    },
+
+    async resolveCityByCoords(latitude, longitude) {
+      try {
+        const res = await regionApi.reverseGeocode(latitude, longitude)
+        if (res && (res.code === 200 || res.success)) {
+          const d = res.data || {}
+          const city = d.city || ''
+          if (city) {
+            this.updateNavTitleFromCity(city)
+          }
+        }
+      } catch (e) {
+        // ignore: 不影响页面主体功能
+      }
+    },
+
     // 家长端列表脱敏：隐藏真实姓名第二个字（2/3/4 个字均隐藏第 2 字）
     maskTeacherName(name) {
       if (name == null || name === '') return ''
@@ -429,6 +373,9 @@ export default {
       if (cachedLocation && cachedLocation.latitude && cachedLocation.longitude) {
         this.userLatitude = cachedLocation.latitude
         this.userLongitude = cachedLocation.longitude
+
+        // 根据经纬度解析城市，用于顶部标题（城市 + 家教老师）
+        this.resolveCityByCoords(this.userLatitude, this.userLongitude)
         
         // 如果已经加载了教师列表，重新加载以计算距离
         if (this.teacherList.length > 0 || this.selectedSort === 'distance') {
@@ -444,6 +391,9 @@ export default {
         success: (res) => {
           this.userLatitude = res.latitude
           this.userLongitude = res.longitude
+
+          // 根据经纬度解析城市，用于顶部标题（城市 + 家教老师）
+          this.resolveCityByCoords(res.latitude, res.longitude)
           
           // 保存位置到缓存
           saveLocationCache({
@@ -733,12 +683,13 @@ export default {
       })
     },
     
-    // 图片加载错误处理
-    handleImageError(e) {
-      const index = e.currentTarget.dataset.index;
-      if (index !== undefined) {
+    // 图片加载错误处理（组件触发时回传 teacher 对象）
+    handleImageError(teacher) {
+      const id = teacher && (teacher.id != null ? teacher.id : teacher.teacher_no)
+      const index = this.teacherList.findIndex((t) => String((t && t.id) ?? '') === String(id ?? ''))
+      if (index !== -1) {
         // 使用本地默认头像，避免外部域名请求
-        this.teacherList[index].avatar = '/static/ai-avatar.png';
+        this.teacherList[index].avatar = '/static/ai-avatar.png'
       }
     },
     

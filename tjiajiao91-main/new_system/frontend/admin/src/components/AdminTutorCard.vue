@@ -3,7 +3,7 @@
     class="admin-tutor-card" 
     :class="{ 
       selected: isSelected,
-      'is-top': tutor.is_top 
+      'is-top': Number(tutor.is_top) === 1
     }"
     @click.stop="handleCardClick"
   >
@@ -16,8 +16,8 @@
           @click.stop
         />
         <div class="card-badges">
-          <span v-if="tutor.is_top" class="badge badge-top">TOP</span>
-          <span v-if="tutor.is_urgent" class="badge badge-urgent">紧急</span>
+          <span v-if="Number(tutor.is_top) === 1" class="badge badge-top">TOP</span>
+          <span v-if="Number(tutor.is_urgent) === 1" class="badge badge-urgent">紧急</span>
         </div>
       </div>
       <div class="card-header-right">
@@ -68,7 +68,7 @@
         class="action-btn btn-top" 
         @click.stop="$emit('toggle-top', tutor)"
       >
-        {{ tutor.is_top ? '取消置顶' : '置顶' }}
+        {{ Number(tutor.is_top) === 1 ? '取消置顶' : '置顶' }}
       </button>
       <button class="action-btn btn-copy" @click.stop="$emit('copy', tutor)">复制</button>
       <button class="action-btn btn-delete" @click.stop="handleDelete">删除</button>

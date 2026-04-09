@@ -202,6 +202,14 @@
         <h3>全国家教信息列表</h3>
         <span class="count-badge">共 {{ total }} 条</span>
       </div>
+
+      <!-- 排序筛选（与小程序一致：精选=top，最新=默认） -->
+      <div class="sort-tabs">
+        <el-radio-group v-model="filters.sort" size="large" @change="handleSortChange">
+          <el-radio-button label="top">精选排序</el-radio-button>
+          <el-radio-button label="time">最新排序</el-radio-button>
+        </el-radio-group>
+      </div>
       
       <!-- 老师类型Tab -->
       <div class="teacher-type-tabs">
@@ -413,6 +421,8 @@ const filters = reactive({
   subject_id: '',
   grade: '',
   keyword: '',
+  // 与小程序一致：top=精选优先（置顶优先），time=按录入时间倒序（最新在前）
+  sort: 'time',
   teacher_type: ''  // 老师类型筛选
 })
 
@@ -619,6 +629,11 @@ const handleTeacherTypeChange = () => {
   resetAndReload()
 }
 
+// 排序切换
+const handleSortChange = () => {
+  resetAndReload()
+}
+
 // 重置
 const handleReset = () => {
   Object.assign(filters, {
@@ -627,6 +642,7 @@ const handleReset = () => {
     subject_id: '',
     grade: '',
     keyword: '',
+    sort: 'time',
     teacher_type: ''
   })
   districts.value = []
@@ -1602,6 +1618,41 @@ const copyWithExecCommand = (text, isMobile = false, isIOS = false) => {
   margin: 16px 0;
   display: flex;
   justify-content: center;
+}
+
+.sort-tabs {
+  margin: 10px 0 14px;
+  display: flex;
+  justify-content: center;
+}
+
+.sort-tabs :deep(.el-radio-group) {
+  display: flex;
+  gap: 8px;
+}
+
+.sort-tabs :deep(.el-radio-button) {
+  flex: 1;
+}
+
+.sort-tabs :deep(.el-radio-button__inner) {
+  border-radius: 12px;
+  padding: 10px 24px;
+  font-weight: 600;
+  border: 2px solid #e4e7ed;
+  transition: all 0.3s ease;
+  width: 100%;
+}
+
+.sort-tabs :deep(.el-radio-button__original-radio:checked + .el-radio-button__inner) {
+  background: #667eea;
+  border-color: #667eea;
+  box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
+}
+
+.sort-tabs :deep(.el-radio-button__inner:hover) {
+  border-color: #667eea;
+  background: rgba(102, 126, 234, 0.05);
 }
 
 .teacher-type-tabs :deep(.el-radio-group) {

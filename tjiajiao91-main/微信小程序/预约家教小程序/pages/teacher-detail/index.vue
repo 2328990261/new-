@@ -584,9 +584,9 @@ export default {
       if (pages.length > 1) {
         uni.navigateBack()
       } else {
-        // 没有上一页，跳转到教员库
+        const role = this.getStoredUserRole()
         uni.reLaunch({
-          url: '/pages/teacher-library/index'
+          url: role === 'parent' ? '/pages/parent-home/index' : '/pages/tutor-list/index'
         })
       }
     },

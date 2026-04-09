@@ -65,6 +65,25 @@
           />
         </div>
 
+        <!-- 支付备注（选填） -->
+        <div class="input-group">
+          <div class="input-icon">
+            <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
+              <path
+                d="M16 2H8C6.9 2 6 2.9 6 4v13c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm0 15H8V4h8v13zM9 6h6v2H9V6zm0 4h6v2H9v-2zm0 4h4v2H9v-2z"
+                fill="#999"
+              />
+            </svg>
+          </div>
+          <input
+            v-model="formData.payRemark"
+            type="text"
+            maxlength="200"
+            placeholder="支付备注（选填）"
+            class="text-input"
+          />
+        </div>
+
         <!-- 派单客服选择 -->
         <div class="input-group select-group" @click="toggleStaffDropdown">
           <div class="input-icon">
@@ -82,20 +101,40 @@
           </div>
         </div>
         
-        <!-- 简洁下拉列表 -->
+        <!-- 可搜索下拉列表 -->
         <transition name="slide">
-          <div v-if="showStaffDropdown" class="staff-options">
-            <div 
-              v-for="staff in staffList" 
-              :key="staff.id"
-              class="staff-option"
-              :class="{ 'active': formData.staffId === staff.id }"
-              @click="selectStaff(staff)"
-            >
-              {{ staff.name }}
-              <svg v-if="formData.staffId === staff.id" viewBox="0 0 24 24" width="18" height="18">
-                <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z" fill="#52C9A6"/>
+          <div v-if="showStaffDropdown" class="staff-options" @click.stop>
+            <div class="staff-search-wrap">
+              <svg class="staff-search-icon" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
+                <path fill="#94a3b8" d="M15.5 14h-.79l-.28-.27A6.471 6.471 0 0 0 16 9.5 6.5 6.5 0 1 0 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"/>
               </svg>
+              <input
+                v-model="staffSearchKeyword"
+                type="search"
+                enterkeyhint="search"
+                autocomplete="off"
+                autocorrect="off"
+                placeholder="搜索姓名或账号"
+                class="staff-search-input"
+                @click.stop
+              />
+            </div>
+            <div class="staff-option-list">
+              <div v-if="filteredStaffList.length === 0" class="staff-option-empty">
+                无匹配结果，请换个关键词
+              </div>
+              <div
+                v-for="staff in filteredStaffList"
+                :key="staff.id"
+                class="staff-option"
+                :class="{ active: String(formData.staffId) === String(staff.id) }"
+                @click="selectStaff(staff)"
+              >
+                <span class="staff-option-text">{{ staff.name }}</span>
+                <svg v-if="String(formData.staffId) === String(staff.id)" viewBox="0 0 24 24" width="18" height="18">
+                  <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z" fill="#52C9A6"/>
+                </svg>
+              </div>
             </div>
           </div>
         </transition>
@@ -103,11 +142,16 @@
 
       <!-- 底部区域 -->
       <div class="bottom-section">
-        <!-- 协议勾选 -->
+        <!-- 协议勾选（点击勾选弹出协议，阅读同意后自动勾上） -->
         <div class="agreement-box">
-          <label class="checkbox-wrapper">
-            <input type="checkbox" v-model="formData.agreeTerms" class="checkbox-input" />
-            <span class="checkbox-label">
+          <label class="agreement-check">
+            <input
+              class="agreement-checkbox"
+              type="checkbox"
+              :checked="formData.agreeTerms"
+              @click.prevent="handleAgreementCheckboxClick"
+            />
+            <span class="agreement-text">
               我已阅读并同意 <a href="#" @click.prevent="showAgreement" class="link">《91家教接单协议》</a>
             </span>
           </label>
@@ -117,7 +161,7 @@
         <!-- 立即支付按钮 -->
         <button 
           class="submit-btn" 
-          :disabled="!formData.agreeTerms || loading"
+          :disabled="loading"
           @click="handleSubmit"
         >
           {{ loading ? '处理中...' : '立即支付' }}
@@ -144,7 +188,11 @@
             :disabled="!canAgree"
             @click="agreeAndClose"
           >
-            {{ agreeButtonText }}
+            <div class="agree-btn-inner">
+              <span class="agree-btn-left">
+                {{ canAgree ? '我接受此协议内容' : '请下滑查看完整协议再同意' }}
+              </span>
+            </div>
           </button>
         </div>
       </div>
@@ -188,7 +236,7 @@ import { ref, reactive, onMounted, onUnmounted, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import request from '@/utils/request'
-import { setWechatShare } from '@/utils/wechatShare'
+import { initWechatShare, setWechatShare, resolveUserH5Url } from '@/utils/wechatShare'
 
 const router = useRouter()
 
@@ -197,6 +245,7 @@ const formData = reactive({
   amount: '',
   realName: '',
   tutorInfo: '',
+  payRemark: '',
   staffId: '',
   agreeTerms: false
 })
@@ -205,6 +254,7 @@ const formData = reactive({
 const loading = ref(false)
 const agreementVisible = ref(false)
 const showStaffDropdown = ref(false)
+const staffSearchKeyword = ref('')
 const selectedStaffName = ref('')
 const qrCodeVisible = ref(false)
 const qrCodeData = ref(null)
@@ -212,6 +262,8 @@ const manualStatusChecking = ref(false)
 const wechatOpenid = ref(localStorage.getItem('wechat_jsapi_openid') || '')
 const wechatAuthStatus = ref('idle') // idle|authorizing|ready|failed
 const wechatAuthError = ref('')
+// 如果用户未同意协议但点击了“立即支付”，则在弹窗同意后自动继续支付
+const pendingPaymentAfterAgree = ref(false)
 const agreementContent = ref(`
 <div style="padding: 20px; line-height: 1.8; color: #333;">
   <h4>91家教接单协议</h4>
@@ -259,42 +311,74 @@ const agreementContent = ref(`
   <p style="margin-top: 30px; text-align: center; color: #666;">感谢您使用91家教平台！</p>
 </div>
 `)
+// 默认列表仅作接口失败时的兜底；正常情况从 /dispatchers 拉取与 fa_admin 一致的 id
 const staffList = ref([
-  { id: 1, name: '小妍' },
-  { id: 2, name: '小刘' },
-  { id: 3, name: '小宇' },
-  { id: 4, name: '小顾' },
-  { id: 5, name: '渠道' }
+  { id: 1, name: '小妍', username: '' },
+  { id: 2, name: '小刘', username: '' },
+  { id: 3, name: '小宇', username: '' },
+  { id: 4, name: '小顾', username: '' },
+  { id: 5, name: '渠道', username: '' }
 ])
 
 // 协议相关状态
 const agreementScrollRef = ref(null)
 const hasScrolledToBottom = ref(false)
-const countdown = ref(5)
+// 只需要“到过一次底部”，即可允许同意
+const hasReachedBottomOnce = ref(false)
+// 用于防止内容高度不足导致“未滑动也等于在底部”的误判
+const hasUserScrolled = ref(false)
 const canAgree = ref(false)
-const agreeButtonText = ref('请阅读完整协议内容')
-let countdownTimer = null
 const isWechatBrowser = computed(() => /MicroMessenger/i.test(navigator.userAgent))
+
+const recomputeCanAgree = () => {
+  canAgree.value = !!hasReachedBottomOnce.value
+}
+
+const loadStaffList = async () => {
+  try {
+    const res = await request.get('/dispatchers')
+    const raw = res?.data
+    if (!Array.isArray(raw) || raw.length === 0) return
+    staffList.value = raw.map((d) => ({
+      id: typeof d.id === 'number' && Number.isFinite(d.id) ? d.id : Number(d.id) || d.id,
+      name: d.name || d.nickname || d.username || '客服',
+      username: d.username || ''
+    }))
+  } catch (e) {
+    console.warn('加载对接客服列表失败，使用本地默认列表', e)
+  }
+}
+
+/** 对接同学下拉：按姓名、登录名、ID 模糊搜索 */
+const filteredStaffList = computed(() => {
+  const kw = staffSearchKeyword.value.trim().toLowerCase()
+  if (!kw) return staffList.value
+  return staffList.value.filter((s) => {
+    const name = String(s.name || '').toLowerCase()
+    const user = String(s.username || '').toLowerCase()
+    const idStr = String(s.id ?? '')
+    return name.includes(kw) || user.includes(kw) || idStr.includes(kw)
+  })
+})
 
 // 初始化
 onMounted(async () => {
+  await loadStaffList()
   await ensureWechatOpenid()
   await loadAgreement()
   
   // 配置微信分享
+  await initWechatShare()
   setWechatShare({
     title: '信息费支付',
-    desc: '链接已通过安全认证，请放心支付。',
-    link: window.location.href,
-    imgUrl: window.location.origin + '/logo.png' // 使用网站logo作为分享图标
+    desc: '请在微信内完成支付，支付成功后请保存凭证。',
+    // 生产 base=/user/，须与 public 实际路径一致，否则缩略图 404 会导致分享无卡片
+    link: resolveUserH5Url('payment'),
+    imgUrl: resolveUserH5Url('static/images/payment-share-logo.png')
   })
 })
 
-// 清理定时器
 onUnmounted(() => {
-  if (countdownTimer) {
-    clearInterval(countdownTimer)
-  }
 })
 
 // 加载服务协议
@@ -329,8 +413,11 @@ const handleSubmit = async () => {
     ElMessage.warning('请选择派单客服')
     return
   }
+
+  // 未同意协议：允许点击“立即支付”后弹出协议弹窗
   if (!formData.agreeTerms) {
-    ElMessage.warning('请先阅读并同意协议')
+    pendingPaymentAfterAgree.value = true
+    showAgreement()
     return
   }
 
@@ -339,16 +426,30 @@ const handleSubmit = async () => {
   try {
     await ensureWechatOpenid()
 
-    // 获取选中的客服名称
-    const selectedStaff = staffList.value.find(s => s.id === formData.staffId)
-    const staffName = selectedStaff ? selectedStaff.name : ''
+    // 名称：优先用下拉选择时写入的展示名（不依赖 find，避免 id 数字/字符串严格相等失败）
+    const sid = formData.staffId
+    const selectedStaff = staffList.value.find(
+      (s) => String(s.id) === String(sid)
+    )
+    const staffName =
+      String(selectedStaffName.value || '').trim() ||
+      (selectedStaff ? selectedStaff.name : '') ||
+      ''
 
     const isWechat = isWechatBrowser.value
+    const staffIdNum = Number(sid)
     const payload = {
       amount: parseFloat(formData.amount),
       real_name: formData.realName,
       tutor_info: formData.tutorInfo,
-      staff_id: formData.staffId,
+      pay_remark: (formData.payRemark || '').trim(),
+      payer_contact: '',
+      staff_id: Number.isFinite(staffIdNum) ? staffIdNum : sid,
+      staff_name: staffName,
+      contact_student: staffName,
+      // 与后端 camelCase 兼容分支对应，避免中间层只透传部分字段时丢失
+      staffId: Number.isFinite(staffIdNum) ? staffIdNum : sid,
+      staffName,
       agree_terms: formData.agreeTerms,
       payment_method: 'wechat',
       redirect_url: window.location.origin + '/payment-success' // 支付成功后跳转地址
@@ -381,6 +482,7 @@ const handleSubmit = async () => {
         amount: formData.amount,
         real_name: formData.realName,
         tutor_info: formData.tutorInfo,
+        pay_remark: (formData.payRemark || '').trim(),
         staff_name: staffName,
         order_no: response.data.order_no
       }))
@@ -592,9 +694,9 @@ const manualConfirmPayment = async () => {
 const showAgreement = () => {
   agreementVisible.value = true
   hasScrolledToBottom.value = false
-  countdown.value = 5
+  hasReachedBottomOnce.value = false
+  hasUserScrolled.value = false
   canAgree.value = false
-  agreeButtonText.value = `本人同意全部条款（${countdown.value}s）`
   
   // 重置滚动位置
   setTimeout(() => {
@@ -602,40 +704,36 @@ const showAgreement = () => {
       agreementScrollRef.value.scrollTop = 0
     }
   }, 100)
-  
-  // 打开弹窗时立即开始倒计时
-  startCountdown()
 }
 
 // 关闭协议
 const closeAgreement = () => {
   agreementVisible.value = false
-  if (countdownTimer) {
-    clearInterval(countdownTimer)
-    countdownTimer = null
-  }
+  pendingPaymentAfterAgree.value = false
+  hasReachedBottomOnce.value = false
+  hasUserScrolled.value = false
 }
 
-// 处理协议滚动（保留函数但不再触发倒计时）
+// 处理协议滚动：只需到过一次底部即可
 const handleAgreementScroll = () => {
-  // 不再需要检测滚动到底部
-}
+  if (!agreementScrollRef.value) return
+  const el = agreementScrollRef.value
+  const atBottom = el.scrollTop + el.clientHeight >= el.scrollHeight - 2
+  hasScrolledToBottom.value = atBottom
+  // 用户确实发生过滚动行为才认为“已滑动到底部”（避免内容刚好不滚动时误判）
+  if (el.scrollTop > 8) {
+    hasUserScrolled.value = true
+  }
 
-// 开始倒计时
-const startCountdown = () => {
-  agreeButtonText.value = `本人同意全部条款（${countdown.value}s）`
-  
-  countdownTimer = setInterval(() => {
-    countdown.value--
-    if (countdown.value > 0) {
-      agreeButtonText.value = `本人同意全部条款（${countdown.value}s）`
-    } else {
-      agreeButtonText.value = '本人同意全部条款'
-      canAgree.value = true
-      clearInterval(countdownTimer)
-      countdownTimer = null
-    }
-  }, 1000)
+  // 若内容本身无法滚动（scrollHeight <= clientHeight），允许直接判定底部
+  // 否则必须用户先滚动过（scrollTop > 0）才可判定到过底部。
+  const cannotScroll = el.scrollHeight <= el.clientHeight + 2
+  const canMarkBottom = atBottom && (cannotScroll || hasUserScrolled.value)
+
+  if (canMarkBottom && !hasReachedBottomOnce.value) {
+    hasReachedBottomOnce.value = true
+    recomputeCanAgree()
+  }
 }
 
 // 同意协议
@@ -643,24 +741,52 @@ const agreeAndClose = () => {
   if (!canAgree.value) return
   
   formData.agreeTerms = true
+  const shouldProceed = pendingPaymentAfterAgree.value
+  pendingPaymentAfterAgree.value = false
   closeAgreement()
   ElMessage.success('感谢您同意协议')
+
+  // 用户确认后自动继续支付（避免用户再点一次“立即支付”）
+  if (shouldProceed) {
+    // 等 checkbox 更新完成（避免并发条件不一致）
+    setTimeout(() => {
+      handleSubmit()
+    }, 0)
+  }
+}
+
+// 点击勾选框：未同意时弹协议并在同意后自动勾上；已同意时仍可点开查看协议（保持勾选）
+const handleAgreementCheckboxClick = () => {
+  if (formData.agreeTerms) {
+    showAgreement()
+    return
+  }
+  pendingPaymentAfterAgree.value = false
+  showAgreement()
 }
 
 // 切换客服下拉框
 const toggleStaffDropdown = () => {
-  showStaffDropdown.value = !showStaffDropdown.value
+  if (showStaffDropdown.value) {
+    closeStaffDropdown()
+    return
+  }
+  staffSearchKeyword.value = ''
+  showStaffDropdown.value = true
+  // 不在此处 focus：移动端会立刻弹键盘；应先展示列表，用户再点搜索框才输入
 }
 
 // 关闭客服下拉框
 const closeStaffDropdown = () => {
   showStaffDropdown.value = false
+  staffSearchKeyword.value = ''
 }
 
-// 选择客服
+// 选择客服（id 统一为数字，减少与接口返回类型不一致）
 const selectStaff = (staff) => {
-  formData.staffId = staff.id
-  selectedStaffName.value = staff.name
+  const rawId = staff.id
+  formData.staffId = typeof rawId === 'number' && Number.isFinite(rawId) ? rawId : Number(rawId) || rawId
+  selectedStaffName.value = staff.name || ''
   closeStaffDropdown()
 }
 </script>
@@ -674,11 +800,16 @@ const selectStaff = (staff) => {
 
 .payment-page {
   min-height: 100vh;
+  min-height: 100dvh;
+  height: 100dvh;
   max-width: 100vw;
   width: 100%;
   background: linear-gradient(180deg, #f8fafb 0%, #f0f2f5 100%);
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif;
+  overflow-y: auto;
   overflow-x: hidden;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
   position: relative;
   padding: 0;
 }
@@ -730,8 +861,7 @@ const selectStaff = (staff) => {
 
 /* 表单内容区域 */
 .form-content {
-  padding: 20px;
-  padding-bottom: 200px; /* 为底部固定区域留出空间 */
+  padding: 20px 20px calc(260px + env(safe-area-inset-bottom)); /* 为底部固定区域 + 安全区留出空间 */
   width: 100%;
   max-width: 600px;
   margin: 0 auto;
@@ -925,13 +1055,71 @@ const selectStaff = (staff) => {
   transform: rotate(180deg);
 }
 
-/* 简洁下拉列表 */
+/* 可搜索下拉列表 */
 .staff-options {
   margin: 0 12px;
   background: #f8fafb;
   border-radius: 8px;
   overflow: hidden;
-  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+  max-height: min(52vh, 360px);
+  display: flex;
+  flex-direction: column;
+}
+
+.staff-search-wrap {
+  flex-shrink: 0;
+  position: relative;
+  padding: 10px 12px;
+  background: #fff;
+  border-bottom: 1px solid #e8ecef;
+}
+
+.staff-search-icon {
+  position: absolute;
+  left: 22px;
+  top: 50%;
+  transform: translateY(-50%);
+  pointer-events: none;
+}
+
+.staff-search-input {
+  width: 100%;
+  height: 40px;
+  padding: 0 12px 0 40px;
+  font-size: 15px;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  background: #f8fafc;
+  color: #334155;
+  outline: none;
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+.staff-search-input:focus {
+  border-color: #52c9a6;
+  background: #fff;
+  box-shadow: 0 0 0 3px rgba(82, 201, 166, 0.15);
+}
+
+.staff-search-input::placeholder {
+  color: #94a3b8;
+}
+
+.staff-option-list {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.staff-option-empty {
+  padding: 22px 16px;
+  text-align: center;
+  font-size: 14px;
+  color: #94a3b8;
+  line-height: 1.5;
 }
 
 .staff-option {
@@ -943,7 +1131,16 @@ const selectStaff = (staff) => {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 8px;
   border-bottom: 1px solid #e8ecef;
+}
+
+.staff-option-text {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .staff-option:last-child {
@@ -980,7 +1177,7 @@ const selectStaff = (staff) => {
   left: 0;
   right: 0;
   background: white;
-  padding: 20px;
+  padding: 20px 20px calc(20px + env(safe-area-inset-bottom));
   border-top: 1px solid #f0f2f5;
   z-index: 100;
 }
@@ -989,31 +1186,31 @@ const selectStaff = (staff) => {
   margin-bottom: 16px;
 }
 
-.checkbox-wrapper {
+.agreement-check {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   gap: 10px;
-  cursor: pointer;
-  margin-bottom: 10px;
-  padding: 0;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: #f8fafb;
+  border: 1px solid #eef2f6;
+  user-select: none;
 }
 
-.checkbox-wrapper:hover {
-  background: transparent;
-}
-
-.checkbox-input {
-  margin-top: 3px;
-  cursor: pointer;
+.agreement-checkbox {
   width: 18px;
   height: 18px;
-  accent-color: #52C9A6;
+  accent-color: #52c9a6;
+  cursor: pointer;
+  margin: 0;
+  flex: 0 0 auto;
 }
 
-.checkbox-label {
+.agreement-text {
   font-size: 14px;
   color: #666;
   line-height: 1.6;
+  font-weight: 500;
 }
 
 .link {
@@ -1215,6 +1412,23 @@ const selectStaff = (staff) => {
   box-shadow: none;
 }
 
+.agree-btn-inner {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 22px;
+  gap: 12px;
+}
+
+.agree-btn-left {
+  color: inherit;
+  font-weight: 700;
+  flex: 0 1 auto;
+  text-align: center;
+}
+
 /* 移动端适配 */
 @media (max-width: 768px) {
   .top-notice {
@@ -1235,7 +1449,7 @@ const selectStaff = (staff) => {
   }
 
   .form-content {
-    padding: 16px;
+    padding: 16px 16px calc(260px + env(safe-area-inset-bottom));
   }
 
   .page-header {

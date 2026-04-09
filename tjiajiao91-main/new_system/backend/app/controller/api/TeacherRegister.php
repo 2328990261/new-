@@ -409,38 +409,56 @@ class TeacherRegister extends BaseController
             
             // 创建上传目录
             $uploadPath = app()->getRootPath() . 'public/uploads/teacher/';
+            $uploadWmPath = app()->getRootPath() . 'public/uploads/teacher_wm/';
             $dateDir = date('Ymd');
             $fullPath = $uploadPath . $dateDir . '/';
+            $fullWmPath = $uploadWmPath . $dateDir . '/';
             
             if (!is_dir($fullPath)) {
                 mkdir($fullPath, 0755, true);
             }
+            if (!is_dir($fullWmPath)) {
+                mkdir($fullWmPath, 0755, true);
+            }
             
             // 生成文件名
             $filename = uniqid() . '.' . $extension;
-            $savePath = $fullPath . $filename;
             
             // 移动文件
             $file->move($fullPath, $filename);
             
-            // 添加水印
-            $imagePath = $fullPath . $filename;
-            \app\service\WatermarkService::addWatermark($imagePath, '91家教中心', 'right-bottom');
+            // 生成水印版：复制原图到 teacher_wm 目录，再加水印
+            $originImagePath = $fullPath . $filename;
+            $wmImagePath = $fullWmPath . $filename;
+            if (@copy($originImagePath, $wmImagePath)) {
+                \app\service\WatermarkService::addWatermark($wmImagePath, '91家教中心', 'right-bottom');
+            } else {
+                // 复制失败时退化：直接对原图打水印（避免前端无图可用）
+                \app\service\WatermarkService::addWatermark($originImagePath, '91家教中心', 'right-bottom');
+                $wmImagePath = $originImagePath;
+            }
             
             // 获取当前域名
             $request = request();
             $domain = $request->domain();
             
-            // 返回完整URL
-            $url = $domain . '/uploads/teacher/' . $dateDir . '/' . $filename;
-            $relativePath = '/uploads/teacher/' . $dateDir . '/' . $filename;
+            // 原图（后台查看/保存）与水印图（用户端展示）
+            $originRelativePath = '/uploads/teacher/' . $dateDir . '/' . $filename;
+            $wmRelativePath = (strpos($wmImagePath, $uploadWmPath) !== false)
+                ? '/uploads/teacher_wm/' . $dateDir . '/' . $filename
+                : $originRelativePath;
+            $url = $domain . $wmRelativePath;
+            $originUrl = $domain . $originRelativePath;
             
             return json([
                 'success' => true,
                 'message' => '上传成功',
                 'data' => [
-                    'url' => $url,  // 完整URL，用于显示
-                    'path' => $relativePath,  // 相对路径，用于保存到数据库
+                    'url' => $url,  // 水印图：用于显示（用户端）
+                    'path' => $originRelativePath,  // 原图相对路径：用于保存到数据库（管理端无水印）
+                    'origin_url' => $originUrl,
+                    'watermark_url' => $url,
+                    'watermark_path' => $wmRelativePath,
                     'compressed' => false
                 ]
             ]);

@@ -10,6 +10,8 @@ class SubscribeMessageService
 {
     // 模板ID
     const TEMPLATE_ID = 'szFjrvi1RabxvzvKV-zxkAHyb2aeu3wT46IzM3t8fHo';
+    // 简历审核结果通知（小程序订阅消息模板）
+    const RESUME_REVIEW_TEMPLATE_ID = 'g0ok7utGSFQJsC9_yG0cqGy4tfLrAQ-0GrXcEUMj-lU';
     
     /**
      * 发送家教推荐订阅消息
@@ -152,6 +154,99 @@ class SubscribeMessageService
             'fail_count' => $failCount,
             'results' => $results
         ];
+    }
+
+    /**
+     * 发送简历审核结果订阅消息
+     *
+     * @param string $openid 用户OpenID
+     * @param array $data 消息数据 { result, review_time, remark, page? }
+     * @return array
+     */
+    public static function sendResumeReviewMessage($openid, $data)
+    {
+        try {
+            $subscribe = Db::name('user_subscribe')
+                ->where('openid', $openid)
+                ->where('template_id', self::RESUME_REVIEW_TEMPLATE_ID)
+                ->where('is_used', 0)
+                ->order('subscribe_time', 'desc')
+                ->find();
+
+            if (!$subscribe) {
+                return [
+                    'success' => false,
+                    'message' => '用户未订阅或订阅已使用'
+                ];
+            }
+
+            $appId = env('wechat.mini_app_id');
+            $appSecret = env('wechat.mini_app_secret');
+
+            if (!$appId || !$appSecret) {
+                throw new \Exception('小程序配置未完成');
+            }
+
+            $accessToken = self::getAccessToken($appId, $appSecret);
+
+            $resultText = $data['result'] ?? '';
+            $reviewTime = $data['review_time'] ?? date('Y-m-d H:i:s');
+            $remark = $data['remark'] ?? '';
+
+            // 注意：字段 key 必须与小程序订阅消息模板关键词一致
+            // 你的模板为：审核结果 thing1、审核时间 time2、备注 thing3
+            $messageData = [
+                'thing1' => [
+                    'value' => $resultText
+                ],
+                'time2' => [
+                    'value' => $reviewTime
+                ],
+                'thing3' => [
+                    'value' => $remark ?: '请进入小程序查看详情'
+                ]
+            ];
+
+            $page = $data['page'] ?? 'pages/teacher-resume-preview/index?readonly=true';
+
+            $postData = [
+                'touser' => $openid,
+                'template_id' => self::RESUME_REVIEW_TEMPLATE_ID,
+                'page' => $page,
+                'data' => $messageData,
+                'miniprogram_state' => 'formal'
+            ];
+
+            $apiUrl = "https://api.weixin.qq.com/cgi-bin/message/subscribe/send?access_token={$accessToken}";
+            $result = self::httpPost($apiUrl, json_encode($postData, JSON_UNESCAPED_UNICODE));
+            $response = json_decode($result, true);
+
+            $success = isset($response['errcode']) && $response['errcode'] == 0;
+
+            self::logMessage($subscribe['user_id'], $openid, $postData, $response);
+
+            if ($success) {
+                Db::name('user_subscribe')
+                    ->where('id', $subscribe['id'])
+                    ->update([
+                        'is_used' => 1,
+                        'used_time' => date('Y-m-d H:i:s')
+                    ]);
+            } else {
+                throw new \Exception($response['errmsg'] ?? '发送失败');
+            }
+
+            return [
+                'success' => true,
+                'message' => '发送成功'
+            ];
+        } catch (\Exception $e) {
+            trace('简历审核订阅消息发送失败: ' . $e->getMessage(), 'error');
+            return [
+                'success' => false,
+                'message' => $e->getMessage()
+            ];
+        }
     }
     
     /**

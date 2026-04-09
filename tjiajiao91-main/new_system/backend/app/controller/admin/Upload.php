@@ -61,10 +61,15 @@ class Upload extends BaseController
             
             // 移动文件
             $file->move($fullPath, $filename);
-            
-            // 添加水印
+
             $imagePath = $fullPath . $filename;
-            WatermarkService::addWatermark($imagePath, '91家教中心', 'right-bottom');
+
+            // 部分场景需原图（如退费关注公众号二维码）；表单传 skip_watermark=1 则不打水印
+            $skip = $this->request->post('skip_watermark');
+            $skipWatermark = $skip === 1 || $skip === '1' || $skip === true || $skip === 'true';
+            if (!$skipWatermark) {
+                WatermarkService::addWatermark($imagePath, '91家教中心', 'right-bottom');
+            }
             
             // 返回文件URL
             $url = '/uploads/lead/' . $dateDir . '/' . $filename;

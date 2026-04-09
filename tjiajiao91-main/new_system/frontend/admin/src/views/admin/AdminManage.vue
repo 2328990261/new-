@@ -76,6 +76,12 @@
           </template>
         </el-table-column>
         <el-table-column prop="contact" label="联系方式" width="150" />
+        <el-table-column prop="booking_service_phone" label="预约成功页电话" width="130">
+          <template #default="scope">
+            <span v-if="scope.row.booking_service_phone">{{ scope.row.booking_service_phone }}</span>
+            <span v-else style="color: #999;">-</span>
+          </template>
+        </el-table-column>
         <el-table-column prop="email" label="邮箱地址" width="200" />
         <el-table-column label="微信二维码" width="140" v-if="isSuperAdmin">
           <template #default="scope">
@@ -206,7 +212,7 @@
     <el-dialog
       v-model="dialogVisible"
       :title="dialogTitle"
-      width="500px"
+      width="560px"
     >
       <el-form
         ref="formRef"
@@ -287,6 +293,51 @@
           <el-input v-model="form.openid" placeholder="请输入小程序用户OpenID" />
           <div class="form-tip">绑定小程序用户的OpenID，用于关联小程序账号</div>
         </el-form-item>
+        <el-form-item label="预约成功页电话" prop="booking_service_phone">
+          <el-input v-model="form.booking_service_phone" placeholder="选填，11位手机号，用于小程序提交成功页一键拨号" maxlength="20" />
+          <div class="form-tip">与「联系方式」独立；家长端「免费找家教」提交成功页「直接联系老师」使用</div>
+        </el-form-item>
+        <el-form-item
+          v-if="showWechatQrcodeInForm"
+          label="微信二维码"
+        >
+          <div class="qrcode-form-actions">
+            <el-upload
+              :show-file-list="false"
+              :before-upload="beforeUploadDialogQrcode"
+              :http-request="customUpload"
+              :on-success="handleDialogQrcodeUploadSuccess"
+              :on-error="handleDialogQrcodeUploadError"
+              accept="image/*"
+              class="qrcode-uploader-inline"
+            >
+              <el-button type="primary" size="small" :loading="formQrcodeUploading" :disabled="!form.id">
+                {{ form.wechat_qrcode ? '更换二维码' : '上传二维码' }}
+              </el-button>
+            </el-upload>
+            <el-button
+              v-if="form.wechat_qrcode && form.id"
+              type="success"
+              size="small"
+              @click="previewFormQrcode"
+            >
+              预览
+            </el-button>
+            <el-button
+              v-if="form.wechat_qrcode && form.id"
+              type="danger"
+              size="small"
+              @click="deleteFormQrcode"
+            >
+              删除
+            </el-button>
+          </div>
+          <div v-if="form.wechat_qrcode && formQrcodePreviewSrc" class="qrcode-form-preview">
+            <img :src="formQrcodePreviewSrc" alt="微信二维码预览" />
+          </div>
+          <div v-if="!form.id" class="form-tip" style="color: #E6A23C;">请先点击「确定」保存该管理员，再上传二维码</div>
+          <div v-else class="form-tip">家长端小程序「免费找家教」提交成功页展示；图片需为 HTTPS 或已在小程序配置下载域名</div>
+        </el-form-item>
         <el-form-item label="状态" prop="status" v-if="isSuperAdmin && (!form.id || form.id !== currentAdminId)">
           <el-switch
             v-model="form.status"
@@ -352,6 +403,22 @@ const userStore = useUserStore()
 const currentAdminId = computed(() => userStore.id)
 const isSuperAdmin = computed(() => userStore.isSuperAdmin)
 
+/** 客服组/派单组：超管或本人编辑时，在弹窗内展示二维码上传（与列表列一致） */
+const showWechatQrcodeInForm = computed(() => {
+  const roleOk = form.role === 'dispatcher' || form.role === 'customer_service'
+  if (!roleOk) return false
+  return isSuperAdmin.value || (form.id != null && form.id === currentAdminId.value)
+})
+
+const formQrcodeUploading = ref(false)
+
+const formQrcodePreviewSrc = computed(() => {
+  const u = form.wechat_qrcode || ''
+  if (!u) return ''
+  if (u.startsWith('http://') || u.startsWith('https://')) return u
+  return u.startsWith('/') ? u : '/' + u
+})
+
 const loading = ref(false)
 const tableData = ref([])
 const tableRef = ref(null)
@@ -386,6 +453,8 @@ const form = reactive({
   contact: '',
   email: '',
   openid: '',
+  booking_service_phone: '',
+  wechat_qrcode: '',
   status: 1
 })
 
@@ -452,6 +521,22 @@ const rules = {
       },
       trigger: 'change'
     }
+  ],
+  booking_service_phone: [
+    {
+      validator: (rule, value, callback) => {
+        if (!value || String(value).trim() === '') {
+          callback()
+          return
+        }
+        if (!/^1[3-9]\d{9}$/.test(String(value).trim())) {
+          callback(new Error('请输入合法11位手机号'))
+          return
+        }
+        callback()
+      },
+      trigger: 'blur'
+    }
   ]
 }
 
@@ -511,6 +596,8 @@ const resetForm = () => {
   form.contact = ''
   form.email = ''
   form.openid = ''
+  form.booking_service_phone = ''
+  form.wechat_qrcode = ''
   form.status = 1
 }
 
@@ -639,6 +726,8 @@ const showEditDialog = (row) => {
     contact: row.contact || '',
     email: row.email || '',
     openid: row.openid || '',
+    booking_service_phone: row.booking_service_phone || '',
+    wechat_qrcode: row.wechat_qrcode || '',
     status: row.status
   })
   dialogVisible.value = true
@@ -666,7 +755,10 @@ const handleSubmit = async () => {
         } else {
           submitData.city_id = null
         }
-        
+        if ('wechat_qrcode' in submitData) {
+          delete submitData.wechat_qrcode
+        }
+
         if (form.id) {
           // 更新
           await updateAdmin(form.id, submitData)
@@ -792,6 +884,73 @@ const customUpload = async (options) => {
     onSuccess(response)
   } catch (error) {
     onError(error)
+  }
+}
+
+const beforeUploadDialogQrcode = (file) => {
+  if (!form.id) {
+    ElMessage.warning('请先保存管理员后再上传二维码')
+    return false
+  }
+  const isImage = file.type.startsWith('image/')
+  const isLt5M = file.size / 1024 / 1024 < 5
+  if (!isImage) {
+    ElMessage.error('只能上传图片文件!')
+    return false
+  }
+  if (!isLt5M) {
+    ElMessage.error('图片大小不能超过 5MB!')
+    return false
+  }
+  formQrcodeUploading.value = true
+  return true
+}
+
+const handleDialogQrcodeUploadSuccess = async (response) => {
+  formQrcodeUploading.value = false
+  if (!response.success) {
+    ElMessage.error(response.error || response.message || '上传失败')
+    return
+  }
+  try {
+    await updateAdminWechatQrcode(form.id, response.data.url)
+    form.wechat_qrcode = response.data.url
+    ElMessage.success('二维码上传成功')
+    await loadData()
+  } catch (error) {
+    ElMessage.error('保存二维码失败：' + (error.response?.data?.error || error.message || '请重试'))
+  }
+}
+
+const handleDialogQrcodeUploadError = (error) => {
+  formQrcodeUploading.value = false
+  ElMessage.error('上传失败：' + (error.response?.data?.error || error.message || '网络错误，请重试'))
+}
+
+const previewFormQrcode = () => {
+  previewQrcode({
+    id: form.id,
+    nickname: form.nickname,
+    username: form.username,
+    wechat_qrcode: form.wechat_qrcode
+  })
+}
+
+const deleteFormQrcode = async () => {
+  try {
+    await ElMessageBox.confirm('确定要删除该微信二维码吗？', '提示', {
+      confirmButtonText: '确定',
+      cancelButtonText: '取消',
+      type: 'warning'
+    })
+    await updateAdminWechatQrcode(form.id, '')
+    form.wechat_qrcode = ''
+    ElMessage.success('二维码已删除')
+    await loadData()
+  } catch (error) {
+    if (error !== 'cancel') {
+      ElMessage.error('删除失败：' + (error.message || '请重试'))
+    }
   }
 }
 
@@ -988,5 +1147,28 @@ const deleteQrcode = async (row) => {
 
 .batch-info strong {
   color: #409eff;
+}
+
+.qrcode-form-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.qrcode-form-preview {
+  margin-top: 12px;
+}
+
+.qrcode-form-preview img {
+  max-width: 180px;
+  max-height: 180px;
+  border-radius: 8px;
+  border: 1px solid #ebeef5;
+  vertical-align: middle;
+}
+
+.qrcode-uploader-inline {
+  display: inline-block;
 }
 </style>

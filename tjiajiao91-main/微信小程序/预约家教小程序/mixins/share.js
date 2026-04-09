@@ -102,6 +102,9 @@ export default {
           
         case 'pages/teacher-library/index':
           return '教师资源库 - 汇聚各科优秀教师'
+
+        case 'pages/parent-home/index':
+          return '91家教 - 专业师资 · 免费匹配'
           
         default:
           return this.shareConfig.title

@@ -142,7 +142,6 @@ export default {
 		// 获取邀请人openid
 		if (options.inviter) {
 			this.inviterOpenid = options.inviter
-			console.log('检测到邀请链接，邀请人openid:', this.inviterOpenid)
 		}
 		// 获取来源页面（预约页跳转登录时带上，登录成功后返回）
 		if (options.from) {
@@ -190,11 +189,7 @@ export default {
 				fromCache = uni.getStorageSync('superior_openid') || ''
 				if (fromCache) {
 					if (envConfig.DEBUG) {
-						console.log('[superior_bind] login.getSuperiorOpenid', {
-							source: 'storage:superior_openid',
-							value: String(fromCache),
-							setTime: uni.getStorageSync('superior_openid_set_time') || null
-						})
+						// 仅保留 unionid 相关调试输出；其他登录调试关闭
 					}
 					return String(fromCache)
 				}
@@ -203,18 +198,12 @@ export default {
 				const adminParams = uni.getStorageSync('booking_redirect_admin') || {}
 				fromAdmin = adminParams.admin_openid || uni.getStorageSync('booking_share_admin_openid') || ''
 				if (envConfig.DEBUG) {
-					console.log('[superior_bind] login.getSuperiorOpenid', {
-						source: fromAdmin ? 'booking_admin 兜底' : '(空)',
-						superior_openid_storage: fromCache || '(空)',
-						booking_redirect_admin: adminParams,
-						booking_share_admin_openid: uni.getStorageSync('booking_share_admin_openid') || '',
-						resolved: fromAdmin || '(空)'
-					})
+					// 仅保留 unionid 相关调试输出；其他登录调试关闭
 				}
 				return fromAdmin
 			} catch (e) {
 				if (envConfig.DEBUG) {
-					console.log('[superior_bind] login.getSuperiorOpenid', { source: '异常', error: String(e) })
+					// 仅保留 unionid 相关调试输出；其他登录调试关闭
 				}
 				return ''
 			}
@@ -227,8 +216,6 @@ export default {
 			
 			// 如果有 token 和 openid，尝试自动登录
 			if (token && userInfo && userInfo.openid) {
-				console.log('检测到已登录信息，尝试自动登录')
-				
 				uni.showLoading({
 					title: '自动登录中...'
 				})
@@ -254,10 +241,13 @@ export default {
 					uni.hideLoading()
 					
 					if (res.code === 200) {
-						console.log('自动登录成功')
+						const u = res?.data?.unionid
+						console.log('[unionid_debug][autoLogin]', {
+							has_unionid: !!u,
+							unionid: u ? `${u.slice(0, 6)}...${u.slice(-4)}` : ''
+						})
 						this.loginSuccess(res.data)
 					} else {
-						console.log('自动登录失败，需要重新授权')
 						// 自动登录失败，清除旧的登录信息
 						uni.removeStorageSync('token')
 					}
@@ -272,7 +262,6 @@ export default {
 		
 		// 微信头像授权回调
 		onChooseAvatar(e) {
-			console.log('微信头像授权回调:', e)
 			const { avatarUrl } = e.detail
 			if (avatarUrl) {
 				// 先显示临时头像
@@ -308,11 +297,6 @@ export default {
 				uploadOpenid = 'temp_' + systemInfo.deviceId || 'temp_' + Date.now()
 			}
 			
-			console.log('=== 登录页头像上传调试信息 ===')
-			console.log('1. 选择的头像路径:', avatarUrl)
-			console.log('2. 使用的OpenID:', uploadOpenid)
-			console.log('3. API地址:', envConfig.API_BASE_URL + '/api/avatar/upload')
-			
 			// 上传头像到服务器
 			uni.uploadFile({
 				url: envConfig.API_BASE_URL + '/api/avatar/upload',
@@ -322,15 +306,11 @@ export default {
 					openid: uploadOpenid
 				},
 				success: (uploadRes) => {
-					console.log('4. 服务器响应原始数据:', uploadRes.data)
-					
 					try {
 						const result = JSON.parse(uploadRes.data)
-						console.log('5. 解析后的响应数据:', result)
 						
 						if (result.code === 200) {
 							const serverAvatarUrl = result.data.avatar_url
-							console.log('6. 服务器返回的头像URL:', serverAvatarUrl)
 							
 							// 构建完整的头像URL
 							let fullAvatarUrl = serverAvatarUrl
@@ -342,8 +322,6 @@ export default {
 									fullAvatarUrl = envConfig.API_BASE_URL + '/uploads/' + serverAvatarUrl
 								}
 							}
-							
-							console.log('7. 完整的头像URL:', fullAvatarUrl)
 							
 							// 更新本地头像显示
 							this.userAvatar = fullAvatarUrl
@@ -373,8 +351,6 @@ export default {
 							})
 						}
 					} catch (e) {
-						console.error('解析响应数据失败:', e)
-						console.error('原始响应数据:', uploadRes.data)
 						uni.hideLoading()
 						uni.showToast({
 							title: '头像上传失败',
@@ -454,10 +430,7 @@ export default {
 				})
 				const superiorOpenid = this.getSuperiorOpenid()
 				if (envConfig.DEBUG) {
-					console.log('[superior_bind] login.handleQuickLogin → POST /api/wechat/login', {
-						superior_openid: superiorOpenid || '(空)',
-						needPhoneAuthWillBe: '待接口返回后确定'
-					})
+					// 仅保留 unionid 相关调试输出；其他登录调试关闭
 				}
 				const res = await wechatLogin.login(loginRes.code, { superior_openid: superiorOpenid })
 				uni.hideLoading()
@@ -657,11 +630,7 @@ export default {
 			try {
 				const superiorOpenid = this.getSuperiorOpenid()
 				if (envConfig.DEBUG) {
-					console.log('[superior_bind] login.loginWithPhoneCode → POST /api/wechat/login-phone', {
-						superior_openid: superiorOpenid || '(空)',
-						inviter_openid: this.inviterOpenid || '(空)',
-						note: '新用户创建/老用户补绑 superior 主要看本次 superior_openid'
-					})
+					// 仅保留 unionid 相关调试输出；其他登录调试关闭
 				}
 				const res = await wechatLogin.loginWithPhone({
 					code: this.code,
@@ -724,9 +693,6 @@ export default {
 				this.isProcessingPhone = false
 				console.error('登录失败:', err)
 				
-				// 打印完整错误对象用于调试
-				console.log('完整错误对象:', JSON.stringify(err, null, 2))
-				
 				// 获取详细错误信息
 				let errorMessage = '登录失败，请重试'
 				if (err.message) {
@@ -758,7 +724,7 @@ export default {
 							confirmText: '知道了',
 							success: () => {
 								// 用户点击确定后，可以引导他们查看剪贴板
-								console.log('错误信息已复制，用户可以在任何地方粘贴查看')
+								// 仅保留 unionid 相关调试输出；其他登录调试关闭
 							}
 						})
 					},
@@ -794,10 +760,7 @@ export default {
 			try {
 				const superiorOpenid = this.getSuperiorOpenid()
 				if (envConfig.DEBUG) {
-					console.log('[superior_bind] login.loginWithPhone(旧版加密) → POST /api/wechat/login-phone', {
-						superior_openid: superiorOpenid || '(空)',
-						inviter_openid: this.inviterOpenid || '(空)'
-					})
+					// 仅保留 unionid 相关调试输出；其他登录调试关闭
 				}
 				const res = await wechatLogin.loginWithPhone({
 					code: this.code,
@@ -861,9 +824,6 @@ export default {
 				this.isProcessingPhone = false
 				console.error('登录失败:', err)
 				
-				// 打印完整错误对象用于调试
-				console.log('完整错误对象:', JSON.stringify(err, null, 2))
-				
 				// 获取详细错误信息
 				let errorMessage = '登录失败，请重试'
 				if (err.message) {
@@ -895,7 +855,7 @@ export default {
 							confirmText: '知道了',
 							success: () => {
 								// 用户点击确定后，可以引导他们查看剪贴板
-								console.log('错误信息已复制，用户可以在任何地方粘贴查看')
+								// 仅保留 unionid 相关调试输出；其他登录调试关闭
 							}
 						})
 					},
@@ -923,15 +883,35 @@ export default {
 			if (data.isNewUser) {
 				uni.removeStorageSync('userRole')
 			}
-			console.log('登录返回的数据:', data)
-			console.log('用户信息:', data.userInfo)
+			const u = data?.unionid
+			console.log('[unionid_debug][loginSuccess]', {
+				has_unionid: !!u,
+				unionid: u ? `${u.slice(0, 6)}...${u.slice(-4)}` : ''
+			})
 			
 			// 从token中解析openid（token格式：base64编码的JSON）
 			let openid = ''
 			try {
-				const tokenData = JSON.parse(atob(data.token))
+				// uni-app 小程序环境下 atob 可能不可用；使用 uni.base64ToArrayBuffer 解码 token
+				let tokenJsonStr = ''
+				if (typeof uni?.base64ToArrayBuffer === 'function') {
+					const buf = uni.base64ToArrayBuffer(data.token)
+					const bytes = new Uint8Array(buf)
+					if (typeof TextDecoder !== 'undefined') {
+						tokenJsonStr = new TextDecoder('utf-8').decode(bytes)
+					} else {
+						let s = ''
+						for (let i = 0; i < bytes.length; i++) s += String.fromCharCode(bytes[i])
+						tokenJsonStr = s
+					}
+				} else if (typeof atob === 'function') {
+					tokenJsonStr = atob(data.token)
+				} else {
+					tokenJsonStr = data.token
+				}
+
+				const tokenData = JSON.parse(tokenJsonStr)
 				openid = tokenData.openid || ''
-				console.log('从token解析的openid:', openid)
 			} catch (e) {
 				console.error('解析token失败:', e)
 			}
@@ -943,8 +923,6 @@ export default {
 				avatar: this.userAvatar || data.userInfo?.avatar || '',
 				name: this.userNickname || data.userInfo?.nickname || data.userInfo?.name || '微信用户'
 			}
-			
-			console.log('合并后的用户信息:', userInfo)
 			
 			// 使用auth工具保存登录信息（90天有效期）
 			auth.saveLoginInfo({
@@ -959,9 +937,7 @@ export default {
 				agreedToTerms: true
 			})
 			
-			// 验证保存是否成功
-			console.log('保存后的登录状态:', auth.isLoggedIn())
-			console.log('保存后的用户信息:', auth.getUserInfo())
+			// 验证保存是否成功（不输出其它调试日志；仅 unionid 调试）
 			
 			// 保存dairucode（如果存在）
 			if (data.dairucode) {
@@ -1046,7 +1022,7 @@ export default {
 						if (pages.length > 1) {
 							uni.navigateBack()
 						} else {
-							uni.reLaunch({ url: '/pages/teacher-library/index' })
+							uni.reLaunch({ url: '/pages/parent-home/index' })
 						}
 					} else if (userRole === 'teacher') {
 						uni.reLaunch({ url: '/pages/tutor-list/index' })
@@ -1067,15 +1043,15 @@ export default {
 				await requestLocationAuth({
 					saveToUser: true,
 					onSuccess: (locationData) => {
-						console.log('位置授权成功:', locationData)
+						// 仅保留 unionid 相关调试输出；其他调试关闭
 					},
 					onFail: (err) => {
-						console.log('位置授权失败:', err)
+						// 仅保留 unionid 相关调试输出；其他调试关闭
 						// 失败不影响登录流程
 					}
 				})
 			} catch (err) {
-				console.log('用户拒绝位置授权或授权失败:', err)
+				// 仅保留 unionid 相关调试输出；其他调试关闭
 				// 不影响登录流程
 			}
 		}

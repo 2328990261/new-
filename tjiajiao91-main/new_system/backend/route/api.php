@@ -105,6 +105,8 @@ Route::group('api', function () {
     Route::get('agreement/privacy', 'api.Agreement/privacy');
     
     // 退款申请（用户端）
+    Route::get('refund/gate-config', 'api.RefundApi/gateConfig');
+    Route::get('refund/subscribe-status', 'api.RefundApi/subscribeStatus');
     Route::get('refund/payment', 'api.RefundApi/getPaymentByOrderNo');
     Route::post('refund/apply', 'api.RefundApi/applyRefund');
     Route::get('refund/status', 'api.RefundApi/queryRefundStatus');
@@ -115,6 +117,12 @@ Route::group('api', function () {
     Route::get('wechat/callback', 'api.WechatAuth/callback');
     Route::get('wechat/check-auth', 'api.WechatAuth/checkAuth');
     Route::get('wechat/mock-auth', 'api.WechatAuth/mockAuth'); // 测试接口
+    Route::rule('wechat/official/server', 'api.WechatOfficial/server', 'GET|POST');
+    Route::post('wechat/official/qrcode', 'api.WechatOfficial/qrcode');
+    Route::get('wechat/official/bind-auth-url', 'api.WechatOfficial/bindAuthUrl');
+    Route::get('wechat/official/bind-status', 'api.WechatOfficial/bindStatus');
+    Route::get('wechat/official/latest-event-debug', 'api.WechatOfficial/latestEventDebug');
+    Route::get('wechat/official/bind-callback', 'api.WechatOfficial/bindCallback');
     
     // 微信小程序登录
     Route::post('wechat/login', 'api.WechatMiniProgram/login');
@@ -150,6 +158,10 @@ Route::group('api', function () {
     
     // 微信分享配置（公开接口）
     Route::get('wechat/share-config', 'api.Wechat/shareConfig');
+
+    // 微信/社交平台分享落地页（用于抓取 OG/meta）
+    Route::get('share/refund', 'api.Share/refund');
+    Route::get('share/payment', 'api.Share/payment');
     
     // SEO相关（公开接口）
     Route::get('seo/page-config', 'api.Seo/getPageSeo');
@@ -161,6 +173,7 @@ Route::group('api', function () {
     Route::get('config/customer-service', 'api.Config/getCustomerService');
     Route::get('site-config', 'api.SiteConfig/getConfig');
     Route::get('site-banners', 'api.SiteBanner/index');
+    Route::get('success-cases', 'api.SuccessCase/index');
     Route::post('user/location', 'api.UserLocation/save');
     
     // 授课信息管理

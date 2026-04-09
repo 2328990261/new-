@@ -808,7 +808,7 @@ export default {
 						setTimeout(() => {
 							if (newRole === 'parent') {
 								uni.reLaunch({
-									url: '/pages/teacher-library/index'
+									url: '/pages/parent-home/index'
 								})
 							} else {
 								uni.reLaunch({

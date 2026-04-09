@@ -1,1728 +1,894 @@
 <template>
   <div class="home">
-    <!-- Hero 区域 - 轮播图-->
-    <div class="hero-section">
-      <div class="hero-bg-decoration">
-        <div class="circle circle-1"></div>
-        <div class="circle circle-2"></div>
-        <div class="circle circle-3"></div>
-      </div>
-      
-      <!-- 主内容区 -->
-      <div class="hero-content">
-        <div class="hero-badge">
-          <el-icon><Star /></el-icon>
-          <span>优质家教信息平台</span>
-        </div>
-        
-        <h1 class="hero-title">
-          找家教，就这<span class="highlight">么简单</span>
-        </h1>
-        
-        <p class="hero-subtitle">
-          <el-icon><Location /></el-icon>
-          覆盖全国多个城市
-          <span class="divider">|</span>
-          <el-icon><Reading /></el-icon>
-          数十种科目选择
-          <span class="divider">|</span>
-          <el-icon><Clock /></el-icon>
-          实时更新信息
-        </p>
-        
-        <div class="search-box">
-          <div class="search-container">
-            <el-icon class="search-prefix-icon"><Search /></el-icon>
-            <el-input
-              v-model="keyword"
-              placeholder="搜一搜：城市/科目/年级..."
-              size="large"
-              clearable
-              @keyup.enter="handleSearch"
-              @focus="searchFocused = true"
-              @blur="searchFocused = false"
-              class="search-input"
-            />
-            <el-button 
-              type="primary" 
-              size="large" 
-              @click="handleSearch"
-              class="search-btn"
-            >
-              搜索
-            </el-button>
-          </div>
-          
-          <!-- 分享按钮 -->
-          <div class="share-buttons">
-            <el-button 
-              type="success" 
-              size="small" 
-              @click="shareToWechat"
-              class="share-btn"
-            >
-              <el-icon><Share /></el-icon>
-              分享给好友
-            </el-button>
-            <el-button 
-              type="warning" 
-              size="small" 
-              @click="shareToTimeline"
-              class="share-btn"
-            >
-              <el-icon><Share /></el-icon>
-              分享到朋友圈
-            </el-button>
-          </div>
+    <!-- Hero / Banner -->
+    <section class="hero">
+      <div class="hero-media">
+        <a
+          v-if="homeBanner?.image"
+          class="hero-slide"
+          :href="homeBanner.link || 'javascript:void(0)'"
+          :target="homeBanner.link ? '_blank' : undefined"
+          :rel="homeBanner.link ? 'noopener noreferrer' : undefined"
+          :aria-disabled="!homeBanner.link"
+          @click.prevent="onHeroClick"
+        >
+          <img class="hero-img" :src="homeBanner.image" alt="" />
+        </a>
+        <div v-else class="hero-fallback">
+          <div class="hero-placeholder" aria-hidden="true" />
         </div>
 
-        <!-- 热门标签 -->
-        <div class="hot-tags">
-          <div class="hot-tag-label">
-            <el-icon><TrendCharts /></el-icon>
-            <span>热搜</span>
-          </div>
-          <div class="hot-tag-list">
-            <div 
-              v-for="(tag, index) in hotTags" 
-              :key="tag" 
-              @click="quickSearch(tag)"
-              class="hot-tag-item"
-              :class="{ 'hot-top': index < 3 }"
-            >
-              <span class="tag-index" v-if="index < 3">{{ index + 1 }}</span>
-              <span class="tag-text">{{ tag }}</span>
-              <el-icon class="tag-icon"><ArrowRight /></el-icon>
-            </div>
+        <div class="hero-overlay">
+          <h1 class="hero-title">{{ siteTitle }}</h1>
+          <h2 class="hero-subtitle">为您孩子提供更优质的家教服务</h2>
+          <div class="hero-pills">
+            <span class="pill">量身定制</span>
+            <span class="pill">专属试听</span>
+            <span class="pill">一对一服务</span>
           </div>
         </div>
       </div>
-    </div>
+    </section>
 
-    <!-- 统计数据区域 -->
-    <div class="stats-section">
-      <div class="stats-container">
-        <div class="stats-grid">
-          <div class="stat-card" :class="{ 'stat-animated': stat.animated }" v-for="stat in stats" :key="stat.label">
-            <div class="stat-icon" :style="{ background: stat.color }">
-              <component :is="stat.icon" />
+    <!-- CTA -->
+    <section class="cta">
+      <div class="cta-inner">
+        <router-link class="cta-btn cta-btn--green" to="/city-tutor">请家教</router-link>
+        <router-link class="cta-btn cta-btn--orange" to="/teacher-register">做家教</router-link>
+      </div>
+    </section>
+
+    <!-- 明星教员团队 -->
+    <section class="section">
+      <header class="section-head">
+        <h2 class="section-title">明星教员团队，为学习保驾护航</h2>
+        <p class="section-subtitle">高学历明星教员团队，更专业，孩子更有学习力</p>
+      </header>
+      <div class="section-body">
+        <div v-if="loadingTeachers" class="state">加载中…</div>
+        <div v-else-if="starTeachers.length === 0" class="state">暂无推荐教员</div>
+        <div v-else class="grid teacher-grid">
+          <router-link
+            v-for="t in starTeachers"
+            :key="t.id"
+            class="teacher-tile"
+            :to="`/teacher/${t.id}`"
+          >
+            <div class="teacher-badges">
+              <span class="teacher-badge teacher-badge--door">上门家教</span>
             </div>
-            <div class="stat-info">
-              <div class="stat-value">{{ stat.displayValue || stat.value }}</div>
-              <div class="stat-label">{{ stat.label }}</div>
+            <div class="teacher-avatar">
+              <img class="teacher-avatar-img" :src="t.cover || t.avatar" alt="" loading="lazy" />
+            </div>
+            <div class="teacher-school">{{ t.school || '优质教员' }}</div>
+          </router-link>
+        </div>
+
+        <div class="section-actions">
+          <router-link class="link-more" to="/teachers">查看更多教员</router-link>
+        </div>
+      </div>
+    </section>
+
+    <!-- 最新家教 -->
+    <section class="section">
+      <header class="section-head">
+        <h2 class="section-title">最新家教</h2>
+        <p class="section-subtitle">巩固基础，培优，定制属于您的提分辅导方案</p>
+      </header>
+      <div class="section-body">
+        <div v-if="loadingTutors" class="state">加载中…</div>
+        <div v-else-if="latestTutors.length === 0" class="state">暂无家教单</div>
+        <div v-else class="tutor-table">
+          <div class="tutor-row tutor-row--head">
+            <div class="tutor-col tutor-col--name">老师类型</div>
+            <div class="tutor-col tutor-col--subject">学科</div>
+            <div class="tutor-col tutor-col--addr">地址</div>
+            <div class="tutor-col tutor-col--req">要求</div>
+            <div class="tutor-col tutor-col--status">状态</div>
+            <div class="tutor-col tutor-col--action">操作</div>
+          </div>
+          <div v-for="x in latestTutors" :key="x.id" class="tutor-row">
+            <div class="tutor-col tutor-col--name">{{ getTutorTeacherTypeText(x) }}</div>
+            <div class="tutor-col tutor-col--subject">{{ getTutorSubjectText(x) }}</div>
+            <div class="tutor-col tutor-col--addr">{{ getTutorAddrText(x) }}</div>
+            <div class="tutor-col tutor-col--req" :title="getTutorRequirementText(x)">
+              {{ getTutorRequirementText(x) }}
+            </div>
+            <div class="tutor-col tutor-col--status">
+              <span class="tutor-status">报名中</span>
+            </div>
+            <div class="tutor-col tutor-col--action">
+              <router-link class="tutor-view" :to="`/detail/${x.id}`">查看</router-link>
             </div>
           </div>
         </div>
+        <div class="section-actions">
+          <router-link class="link-more" to="/city-tutor">查看更多家教单</router-link>
+        </div>
       </div>
-    </div>
+    </section>
 
-    <!-- 首页布局重构占位区域（已移除筛选与家教信息单） -->
-    <div class="homepage-redesign-placeholder"></div>
+    <!-- 新闻资讯 -->
+    <section class="section">
+      <header class="section-head">
+        <h2 class="section-title">新闻资讯</h2>
+        <p class="section-subtitle">家教资讯、学习方法与平台动态</p>
+      </header>
+      <div class="section-body">
+        <div class="news-list">
+          <router-link v-for="n in homeNews" :key="n.id" class="news-item" :to="n.to">
+            <span class="news-title">{{ n.title }}</span>
+            <span class="news-date">{{ n.date }}</span>
+          </router-link>
+        </div>
+        <div class="section-actions">
+          <router-link class="link-more" to="/news">查看更多资讯</router-link>
+        </div>
+      </div>
+    </section>
 
-    <SiteFooter />
+    <!-- Footer -->
+    <footer class="home-footer">
+      <div class="home-footer-inner">
+        <div class="footer-widget-wrap">
+          <div class="footer-widget">
+            <div class="footer-widget-title">网站导航</div>
+            <div class="footer-links-col">
+              <router-link class="footer-link" to="/city-tutor">请家教</router-link>
+              <router-link class="footer-link" to="/teacher-register">当老师</router-link>
+              <router-link class="footer-link" to="/teachers">教员库</router-link>
+              <router-link class="footer-link" to="/partnership">资费标准</router-link>
+              <router-link class="footer-link" to="/news">新闻资讯</router-link>
+            </div>
+          </div>
+
+          <div class="footer-widget">
+            <div class="footer-widget-title">帮助中心</div>
+            <div class="footer-links-col">
+              <router-link class="footer-link" to="/privacy-policy">隐私政策</router-link>
+              <router-link class="footer-link" to="/wechat-bind">微信绑定</router-link>
+            </div>
+          </div>
+
+          <div class="footer-widget">
+            <div class="footer-widget-title">网站相关</div>
+            <div class="footer-links-col">
+              <router-link class="footer-link" to="/partnership">关于本站</router-link>
+              <router-link class="footer-link" to="/partnership">联系方式</router-link>
+              <router-link class="footer-link" to="/privacy-policy">服务条款</router-link>
+              <router-link class="footer-link" to="/city-light">点亮城市</router-link>
+            </div>
+          </div>
+
+          <div class="footer-widget footer-widget--qr">
+            <img class="footer-qr" :src="kefuQr" alt="" loading="lazy" />
+            <div class="footer-widget-title footer-widget-title--center">客服微信</div>
+          </div>
+        </div>
+
+        <div class="footer-bottom">
+          <div class="footer-copy">版权所有 © 2019-{{ currentYear }} 91家教 All Rights Reserved</div>
+        </div>
+      </div>
+    </footer>
   </div>
 </template>
 
 <script setup>
-import { ref, reactive, onMounted, onUnmounted, computed } from 'vue'
-import { useRouter } from 'vue-router'
-import { ElMessage } from 'element-plus'
-import { 
-  Search, Star, Location, Reading, Clock, List,
-  DocumentDelete, RefreshRight, Document, Check, Loading, View, Grid,
-  TrendCharts, ArrowRight, Sunny, Lightning, Share, Filter, User,
-  ChatDotRound, InfoFilled, DocumentCopy
-} from '@element-plus/icons-vue'
-import { getTutorList } from '@/api/tutor'
-import FilterPanel from '@/components/FilterPanel.vue'
-import TutorCard from '@/components/TutorCard.vue'
-import { initWechatShare, shareToWechatFriend, shareToWechatTimeline } from '@/utils/wechatShare'
-import SiteFooter from '@/components/SiteFooter.vue'
+import { computed, onMounted, ref } from 'vue'
+import { getBannerList } from '@/api/siteBanner'
+import { getSiteConfig } from '@/api/siteConfig'
+import request from '@/utils/request'
+import kefuQr from '@/assets/91家教用户端客服二维码.jpg'
 
-const router = useRouter()
+const banners = ref([])
+const siteConfig = ref({})
 
-const keyword = ref('')
-const loading = ref(false)
-const loadingMore = ref(false)
-const tutorList = ref([])
-const currentPage = ref(1)
-const pageSize = ref(20)
-const total = ref(0)
-const hasMore = computed(() => tutorList.value.length < total.value)
-const loadTrigger = ref(null)
-const activeTab = ref('all')
+const loadingTeachers = ref(false)
+const loadingTutors = ref(false)
+const starTeachers = ref([])
+const latestTutors = ref([])
+const currentYear = new Date().getFullYear()
 
-const searchFocused = ref(false)
-const isFilterCompact = ref(false)
-const lastScrollTop = ref(0)
-let observer = null
-
-// 联系信息弹窗相关
-const contactDialogVisible = ref(false)
-const currentDispatcher = ref(null)
-
-// Tab指示器样式
-const indicatorStyle = computed(() => {
-  return {
-    transform: activeTab.value === 'all' ? 'translateX(0)' : 'translateX(100%)'
-  }
+const siteTitle = computed(() => {
+  return siteConfig.value?.site_name || '91家教'
 })
 
-// 切换Tab
-const changeTab = (tab) => {
-  activeTab.value = tab
-  handleTabChange(tab)
+const homeBanner = computed(() => {
+  return banners.value?.[0] || null
+})
+
+const homeNews = ref([
+  { id: 1, title: '91家教：如何选择合适的家教老师？', date: '2026-04-08', to: '/news' },
+  { id: 2, title: '家长必看：一对一辅导要关注哪些点', date: '2026-04-08', to: '/news' },
+  { id: 3, title: '学习方法：高效复盘与错题整理技巧', date: '2026-04-08', to: '/news' }
+])
+
+const normalizeBanner = (b) => {
+  const image = b?.image_url || b?.image || b?.banner_url || ''
+  const link = (b?.link_url || b?.link || '').trim?.() || (b?.link_url || b?.link || '')
+  const id = b?.id
+  return { id, image, link: link || '' }
 }
 
-// 热门标签
-const hotTags = ref([
-  '北京', '上海', '数学', '英语', '高中', '初中', '一对一', '在线辅导'
-])
-
-// 统计数据
-const stats = ref([
-  {
-    label: '覆盖城市',
-    value: '50+',
-    icon: Location,
-    color: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)'
-  },
-  {
-    label: '家教单量',
-    value: '1000+',
-    icon: Document,
-    color: 'linear-gradient(135deg, #4facfe 0%, #00f2fe 100%)'
-  },
-  {
-    label: '浏览人次',
-    value: 0,
-    displayValue: '0',
-    icon: View,
-    color: 'linear-gradient(135deg, #fa709a 0%, #fee140 100%)',
-    animated: true
+const onHeroClick = () => {
+  if (homeBanner.value?.link) {
+    window.open(homeBanner.value.link, '_blank', 'noopener,noreferrer')
   }
-])
+}
 
-// 浏览人次计数器
-const viewCount = ref(0)
-const targetViewCount = ref(0)
+const normalizeTeacher = (t) => {
+  return {
+    id: t?.id,
+    cover: t?.cover,
+    avatar: t?.avatar,
+    school: t?.school
+  }
+}
 
-const searchParams = reactive({
-  city_id: '',
-  district_id: '',
-  subject_id: '',
-  grade: '',
-  keyword: '',
-  is_urgent: '' // 是否加急
-})
+const loadStarTeachers = async () => {
+  loadingTeachers.value = true
+  try {
+    // 后端路由：GET /api/teacher/list
+    // 这里用较小 limit，首页只展示“明星/置顶”优先
+    const res = await request.get('/teacher/list', {
+      params: { page: 1, limit: 8, keyword: '', city_id: '', subject_id: '', gender: '' },
+      __silentError: true
+    })
+    const list = res?.data?.list || []
+    const normalized = Array.isArray(list) ? list.map(normalizeTeacher).filter((x) => x.id) : []
+    // 优先置顶/推荐（字段存在则前置）
+    const sorted = normalized.sort((a, b) => {
+      const ai = list.find((x) => x.id === a.id)?.is_top ? 1 : 0
+      const bi = list.find((x) => x.id === b.id)?.is_top ? 1 : 0
+      return bi - ai
+    })
+    starTeachers.value = sorted.slice(0, 8)
+  } catch {
+    starTeachers.value = []
+  } finally {
+    loadingTeachers.value = false
+  }
+}
+
+const loadLatestTutors = async () => {
+  loadingTutors.value = true
+  try {
+    // 后端路由：GET /api/tutor/list
+    const res = await request.get('/tutor/list', {
+      params: { page: 1, limit: 10, sort: 'time' },
+      __silentError: true
+    })
+    const list = res?.data?.list || res?.data || []
+    const rawList = Array.isArray(list) ? list : []
+    latestTutors.value = rawList
+      .slice()
+      .sort((a, b) => getTutorTimeValue(b) - getTutorTimeValue(a))
+  } catch {
+    latestTutors.value = []
+  } finally {
+    loadingTutors.value = false
+  }
+}
+
+const getTutorSubjectText = (x) => {
+  const raw = x?.subject?.name ?? x?.subject_name ?? x?.subject ?? x?.subject_info ?? x?.subject_detail ?? ''
+  if (!raw) return '—'
+  if (typeof raw === 'string') return raw
+  if (Array.isArray(raw)) {
+    const names = raw
+      .map((s) => (typeof s === 'string' ? s : s?.name))
+      .filter(Boolean)
+    return names.length ? names.join('、') : '—'
+  }
+  if (typeof raw === 'object') {
+    return raw?.name || raw?.subject_name || raw?.title || '—'
+  }
+  return '—'
+}
+
+const getTutorTeacherTypeText = (x) => {
+  // 1) 优先从结构化字段读取
+  const genderRaw =
+    x?.teacher_gender ??
+    x?.teacherGender ??
+    x?.gender_require ??
+    x?.genderRequire ??
+    x?.require_gender ??
+    x?.requireGender ??
+    x?.teacher_type ??
+    x?.teacherType ??
+    ''
+
+  const norm = (v) => (typeof v === 'string' ? v.trim() : v)
+  const g = norm(genderRaw)
+  const map = {
+    男: '男老师',
+    女: '女老师',
+    男老师: '男老师',
+    女老师: '女老师',
+    不限: '不限',
+    0: '不限',
+    1: '男老师',
+    2: '女老师'
+  }
+  if (g !== '' && g != null && Object.prototype.hasOwnProperty.call(map, g)) return map[g]
+
+  // 2) 再从内容里兜底识别（CityTutorList 用 tutor.content 作为主要展示）
+  const text = typeof x?.content === 'string' ? x.content : ''
+  if (/女老师/.test(text)) return '女老师'
+  if (/男老师/.test(text)) return '男老师'
+  if (/性别不限|不限性别|男女不限|不限/.test(text)) return '不限'
+
+  return '不限'
+}
+
+const getTutorAddrText = (x) => {
+  const city = x?.city?.name || x?.city_name || ''
+  const district = x?.district?.name || x?.district_name || ''
+  const address = x?.address || ''
+  const parts = [city, district, address].filter(Boolean)
+  return parts.length ? parts.join('') : '—'
+}
+
+const getTutorRequirementText = (x) => {
+  const content = x?.content || x?.requirement || x?.require || ''
+  if (typeof content === 'string') return content.trim() || '—'
+  return '—'
+}
+
+const getTutorTimeValue = (x) => {
+  const t = x?.create_time || x?.update_time || x?.created_at || x?.createTime || ''
+  const ms = t ? new Date(t).getTime() : NaN
+  if (!Number.isNaN(ms)) return ms
+  const id = Number(x?.id)
+  return Number.isFinite(id) ? id : 0
+}
+
+const loadBanners = async () => {
+  try {
+    const res = await getBannerList({ banner_scene: 'h5_home' })
+    const list = res?.data || res?.data?.list || []
+    banners.value = Array.isArray(list)
+      ? list.map(normalizeBanner).filter((x) => x.image)
+      : []
+  } catch {
+    banners.value = []
+  }
+}
+
+const loadSiteConfig = async () => {
+  try {
+    const res = await getSiteConfig()
+    siteConfig.value = res?.data || {}
+  } catch {
+    siteConfig.value = {}
+  }
+}
 
 onMounted(async () => {
-  loadTutorList()
-  setupIntersectionObserver()
-  initViewCount()
-  incrementViewCount()
-  setupScrollListener()
-  
-  // 初始化微信分享
-  try {
-    await initWechatShare()
-  } catch (error) {
-    // 静默处理错误
-  }
+  await Promise.all([loadSiteConfig(), loadBanners(), loadStarTeachers(), loadLatestTutors()])
 })
-
-// 设置滚动监听（暂时禁用自动折叠）
-const setupScrollListener = () => {
-  // window.addEventListener('scroll', handleScroll)
-}
-
-// 处理滚动事件（暂时禁用自动折叠）
-const handleScroll = () => {
-  // const scrollTop = window.pageYOffset || document.documentElement.scrollTop
-  // lastScrollTop.value = scrollTop
-}
-
-// 切换筛选框展开/折叠
-const toggleFilter = () => {
-  isFilterCompact.value = !isFilterCompact.value
-}
-
-// 检查是否有活跃的筛选条件
-const hasActiveFilters = computed(() => {
-  return searchParams.city_id || 
-         searchParams.district_id || 
-         searchParams.subject_id || 
-         searchParams.grade || 
-         searchParams.keyword
-})
-
-// 清除单个筛选条件
-const clearFilter = (key) => {
-  searchParams[key] = ''
-  if (key === 'keyword') {
-    keyword.value = ''
-  }
-  resetAndReload()
-}
-
-// 获取当前筛选项的显示标签
-const getCurrentFilterLabel = (type) => {
-  // 这里可以根据实际的数据结构返回对应的标签文本
-  // 简化处理，实际项目中应该从选项列表中查找
-  switch(type) {
-    case 'city':
-      return '城市筛选'
-    case 'district':
-      return '区域筛选'
-    case 'subject':
-      return '科目筛选'
-    default:
-      return ''
-  }
-}
-
-// 初始化浏览人次
-const initViewCount = () => {
-  // 从 localStorage 获取浏览次数
-  const storedCount = localStorage.getItem('viewCount')
-  const baseCount = storedCount ? parseInt(storedCount) : Math.floor(Math.random() * 10000) + 50000
-  
-  targetViewCount.value = baseCount
-  
-  // 数字滚动动画
-  animateCount(0, baseCount, 2000)
-}
-
-// 增加浏览次数
-const incrementViewCount = () => {
-  targetViewCount.value++
-  localStorage.setItem('viewCount', targetViewCount.value.toString())
-  
-  // 更新显示
-  const statIndex = stats.value.findIndex(s => s.label === '浏览人次')
-  if (statIndex !== -1) {
-    stats.value[statIndex].displayValue = formatNumber(targetViewCount.value)
-  }
-}
-
-// 数字滚动动画
-const animateCount = (start, end, duration) => {
-  const startTime = Date.now()
-  const range = end - start
-  
-  const timer = setInterval(() => {
-    const now = Date.now()
-    const progress = Math.min((now - startTime) / duration, 1)
-    
-    // 使用缓动函数
-    const easeOutQuart = 1 - Math.pow(1 - progress, 4)
-    const current = Math.floor(start + range * easeOutQuart)
-    
-    viewCount.value = current
-    const statIndex = stats.value.findIndex(s => s.label === '浏览人次')
-    if (statIndex !== -1) {
-      stats.value[statIndex].displayValue = formatNumber(current)
-    }
-    
-    if (progress === 1) {
-      clearInterval(timer)
-    }
-  }, 16) // ~60fps
-}
-
-// 格式化数字（添加千位分隔符）
-const formatNumber = (num) => {
-  return num.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ',')
-}
-
-onUnmounted(() => {
-  if (observer) {
-    observer.disconnect()
-  }
-  window.removeEventListener('scroll', handleScroll)
-})
-
-// 设置 IntersectionObserver 实现滚动自动加载
-const setupIntersectionObserver = () => {
-  setTimeout(() => {
-    if (!loadTrigger.value) return
-    
-    observer = new IntersectionObserver(
-      (entries) => {
-        entries.forEach((entry) => {
-          if (entry.isIntersecting && hasMore.value && !loadingMore.value) {
-            loadMore()
-          }
-        })
-      },
-      {
-        root: null,
-        rootMargin: '300px', // 提前300px开始加载（优化速度）
-        threshold: 0.01 // 降低阈值，更快触发
-      }
-    )
-    
-    observer.observe(loadTrigger.value)
-  }, 500) // 减少延迟时间
-}
-
-const loadTutorList = async (append = false) => {
-  if (append) {
-    loadingMore.value = true
-  } else {
-    loading.value = true
-  }
-  
-  try {
-    const res = await getTutorList({
-      ...searchParams,
-      page: currentPage.value,
-      limit: pageSize.value
-    })
-    
-    if (append) {
-      // 加载更多时追加数据
-      tutorList.value = [...tutorList.value, ...(res.data || [])]
-    } else {
-      // 首次加载或筛选时替换数据
-      tutorList.value = res.data || []
-    }
-    
-    total.value = res.total || 0
-  } catch (error) {
-    
-    if (!append) {
-      tutorList.value = []
-      total.value = 0
-    }
-  } finally {
-    loading.value = false
-    loadingMore.value = false
-  }
-}
-
-const handleSearch = () => {
-  searchParams.keyword = keyword.value
-  resetAndReload()
-  scrollToList()
-}
-
-const quickSearch = (tag) => {
-  keyword.value = tag
-  handleSearch()
-}
-
-// 微信分享功能
-const shareToWechat = () => {
-  shareToWechatFriend({
-    title: '优质家教信息平台',
-    desc: '专业的家教信息平台，为您提供优质的家教服务',
-    link: window.location.href
-  })
-}
-
-const shareToTimeline = () => {
-  shareToWechatTimeline({
-    title: '优质家教信息平台',
-    desc: '专业的家教信息平台，为您提供优质的家教服务',
-    link: window.location.href
-  })
-}
-
-const handleFilterSearch = (filters) => {
-  Object.assign(searchParams, filters)
-  // 同步关键词搜索
-  if (keyword.value) {
-    searchParams.keyword = keyword.value
-  }
-  resetAndReload()
-  scrollToList()
-}
-
-const scrollToList = () => {
-  setTimeout(() => {
-    const listHeader = document.querySelector('.list-header')
-    if (listHeader) {
-      listHeader.scrollIntoView({ behavior: 'smooth', block: 'start' })
-    }
-  }, 100)
-}
-
-const handleReset = () => {
-  Object.assign(searchParams, {
-    city_id: '',
-    district_id: '',
-    subject_id: '',
-    grade: '',
-    keyword: '',
-    is_urgent: ''
-  })
-  keyword.value = ''
-  activeTab.value = 'all'
-  resetAndReload()
-}
-
-const handleTabChange = (tabName) => {
-  if (tabName === 'recommend') {
-    searchParams.is_urgent = '1'
-  } else {
-    searchParams.is_urgent = ''
-  }
-  resetAndReload()
-}
-
-const viewDetail = (id) => {
-  router.push(`/detail/${id}`)
-}
-
-// 显示联系信息弹窗
-const showContactDialog = (dispatcherInfo) => {
-  currentDispatcher.value = dispatcherInfo
-  contactDialogVisible.value = true
-}
-
-// 复制微信号信息
-const copyWechatInfo = () => {
-  if (!currentDispatcher.value) {
-    ElMessage.warning('没有可复制的内容')
-    return
-  }
-  
-  const nickname = currentDispatcher.value?.nickname || currentDispatcher.value?.username || '暂无'
-  const wechatId = currentDispatcher.value?.contact || '暂无微信号'
-  const content = `${nickname}：${wechatId}`
-  
-  copyText(content)
-}
-
-// 复制文本到剪贴板
-const copyText = (text) => {
-  if (!text) {
-    ElMessage.warning('没有可复制的内容')
-    return
-  }
-  
-  // 使用 Clipboard API
-  if (navigator.clipboard && navigator.clipboard.writeText) {
-    navigator.clipboard.writeText(text).then(() => {
-      ElMessage.success('已复制到剪贴板')
-    }).catch(() => {
-      fallbackCopy(text)
-    })
-  } else {
-    fallbackCopy(text)
-  }
-}
-
-// 兼容性复制方法
-const fallbackCopy = (text) => {
-  const textArea = document.createElement('textarea')
-  textArea.value = text
-  textArea.style.position = 'fixed'
-  textArea.style.top = '-9999px'
-  textArea.style.left = '-9999px'
-  document.body.appendChild(textArea)
-  textArea.focus()
-  textArea.select()
-  
-  try {
-    const successful = document.execCommand('copy')
-    if (successful) {
-      ElMessage.success('已复制到剪贴板')
-    } else {
-      ElMessage.error('复制失败，请手动复制')
-    }
-  } catch (err) {
-    ElMessage.error('复制失败，请手动复制')
-  }
-  
-  document.body.removeChild(textArea)
-}
-
-const loadMore = () => {
-  if (hasMore.value && !loadingMore.value && !loading.value) {
-    currentPage.value++
-    loadTutorList(true)
-  }
-}
-
-// 重置时需要重新设置观察器
-const resetAndReload = () => {
-  currentPage.value = 1
-  tutorList.value = []
-  loadTutorList()
-  
-  // 重新设置观察器
-  if (observer) {
-    observer.disconnect()
-  }
-  setTimeout(() => {
-    setupIntersectionObserver()
-  }, 300) // 减少延迟
-}
 </script>
 
 <style scoped>
-/* 响应式样式 */
-@media (max-width: 768px) {
-  .sticky-search-area {
-    top: 70px !important;
-  }
-  
-  /* 移动端Tab行优化 */
-  .tab-row {
-    flex-direction: column;
-    align-items: stretch;
-    gap: 10px;
-  }
-  
-  .quick-filter-inline {
-    flex-wrap: wrap;
-    gap: 8px;
-  }
-  
-  .quick-filter-inline .current-filters {
-    width: 100%;
-    flex-wrap: wrap;
-  }
-  
-  .tab-container {
-    width: 100%;
-    justify-content: center;
-  }
-  
-  .stats-info {
-    margin-left: 0;
-    text-align: center;
-  }
-  
-  .stats-info .result-count {
-    display: inline-block;
-  }
+.home {
+  width: 100%;
+  background: #fff;
 }
 
-/* Hero 区域 - 升级版 */
-.hero-section {
-  position: relative;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  color: white;
-  padding: 70px 20px 80px; /* 顶部70px为导航栏预留空间 */
-  text-align: center;
-  overflow: hidden;
-}
-
-/* 背景装饰动画 */
-.hero-bg-decoration {
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  overflow: hidden;
-  opacity: 0.1;
-}
-
-.circle {
-  position: absolute;
-  border-radius: 50%;
-  background: white;
-}
-
-.circle-1 {
-  width: 300px;
-  height: 300px;
-  top: -150px;
-  left: -150px;
-}
-
-.circle-2 {
-  width: 200px;
-  height: 200px;
-  top: 50%;
-  right: -100px;
-}
-
-.circle-3 {
-  width: 150px;
-  height: 150px;
-  bottom: -75px;
-  left: 50%;
-}
-
-.hero-content {
-  position: relative;
-  z-index: 1;
-}
-
-.hero-badge {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  background: rgba(255, 255, 255, 0.2);
-  backdrop-filter: blur(10px);
-  padding: 8px 20px;
-  border-radius: 50px;
-  font-size: 14px;
-  margin-bottom: 30px;
-}
-
-.hero-title {
-  font-size: 56px;
-  font-weight: 700;
-  margin-bottom: 20px;
-  line-height: 1.2;
-}
-
-.hero-title .highlight {
-  background: linear-gradient(120deg, #fff 0%, #f5576c 100%);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
-}
-
-.hero-subtitle {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-wrap: wrap;
-  gap: 15px;
-  font-size: 16px;
-  margin-bottom: 50px;
-  opacity: 0.95;
-}
-
-.hero-subtitle .divider {
-  margin: 0 5px;
-}
-
-
-/* 搜索框 */
-.search-box {
-  max-width: 800px;
-  margin: 0 auto 30px;
-}
-
-
-.search-container {
-  position: relative;
-  display: flex;
-  align-items: center;
-  background: white;
-  border-radius: 60px;
-  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.15);
-  padding: 8px 8px 8px 25px;
-}
-
-.search-container:hover {
-  box-shadow: 0 15px 50px rgba(0, 0, 0, 0.2);
-}
-
-.search-container:focus-within {
-  box-shadow: 0 15px 50px rgba(64, 158, 255, 0.3);
-}
-
-.share-buttons {
-  display: flex;
-  gap: 12px;
-  margin-top: 16px;
-  justify-content: center;
-}
-
-.share-btn {
-  border-radius: 25px;
-  padding: 8px 16px;
-  font-size: 14px;
-  font-weight: 500;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
-}
-
-.share-btn:hover {
-  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.15);
-}
-
-.search-prefix-icon {
-  font-size: 22px;
-  color: #909399;
-  margin-right: 12px;
-  flex-shrink: 0;
-}
-
-.search-input {
-  flex: 1;
-}
-
-.search-input :deep(.el-input__wrapper) {
-  box-shadow: none;
-  border: none;
-  background: transparent;
-  padding: 0;
-}
-
-.search-input :deep(.el-input__inner) {
-  font-size: 16px;
-  color: #303133;
-  padding: 0;
-}
-
-.search-input :deep(.el-input__inner::placeholder) {
-  color: #C0C4CC;
-  font-size: 15px;
-}
-
-.search-input :deep(.el-input__suffix) {
-  margin-right: 10px;
-}
-
-.search-input :deep(.el-input__clear) {
-  font-size: 16px;
-}
-
-.search-button {
-  flex-shrink: 0;
-  border-radius: 50px;
-  padding: 14px 35px;
-  font-size: 16px;
-  font-weight: 600;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  border: none;
-  box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4);
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.search-button:hover {
-  background: linear-gradient(135deg, #764ba2 0%, #667eea 100%);
-  box-shadow: 0 6px 20px rgba(102, 126, 234, 0.6);
-}
-
-.search-btn-icon {
-  font-size: 18px;
-}
-
-/* 热门标签 */
-.hot-tags {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-wrap: wrap;
-  gap: 12px;
-  margin-top: 30px;
-}
-
-
-/* 热门标签 - 现代化设计 */
-.hot-tag-label {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 15px;
-  font-weight: 600;
-  margin-bottom: 12px;
-  padding-left: 4px;
-  color: rgba(255, 255, 255, 0.95);
-}
-
-.hot-tag-label .el-icon {
-  font-size: 18px;
-  color: #FFD700;
-}
-
-.hot-tag-list {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-
-.hot-tag-item {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 8px 16px;
-  background: rgba(255, 255, 255, 0.15);
-  backdrop-filter: blur(12px);
-  border: 1px solid rgba(255, 255, 255, 0.25);
-  border-radius: 50px;
-  color: white;
-  font-size: 14px;
-  cursor: pointer;
-  position: relative;
-  overflow: hidden;
-}
-
-.hot-tag-item:hover::before {
-  left: 100%;
-}
-
-.hot-tag-item:hover {
-  background: rgba(255, 255, 255, 0.3);
-  box-shadow: 0 6px 20px rgba(255, 255, 255, 0.25);
-  border-color: rgba(255, 255, 255, 0.5);
-}
-
-.hot-tag-item.hot-top {
-  background: linear-gradient(135deg, rgba(255, 215, 0, 0.3) 0%, rgba(255, 165, 0, 0.3) 100%);
-  border-color: rgba(255, 215, 0, 0.5);
-  font-weight: 600;
-}
-
-.hot-tag-item.hot-top:hover {
-  background: linear-gradient(135deg, rgba(255, 215, 0, 0.5) 0%, rgba(255, 165, 0, 0.5) 100%);
-  box-shadow: 0 6px 20px rgba(255, 215, 0, 0.4);
-}
-
-.tag-index {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 20px;
-  height: 20px;
-  background: linear-gradient(135deg, #FF6B6B 0%, #FF8E53 100%);
-  border-radius: 50%;
-  font-size: 12px;
-  font-weight: 700;
-  color: white;
-  box-shadow: 0 2px 8px rgba(255, 107, 107, 0.3);
-}
-
-.tag-text {
-  font-weight: 500;
-}
-
-.tag-icon {
-  font-size: 14px;
-  transition: transform 0.3s;
-  opacity: 0.7;
-}
-
-.hot-tag-item:hover .tag-icon {
-  transform: translateX(3px);
-  opacity: 1;
-}
-
-/* 统计数据区域 */
-.stats-section {
-  background: white;
-  padding: 30px 0;
-  margin-top: -40px;
-  position: relative;
-  z-index: 2;
-}
-
-.homepage-redesign-placeholder {
-  min-height: 120px;
-}
-
-.stats-container {
-  max-width: 1200px;
-  margin: 0 auto;
-  padding: 0 20px;
-}
-
-.stats-grid {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 20px;
-}
-
-.stat-card {
-  display: flex;
-  align-items: center;
-  gap: 20px;
-  padding: 25px;
-  background: white;
-  border-radius: 16px;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
-  min-height: 110px;
-}
-
-.stat-card:hover {
-  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.12);
-}
-
-
-
-.stat-icon {
-  width: 60px;
-  height: 60px;
-  border-radius: 12px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 24px;
-  color: white;
-  flex-shrink: 0;
-}
-
-.stat-info {
-  flex: 1;
-  min-width: 0;
-}
-
-.stat-value {
-  font-size: 28px;
-  font-weight: 700;
-  color: #303133;
-  margin-bottom: 5px;
-  font-variant-numeric: tabular-nums;
-  letter-spacing: 1px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.stat-label {
-  font-size: 14px;
-  color: #909399;
-  white-space: nowrap;
-}
-
-/* 搜索筛选置顶区域 */
-.sticky-search-area {
-  position: -webkit-sticky; /* Safari 支持 */
-  position: sticky;
-  top: 70px; /* 导航栏高度 */
-  z-index: 998;
-  background: rgba(255, 255, 255, 0.98);
-  backdrop-filter: blur(10px);
-  padding-top: 15px;
-  padding-bottom: 10px;
-  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
-  transition: all 0.3s ease;
-  margin-bottom: 0;
-}
-
-/* 折叠状态 */
-.sticky-search-area.is-compact {
-  padding-top: 4px;
-  padding-bottom: 4px;
-  box-shadow: 0 1px 8px rgba(0, 0, 0, 0.06);
-}
-
-/* 筛选面板折叠 */
-
-/* 快速筛选条 */
-
-/* 容器 */
-.container {
-  max-width: 1200px;
-  margin: 0 auto;
-  padding: 0 20px 30px;
-}
-
-/* 筛选面板包装 */
-
-/* 列表区域 */
-/* Tab容器 - 现代化设计 */
-.list-section {
-  margin: 15px 0 20px;
-  padding: 0;
-}
-
-/* Tab行容器 - 让所有元素并排 */
-.tab-row {
-  display: flex;
-  align-items: center;
-  gap: 16px;
-  flex-wrap: wrap;
-}
-
-/* 折叠后的快速筛选条（内联样式） */
-.quick-filter-inline {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  flex-shrink: 0;
-}
-
-.quick-filter-inline .expand-btn {
-  border-radius: 16px;
-  font-weight: 600;
-  height: 32px;
-  padding: 0 16px;
-  font-size: 13px;
-}
-
-.quick-filter-inline .current-filters {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  flex-wrap: nowrap;
-  overflow-x: auto;
-  scrollbar-width: none;
-  -ms-overflow-style: none;
-}
-
-.quick-filter-inline .current-filters::-webkit-scrollbar {
-  display: none;
-}
-
-.quick-filter-inline .current-filters .el-tag {
-  border-radius: 10px;
-  font-size: 12px;
-  max-width: 120px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  height: 26px;
-  line-height: 24px;
-  padding: 0 10px;
-  flex-shrink: 0;
-  background: white;
-  border: 1px solid #e4e7ed;
-}
-
-.quick-filter-inline .current-filters .el-tag:hover {
-  border-color: #667eea;
-  background: rgba(102, 126, 234, 0.05);
-}
-
-.tab-container {
-  position: relative;
-  background: #f5f7fa;
-  border-radius: 12px;
-  padding: 6px;
-  display: inline-flex;
-  gap: 6px;
-  flex-shrink: 0;
-}
-
-/* 统计信息 */
-.stats-info {
-  margin-left: auto;
-  flex-shrink: 0;
-}
-
-.stats-info .result-count {
-  color: #667eea;
-  font-size: 14px;
-  font-weight: 700;
-  white-space: nowrap;
-  padding: 6px 16px;
-  background: rgba(102, 126, 234, 0.08);
-  border-radius: 12px;
-  display: inline-block;
-}
-
-.tab-nav {
-  display: flex;
-  position: relative;
-  z-index: 1;
-}
-
-.tab-item {
-  position: relative;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 12px 28px;
-  font-size: 15px;
-  font-weight: 600;
-  color: #606266;
-  cursor: pointer;
-  border-radius: 8px;
-  user-select: none;
-  white-space: nowrap;
-  background: transparent;
-}
-
-.tab-item .tab-icon {
-  font-size: 18px;
-}
-
-.tab-item .tab-text {
-  font-weight: 600;
-}
-
-.tab-item .tab-count {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-width: 22px;
-  height: 22px;
-  padding: 0 6px;
-  background: #f0f0f0;
-  border-radius: 11px;
-  font-size: 12px;
-  font-weight: 700;
-  color: #909399;
-}
-
-.tab-item:hover {
-  color: #667eea;
-  background: rgba(102, 126, 234, 0.06);
-}
-
-.tab-item.active {
-  color: white;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-}
-
-.tab-item.active .tab-count {
-  background: rgba(255, 255, 255, 0.25);
-  color: white;
-}
-
-/* Tab HOT 特效 */
-.tab-item.tab-hot {
+/* hero: 对齐扒站大图 + 顶部覆盖导航的视觉 */
+.hero {
   position: relative;
 }
 
-.hot-indicator {
-  position: absolute;
-  top: -10px;
-  right: -10px;
-  display: flex;
-  align-items: center;
-  gap: 3px;
-  padding: 4px 10px;
-  background: #FF6B6B;
-  border-radius: 20px;
-  font-size: 11px;
-  font-weight: 800;
-  color: white;
-  letter-spacing: 0.5px;
-  z-index: 10;
-  border: 2px solid white;
-}
-
-.hot-indicator .hot-icon {
-  font-size: 12px;
-}
-
-
-.tab-item.tab-hot.active {
-  background: linear-gradient(135deg, #FF6B6B 0%, #FF8E53 100%);
-  color: white;
-}
-
-.tab-indicator {
-  display: none;
-}
-
-/* 家教列表 */
-.tutor-list {
-  min-height: 300px;
-  margin-top: 0;
-  padding-top: 5px;
-}
-
-.tutor-list :deep(.el-row) {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: stretch;
-}
-
-.tutor-list :deep(.el-col) {
-  display: flex;
-  margin-bottom: 16px;
-}
-
-.tutor-col {
-  display: flex;
+.hero-media {
+  position: relative;
   width: 100%;
 }
 
-/* 空状态 */
-/* 空状态 - 现代化设计 */
-.empty-state {
-  text-align: center;
-  padding: 80px 20px;
-  background: linear-gradient(145deg, #ffffff 0%, #f8f9fa 100%);
-  border-radius: 20px;
-  margin: 20px 0;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.05);
+.hero-fallback,
+.hero-slide {
+  width: 100%;
 }
 
-.empty-icon {
-  font-size: 120px;
-  color: #dcdfe6;
-  margin-bottom: 24px;
+.hero-img {
+  width: 100%;
+  height: 420px;
+  object-fit: cover;
+  display: block;
 }
 
-.empty-text {
-  font-size: 20px;
-  font-weight: 700;
-  color: #303133;
-  margin-bottom: 12px;
+.hero-placeholder {
+  width: 100%;
+  height: 420px;
+  background: radial-gradient(1200px 420px at 40% 45%, rgba(74, 216, 149, 0.35) 0%, rgba(36, 175, 92, 0.22) 35%, rgba(17, 24, 39, 0.55) 100%),
+    linear-gradient(135deg, rgba(36, 175, 92, 0.25) 0%, rgba(17, 24, 39, 0.75) 100%);
 }
 
-.empty-tip {
-  font-size: 15px;
-  color: #909399;
-  margin-bottom: 32px;
-  line-height: 1.6;
+.hero-overlay {
+  position: absolute;
+  left: 50%;
+  top: 56%;
+  transform: translate(-50%, -50%);
+  width: min(1080px, calc(100% - 30px));
+  padding: 0 15px;
+  color: #fff;
 }
 
-/* 加载中提示 */
-.loading-more {
+.hero-title {
+  font-size: 36px;
+  font-weight: 800;
+  letter-spacing: 1px;
+  margin: 0 0 10px;
+  text-shadow: 0 12px 30px rgba(0, 0, 0, 0.28);
+}
+
+.hero-subtitle {
+  font-size: 18px;
+  font-weight: 600;
+  margin: 0 0 16px;
+  opacity: 0.96;
+  text-shadow: 0 10px 24px rgba(0, 0, 0, 0.24);
+}
+
+.hero-pills {
   display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.pill {
+  display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 10px;
-  margin-top: 20px;
-  padding: 15px 0;
-  color: #667eea;
+  padding: 10px 16px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.18);
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  backdrop-filter: blur(6px);
+  font-weight: 700;
   font-size: 14px;
 }
 
-.loading-more .el-icon {
-  font-size: 20px;
+/* CTA：仿站“简单三步”区域的两按钮风格 */
+.cta {
+  position: relative;
+  padding: 22px 15px 30px;
+  margin-top: 0;
+  z-index: 2;
 }
 
-/* 加载触发器（隐藏的） */
-.load-trigger {
-  height: 1px;
-  margin-top: 10px;
-}
-
-.load-tip {
-  color: #909399;
-  font-size: 14px;
-  text-align: center;
-  margin-top: 10px;
-}
-
-/* 无更多数据 */
-.no-more {
-  margin-top: 30px;
-  padding: 20px 0;
-  text-align: center;
-}
-
-.no-more :deep(.el-divider__text) {
-  background: #f5f5f5;
-  color: #67C23A;
-  font-weight: 600;
+.cta-inner {
+  width: min(1080px, 100%);
+  margin: 0 auto;
   display: flex;
+  justify-content: center;
+  gap: 18px;
+  padding: 0 10px;
+  flex-wrap: wrap;
+}
+
+.cta-btn {
+  display: inline-flex;
   align-items: center;
-  gap: 8px;
+  justify-content: center;
+  min-width: 180px;
+  height: 54px;
+  padding: 0 22px;
+  border-radius: 12px;
+  font-size: 16px;
+  font-weight: 800;
+  color: #fff;
+  text-decoration: none;
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.12);
+  transition: transform 0.2s ease, box-shadow 0.2s ease, filter 0.2s ease;
+  flex: 0 1 220px;
 }
 
-/* 中等屏幕优化 */
-@media (max-width: 992px) {
-  .stat-card {
-    padding: 20px 15px;
-    gap: 15px;
-    min-height: 100px;
-  }
+.cta-btn:hover {
+  filter: brightness(1.03);
+}
 
-  .stat-icon {
-    width: 55px;
-    height: 55px;
-    font-size: 22px;
-  }
+.cta-btn:active {
+  transform: translateY(1px);
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.12);
+}
 
-  .stat-value {
-    font-size: 24px;
-  }
+.cta-btn--green {
+  background: linear-gradient(134deg, #24af5c 0%, #309255 100%);
+}
 
-  .stat-label {
-    font-size: 13px;
+.cta-btn--orange {
+  background: linear-gradient(134deg, #ffb648 0%, #ff7a18 100%);
+}
+
+.section {
+  width: min(1080px, calc(100% - 30px));
+  margin: 22px auto 40px;
+  padding: 0 15px;
+}
+
+.section-head {
+  text-align: center;
+  padding: 24px 0 10px;
+}
+
+.section-title {
+  font-size: 24px;
+  margin: 0;
+  font-weight: 800;
+  color: #1f1f1f;
+  letter-spacing: 0.5px;
+}
+
+.section-subtitle {
+  margin: 8px 0 0;
+  color: #6c6c6c;
+  font-weight: 600;
+}
+
+.section-body {
+  padding: 14px 0 0;
+}
+
+.state {
+  text-align: center;
+  padding: 30px 0;
+  color: #909399;
+  font-weight: 600;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+
+@media (min-width: 992px) {
+  .grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 }
 
-/* 小屏幕优化 - 保持3列布局 */
+@media (min-width: 1200px) {
+  .grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
+
 @media (max-width: 768px) {
-  /* Hero区域优化 */
-  .hero-section {
-    padding: 60px 15px 60px; /* 顶部60px为移动端导航栏预留空间 */
+  .hero-img {
+    height: 320px;
   }
-
+  .hero-placeholder {
+    height: 320px;
+  }
+  .hero-overlay {
+    top: 58%;
+  }
   .hero-title {
-    font-size: 34px;
+    font-size: 28px;
   }
-
   .hero-subtitle {
-    font-size: 13px;
-    flex-wrap: wrap;
-    gap: 8px;
+    font-size: 16px;
   }
+  .cta {
+    margin-top: 0;
+    padding: 18px 12px 24px;
+  }
+  .cta-btn {
+    min-width: 150px;
+    height: 48px;
+    font-size: 15px;
+    flex: 1 1 150px;
+    max-width: 240px;
+  }
+}
 
-  .hero-subtitle .divider {
+/* 明星教员卡片 */
+.teacher-grid {
+  margin-top: 8px;
+}
+
+.teacher-tile {
+  position: relative;
+  display: block;
+  border-radius: 14px;
+  overflow: hidden;
+  background: #f6f7fb;
+  text-decoration: none;
+  color: inherit;
+  border: 1px solid rgba(31, 31, 31, 0.06);
+}
+
+.teacher-avatar {
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  background: #eef2f7;
+}
+
+.teacher-avatar-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.teacher-badges {
+  position: absolute;
+  right: 0;
+  top: 0;
+  display: flex;
+  gap: 8px;
+  z-index: 2;
+}
+
+.teacher-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 26px;
+  padding: 0 10px;
+  font-size: 12px;
+  font-weight: 800;
+  border-radius: 999px;
+  color: #fff;
+  backdrop-filter: blur(6px);
+  border: 1px solid rgba(255, 255, 255, 0.35);
+}
+
+.teacher-badge--door {
+  background: rgba(36, 175, 92, 0.96);
+  border-radius: 0 0 0 12px;
+  height: 32px;
+  padding: 0 14px;
+}
+
+.teacher-school {
+  position: absolute;
+  left: 10px;
+  bottom: 8px;
+  height: 30px;
+  line-height: 30px;
+  padding: 0 14px;
+  border-radius: 10px;
+  font-weight: 900;
+  font-size: 12px;
+  color: #fff;
+  background: linear-gradient(90deg, #4ad895 0%, #24af5c 100%);
+  text-shadow: 0 10px 24px rgba(0, 0, 0, 0.18);
+}
+
+.section-actions {
+  display: flex;
+  justify-content: center;
+  margin-top: 14px;
+}
+
+.link-more {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 38px;
+  padding: 0 16px;
+  border-radius: 999px;
+  background: rgba(36, 175, 92, 0.08);
+  border: 1px solid rgba(36, 175, 92, 0.22);
+  color: #24af5c;
+  text-decoration: none;
+  font-weight: 800;
+  font-size: 14px;
+}
+
+/* 最新家教表格（轻量化，不引入 bootstrap） */
+.tutor-table {
+  border: 1px solid rgba(31, 31, 31, 0.08);
+  border-radius: 14px;
+  overflow: hidden;
+  background: #fff;
+}
+
+.tutor-row {
+  display: grid;
+  grid-template-columns: 110px 120px 160px 1fr 120px 90px;
+  gap: 0;
+  align-items: center;
+  border-top: 1px solid rgba(31, 31, 31, 0.06);
+}
+
+.tutor-row:first-child {
+  border-top: none;
+}
+
+.tutor-row--head {
+  background: linear-gradient(90deg, #4ad895 0%, #24af5c 100%);
+  color: #fff;
+  font-weight: 800;
+  border-top: none;
+}
+
+.tutor-col {
+  padding: 12px 14px;
+  font-weight: 700;
+  font-size: 13px;
+  color: #1f1f1f;
+}
+
+.tutor-row--head .tutor-col {
+  color: #fff;
+}
+
+.tutor-col--req {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.tutor-status {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 26px;
+  padding: 0 10px;
+  border-radius: 999px;
+  background: rgba(255, 77, 79, 0.1);
+  color: #ff4d4f;
+  border: 1px solid rgba(255, 77, 79, 0.18);
+  font-weight: 800;
+}
+
+.tutor-view {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 30px;
+  padding: 0 12px;
+  border-radius: 10px;
+  background: #24af5c;
+  color: #fff;
+  text-decoration: none;
+  font-weight: 800;
+}
+
+@media (max-width: 992px) {
+  .tutor-row {
+    grid-template-columns: 90px 100px 120px 1fr 96px 76px;
+  }
+}
+
+@media (max-width: 768px) {
+  .tutor-row {
+    grid-template-columns: 70px 86px 1fr 0 86px 70px;
+  }
+  .tutor-col--req {
     display: none;
   }
-
-  /* 搜索框优化 */
-  .search-box {
-    margin-top: 28px;
-  }
-
-  .search-container {
-    flex-direction: column;
-    gap: 10px;
-  }
-
-  .search-input {
-    width: 100%;
-  }
-
-  .search-button {
-    width: 100%;
-    padding: 14px 24px;
-    justify-content: center;
-  }
-
-  .search-btn-text {
-    display: inline;
-  }
-
-  /* 热门标签优化 */
-  .hot-tags {
-    max-width: 100%;
-    padding: 0 10px;
-  }
-
-  .hot-tag-label {
-    font-size: 14px;
-    padding-left: 0;
-  }
-
-  .hot-tag-list {
-    gap: 6px;
-  }
-
-  .hot-tag-item {
-    padding: 6px 12px;
-    font-size: 13px;
-  }
-
-  .tag-index {
-    width: 18px;
-    height: 18px;
-    font-size: 11px;
-  }
-
-  /* Tab容器优化 */
-  .list-section {
-    margin: 12px 0 16px;
-  }
-
-  .tab-container {
-    width: 100%;
-    padding: 3px;
-  }
-
-  .tab-item {
-    flex: 1;
-    justify-content: center;
-    padding: 10px 16px;
-    font-size: 14px;
-    gap: 6px;
-  }
-
-  .tab-item .tab-icon {
-    font-size: 16px;
-  }
-
-  .tab-item .tab-count {
-    min-width: 20px;
-    height: 20px;
-    font-size: 11px;
-    padding: 0 5px;
-  }
-
-  .hot-indicator {
-    top: -4px;
-    right: -4px;
-    padding: 2px 5px;
-    font-size: 9px;
-  }
-
-  .hot-indicator .hot-icon {
-    font-size: 11px;
-  }
-
-  .stats-section {
-    padding: 20px 0;
-  }
-
-  .stats-container {
-    padding: 0 10px;
-  }
-
-  .stats-grid {
-    gap: 10px;
-    grid-template-columns: repeat(3, 1fr);
-  }
-
-  .stat-card {
-    padding: 15px 10px;
-    gap: 10px;
-    min-height: 90px;
-    flex-direction: row;
-  }
-
-  .stat-icon {
-    width: 48px;
-    height: 48px;
-    font-size: 20px;
-  }
-
-  .stat-info {
-    text-align: left;
-  }
-
-  .stat-value {
-    font-size: 18px;
-    margin-bottom: 2px;
-  }
-
-  .stat-label {
-    font-size: 11px;
-  }
-
-  .list-section {
-    flex-wrap: wrap;
-    gap: 10px;
-    margin: 12px 0 15px;
-  }
-
-  .list-tabs {
-    width: 100%;
-  }
-
-  .list-tabs :deep(.el-tabs__item) {
-    font-size: 16px;
-    padding: 0 20px 10px 0;
-  }
-
-  .list-meta {
-    width: 100%;
-  }
-
-  .count {
-    font-size: 20px;
-  }
 }
 
-/* 超小屏幕优化 - 3列纵向布局 */
-@media (max-width: 480px) {
-  /* Tab 和统计信息 - 更紧凑 */
-  .list-section {
-    gap: 6px;
-  }
-
-  .list-tabs :deep(.el-tabs__item) {
-    font-size: 14px;
-    padding: 0 12px 6px 0;
-  }
-
-  .tab-label {
-    gap: 3px;
-  }
-
-  .tab-label .el-icon {
-    font-size: 14px;
-  }
-
-  .hot-badge {
-    margin-left: 2px;
-  }
-
-  .hot-badge :deep(.el-badge__content) {
-    font-size: 8px;
-    height: 14px;
-    line-height: 14px;
-    padding: 0 4px;
-  }
-
-  .list-meta {
-    gap: 2px;
-    font-size: 11px;
-  }
-
-  .meta-text {
-    font-size: 10px;
-  }
-
-  .count {
-    font-size: 18px;
-  }
-
-  .stats-container {
-    padding: 0 8px;
-  }
-
-  .stats-grid {
-    gap: 8px;
-    grid-template-columns: repeat(3, 1fr);
-  }
-
-  .stat-card {
-    padding: 12px 6px;
-    gap: 6px;
-    min-height: 85px;
-    flex-direction: column;
-    text-align: center;
-  }
-
-  .stat-icon {
-    width: 42px;
-    height: 42px;
-    font-size: 18px;
-    margin: 0 auto;
-  }
-
-  .stat-info {
-    text-align: center;
-  }
-
-  .stat-value {
-    font-size: 16px;
-    margin-bottom: 2px;
-  }
-
-  .stat-label {
-    font-size: 10px;
-  }
+/* 新闻列表 */
+.news-list {
+  display: grid;
+  gap: 10px;
 }
 
-/* 极小屏幕 (< 360px) - 仍保持3列 */
-@media (max-width: 359px) {
-  .stats-container {
-    padding: 0 6px;
-  }
-
-  .stats-grid {
-    gap: 6px;
-  }
-
-  .stat-card {
-    padding: 10px 4px;
-    gap: 4px;
-    min-height: 75px;
-  }
-
-  .stat-icon {
-    width: 38px;
-    height: 38px;
-    font-size: 16px;
-  }
-
-  .stat-value {
-    font-size: 14px;
-  }
-
-  .stat-label {
-    font-size: 9px;
-  }
-}
-
-/* 平板适配 */
-@media (min-width: 768px) and (max-width: 1024px) {
-  .stat-card {
-    padding: 22px 18px;
-  }
-}
-
-/* 返回顶部火箭 */
-.rocket-backtop {
-  width: 50px !important;
-  height: 50px !important;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
-  border-radius: 50% !important;
-  box-shadow: 0 2px 12px rgba(102, 126, 234, 0.3) !important;
-  opacity: 0.9;
-}
-
-.rocket-backtop:hover {
-  opacity: 1;
-  box-shadow: 0 6px 20px rgba(102, 126, 234, 0.5) !important;
-}
-
-.rocket-icon {
-  font-size: 26px;
-  line-height: 50px;
-  text-align: center;
-  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.2));
-}
-
-/* 滚动平滑 */
-* {
-  scroll-behavior: smooth;
-}
-
-/* 联系信息弹窗样式 */
-.contact-dialog {
-  padding: 10px 0;
-}
-
-.contact-card {
-  background: #fafafa;
-  border-radius: 8px;
-  padding: 20px;
-  border: 1px solid #ebeef5;
-}
-
-.contact-row {
+.news-item {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 12px 0;
+  gap: 14px;
+  padding: 12px 14px;
+  border-radius: 14px;
+  background: #fff;
+  border: 1px solid rgba(31, 31, 31, 0.06);
+  text-decoration: none;
 }
 
-.contact-row:not(:last-child) {
-  border-bottom: 1px solid #ebeef5;
+.news-title {
+  font-weight: 800;
+  color: #1f1f1f;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.contact-label-text {
+.news-date {
+  flex: 0 0 auto;
+  color: #8a8a8a;
+  font-weight: 700;
+  font-size: 12px;
+}
+
+/* 页脚 */
+.home-footer {
+  background: #f5f5f5;
+  padding: 26px 15px 18px;
+  margin-top: 24px;
+}
+
+.home-footer-inner {
+  width: min(1080px, calc(100% - 30px));
+  margin: 0 auto;
+}
+
+.footer-widget-wrap {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr 320px;
+  gap: 18px;
+  align-items: start;
+}
+
+.footer-widget {
+  padding: 6px 0;
+}
+
+.footer-widget-title {
+  color: #212832;
+  font-weight: 800;
+  font-size: 18px;
+  text-align: center;
+  margin: 0 0 12px;
+}
+
+.footer-widget-title--center {
+  text-align: center;
+}
+
+.footer-links-col {
+  text-align: center;
+}
+
+.footer-link {
+  display: block;
+  text-decoration: none;
+  color: #919191;
+  font-weight: 600;
   font-size: 14px;
-  font-weight: 500;
-  color: #909399;
-  min-width: 60px;
+  padding: 6px 0;
 }
 
-.contact-content {
+.footer-link:hover {
+  color: #309255;
+}
+
+.footer-widget--qr {
   display: flex;
+  flex-direction: column;
   align-items: center;
-  gap: 10px;
-  flex: 1;
-  justify-content: flex-end;
+  justify-content: flex-start;
 }
 
-.contact-text {
-  font-size: 15px;
-  color: #303133;
-  padding: 6px 12px;
-  background: white;
-  border-radius: 4px;
-  border: 1px solid #dcdfe6;
+.footer-qr {
+  width: 170px;
+  max-width: 100%;
 }
 
-.contact-text.wechat {
-  font-family: 'Courier New', monospace;
-  letter-spacing: 0.5px;
-  color: #409eff;
-  font-weight: 500;
+.footer-bottom {
+  border-top: 1px solid #e9e9e9;
+  margin-top: 18px;
+  padding-top: 12px;
+  text-align: center;
 }
 
-.contact-tips {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-top: 20px;
-  padding: 12px 16px;
-  background: #f8f9fa;
-  border-radius: 4px;
-  font-size: 13px;
-  color: #666;
+.footer-copy {
+  color: #919191;
+  font-size: 14px;
+  font-weight: 600;
 }
 
-.contact-tips .el-icon {
-  font-size: 16px;
-  color: #999;
+@media (max-width: 992px) {
+  .footer-widget-wrap {
+    grid-template-columns: 1fr 1fr;
+  }
 }
 
-/* 复制按钮图标样式 */
-.copy-icon-btn {
-  color: #909399 !important;
-  padding: 4px !important;
-}
-
-.copy-icon-btn:hover {
-  color: #409eff !important;
-  background: #ecf5ff !important;
+@media (max-width: 768px) {
+  .footer-widget-wrap {
+    grid-template-columns: 1fr;
+  }
+  .footer-qr {
+    width: 150px;
+  }
 }
 </style>
-

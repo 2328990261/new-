@@ -3,47 +3,42 @@
   <header v-if="!isSpecialPage" class="top-navbar" :class="{ 'city-light-navbar': isCityLightPage }">
     <div class="navbar-container">
       <div class="navbar-left">
-        <div class="logo-section" @click="goHome">
-          <el-icon class="logo-icon" :size="32"><Reading /></el-icon>
-          <span class="logo-text">家教平台</span>
+        <div class="logo-section" @click="goHome" aria-label="首页">
+          <img class="logo-img logo-img--black" :src="logoBlack" alt="" />
+          <img class="logo-img logo-img--white" :src="logoWhite" alt="" />
         </div>
       </div>
       
       <nav class="navbar-center">
         <router-link to="/" class="nav-item" :class="{ 'active': $route.path === '/' }">
-          <el-icon><HomeFilled /></el-icon>
           <span>首页</span>
         </router-link>
+        <router-link to="/city-tutor" class="nav-item" :class="{ 'active': $route.path === '/city-tutor' }">
+          <span>请家教</span>
+        </router-link>
+        <router-link to="/teacher-register" class="nav-item" :class="{ 'active': $route.path === '/teacher-register' }">
+          <span>当老师</span>
+        </router-link>
         <router-link to="/teachers" class="nav-item" :class="{ 'active': $route.path === '/teachers' }">
-          <el-icon><User /></el-icon>
-          <span>优秀教师</span>
+          <span>教员库</span>
         </router-link>
         <router-link to="/city-tutor" class="nav-item" :class="{ 'active': $route.path === '/city-tutor' }">
-          <el-icon><DataAnalysis /></el-icon>
-          <span>城市家教</span>
-        </router-link>
-        <router-link to="/city-light" class="nav-item" :class="{ 'active': $route.path === '/city-light' }">
-          <el-icon><LocationFilled /></el-icon>
-          <span>点亮城市</span>
-        </router-link>
-        <router-link to="/payment" class="nav-item" :class="{ 'active': $route.path === '/payment' }">
-          <el-icon><Wallet /></el-icon>
-          <span>订单支付</span>
+          <span>学员库</span>
         </router-link>
         <router-link to="/partnership" class="nav-item" :class="{ 'active': $route.path === '/partnership' }">
-          <el-icon><Management /></el-icon>
-          <span>合作招募</span>
+          <span>资费标准</span>
+        </router-link>
+        <router-link to="/news" class="nav-item" :class="{ 'active': $route.path === '/news' }">
+          <span>新闻资讯</span>
         </router-link>
       </nav>
       
       <div class="navbar-right">
-        <el-button type="primary" size="small" @click="router.push('/subscribe')">
-          <el-icon><BellFilled /></el-icon>
-          <span>订阅通知</span>
-        </el-button>
         <el-button size="small" @click="router.push('/teacher-login')">
-          <el-icon><User /></el-icon>
-          <span>教师登录</span>
+          <span>登录</span>
+        </el-button>
+        <el-button size="small" type="primary" @click="router.push('/teacher-register')">
+          <span>注册</span>
         </el-button>
       </div>
       
@@ -70,7 +65,6 @@
       <div v-if="showMobileMenu" class="mobile-sidebar">
         <div class="sidebar-header">
           <div class="sidebar-title">
-            <el-icon class="title-icon" :size="28"><Reading /></el-icon>
             <span>导航菜单</span>
           </div>
           <div class="close-btn" @click="closeMenu">
@@ -80,43 +74,35 @@
         
         <nav class="sidebar-nav">
           <router-link to="/" class="sidebar-nav-item" @click="closeMenu">
-            <el-icon class="item-icon"><HomeFilled /></el-icon>
             <span class="item-text">首页</span>
             <el-icon class="item-arrow"><ArrowRight /></el-icon>
           </router-link>
-          <router-link to="/teachers" class="sidebar-nav-item" @click="closeMenu">
-            <el-icon class="item-icon"><User /></el-icon>
-            <span class="item-text">优秀教师</span>
-            <el-icon class="item-arrow"><ArrowRight /></el-icon>
-          </router-link>
           <router-link to="/city-tutor" class="sidebar-nav-item" @click="closeMenu">
-            <el-icon class="item-icon"><DataAnalysis /></el-icon>
-            <span class="item-text">城市家教</span>
+            <span class="item-text">请家教</span>
             <el-icon class="item-arrow"><ArrowRight /></el-icon>
           </router-link>
-          <router-link to="/city-light" class="sidebar-nav-item" @click="closeMenu">
-            <el-icon class="item-icon"><LocationFilled /></el-icon>
-            <span class="item-text">点亮城市</span>
-            <el-icon class="item-arrow"><ArrowRight /></el-icon>
-          </router-link>
-          <router-link to="/payment" class="sidebar-nav-item" @click="closeMenu">
-            <el-icon class="item-icon"><Wallet /></el-icon>
-            <span class="item-text">订单支付</span>
-            <el-icon class="item-arrow"><ArrowRight /></el-icon>
-          </router-link>
-          <router-link to="/subscribe" class="sidebar-nav-item" @click="closeMenu">
-            <el-icon class="item-icon"><BellFilled /></el-icon>
-            <span class="item-text">订阅通知</span>
+          <router-link to="/teacher-register" class="sidebar-nav-item" @click="closeMenu">
+            <span class="item-text">当老师</span>
             <el-icon class="item-arrow"><ArrowRight /></el-icon>
           </router-link>
           <router-link to="/teacher-login" class="sidebar-nav-item" @click="closeMenu">
-            <el-icon class="item-icon"><User /></el-icon>
             <span class="item-text">教师登录</span>
             <el-icon class="item-arrow"><ArrowRight /></el-icon>
           </router-link>
           <router-link to="/partnership" class="sidebar-nav-item" @click="closeMenu">
-            <el-icon class="item-icon"><Management /></el-icon>
-            <span class="item-text">合作招募</span>
+            <span class="item-text">资费标准</span>
+            <el-icon class="item-arrow"><ArrowRight /></el-icon>
+          </router-link>
+          <router-link to="/teachers" class="sidebar-nav-item" @click="closeMenu">
+            <span class="item-text">教员库</span>
+            <el-icon class="item-arrow"><ArrowRight /></el-icon>
+          </router-link>
+          <router-link to="/city-tutor" class="sidebar-nav-item" @click="closeMenu">
+            <span class="item-text">学员库</span>
+            <el-icon class="item-arrow"><ArrowRight /></el-icon>
+          </router-link>
+          <router-link to="/news" class="sidebar-nav-item" @click="closeMenu">
+            <span class="item-text">新闻资讯</span>
             <el-icon class="item-arrow"><ArrowRight /></el-icon>
           </router-link>
         </nav>
@@ -129,21 +115,23 @@
 import { ref, computed, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { 
-  Reading, HomeFilled, User, LocationFilled, Wallet, BellFilled, 
-  Menu, DataAnalysis, Close, ArrowRight, Management
+  Menu, Close, ArrowRight
 } from '@element-plus/icons-vue'
 
 const router = useRouter()
 const route = useRoute()
 const showMobileMenu = ref(false)
 
+const logoBlack = '/www.gzpxy.com/imgs/ic_logo_black.png'
+const logoWhite = '/www.gzpxy.com/imgs/img_logo_white.png'
+
 // 通过路由meta判断是否隐藏导航栏
 const isSpecialPage = computed(() => {
   return route.meta.hideNavbar === true
 })
 
-// 点亮城市页使用深色导航风格，贴合页面背景
-const isCityLightPage = computed(() => route.path === '/city-light')
+// 可通过 meta.darkNavbar 开启暗色导航
+const isCityLightPage = computed(() => route.meta.darkNavbar === true)
 
 const goHome = () => {
   router.push('/')
@@ -196,18 +184,6 @@ watch(() => route.path, () => {
   border-bottom: 1px solid rgba(148, 163, 184, 0.24);
 }
 
-.top-navbar.city-light-navbar .logo-icon {
-  color: #a5b4fc;
-  filter: drop-shadow(0 2px 8px rgba(165, 180, 252, 0.35));
-}
-
-.top-navbar.city-light-navbar .logo-text {
-  background: linear-gradient(135deg, #c7d2fe 0%, #a78bfa 100%);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
-}
-
 .top-navbar.city-light-navbar .nav-item {
   color: rgba(226, 232, 240, 0.9);
 }
@@ -252,19 +228,24 @@ watch(() => route.path, () => {
   transform: scale(1.05);
 }
 
-.logo-icon {
-  color: #667eea;
-  filter: drop-shadow(0 2px 8px rgba(102, 126, 234, 0.3));
+.logo-img {
+  height: 34px;
+  width: auto;
+  display: block;
 }
 
-.logo-text {
-  font-size: 22px;
-  font-weight: 800;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
-  letter-spacing: 1px;
+/* 默认白底导航显示黑色 logo */
+.logo-img--white {
+  display: none;
+}
+
+/* 暗色导航显示白色 logo */
+.top-navbar.city-light-navbar .logo-img--black {
+  display: none;
+}
+
+.top-navbar.city-light-navbar .logo-img--white {
+  display: block;
 }
 
 .navbar-center {
@@ -289,35 +270,26 @@ watch(() => route.path, () => {
   position: relative;
 }
 
-.nav-item::after {
-  content: '';
-  position: absolute;
-  bottom: 5px;
-  left: 50%;
-  width: 0;
-  height: 3px;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  border-radius: 2px;
-  transform: translateX(-50%);
-  transition: width 0.3s;
-}
-
 .nav-item:hover {
-  color: #667eea;
-  background: rgba(102, 126, 234, 0.06);
-}
-
-.nav-item:hover::after {
-  width: 60%;
+  color: #309255;
+  background: transparent;
 }
 
 .nav-item.active {
-  color: #667eea;
-  background: rgba(102, 126, 234, 0.1);
+  color: #309255;
+  background: transparent;
 }
 
+.nav-item:hover::after,
 .nav-item.active::after {
-  width: 60%;
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -10px;
+  height: 4px;
+  background: #24af5c;
+  border-radius: 6px;
 }
 
 .navbar-right {
@@ -329,6 +301,10 @@ watch(() => route.path, () => {
 .navbar-right .el-button {
   border-radius: 20px;
   font-weight: 600;
+}
+
+.navbar-right .el-button + .el-button {
+  margin-left: 8px;
 }
 
 .mobile-menu-btn {
@@ -542,8 +518,8 @@ watch(() => route.path, () => {
     justify-content: center;
   }
   
-  .logo-text {
-    font-size: 18px;
+  .logo-img {
+    height: 30px;
   }
   
   .navbar-container {
@@ -563,8 +539,8 @@ watch(() => route.path, () => {
     height: 60px;
   }
   
-  .logo-text {
-    font-size: 16px;
+  .logo-img {
+    height: 28px;
   }
 }
 

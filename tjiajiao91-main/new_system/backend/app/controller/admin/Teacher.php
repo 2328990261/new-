@@ -3,7 +3,9 @@ namespace app\controller\admin;
 
 use app\BaseController;
 use app\model\Teacher as TeacherModel;
+use app\service\WechatNotificationService;
 use think\facade\Db;
+use think\facade\Log;
 use think\facade\Session;
 
 /**
@@ -515,6 +517,8 @@ class Teacher extends BaseController
             if ($status === 'approved' && !empty($teacher->openid)) {
                 \app\service\InvitationService::grantCouponsForApprovedInvitee($teacher->openid);
             }
+            // 教师管理页审核也发送公众号通知，避免仅 TeacherReview 入口会触发
+            $this->notifyReviewByOfficialAccount($teacher);
             
             $statusText = [
                 'pending' => '待审核',
@@ -939,6 +943,184 @@ class Teacher extends BaseController
             
         } catch (\Exception $e) {
             return json(['success' => false, 'error' => $e->getMessage()]);
+        }
+    }
+
+    /**
+     * 审核结果通知：按 unionid 关联已关注公众号账号发送模板消息
+     * 仅作为通知，失败不影响审核主流程
+     */
+    private function notifyReviewByOfficialAccount($teacher): void
+    {
+        try {
+            $miniOpenid = trim((string)($teacher->openid ?? ''));
+            if ($miniOpenid === '') {
+                Log::warning('教师管理审核通知跳过: teacher_openid为空');
+                return;
+            }
+
+            $officialOpenid = $this->resolveOfficialOpenidByUnionid($miniOpenid);
+            if ($officialOpenid === null) {
+                Log::warning('教师管理审核通知跳过: 未解析到服务号openid, mini_openid=' . $miniOpenid);
+                try {
+                    Db::name('notification_logs')->insert([
+                        'channel' => 'wechat',
+                        'receiver' => $miniOpenid,
+                        'template_code' => 'resume_review_notify',
+                        'send_data' => json_encode(['mini_openid' => $miniOpenid], JSON_UNESCAPED_UNICODE),
+                        'status' => 0,
+                        'error_msg' => '未解析到服务号openid（请检查 wechat_openid_bindings 绑定）',
+                        'send_time' => date('Y-m-d H:i:s')
+                    ]);
+                } catch (\Throwable $e) {
+                    // ignore logging failure
+                }
+                return;
+            }
+
+            $resultText = ((string)$teacher->review_status === 'approved') ? '审核通过' : '审核驳回';
+            $remark = trim((string)($teacher->review_note ?? ''));
+            if ($remark === '') {
+                $remark = $resultText === '审核通过'
+                    ? '您的简历已通过审核，请尽快完善资料并接单。'
+                    : '您的简历未通过审核，请根据提示修改后重新提交。';
+            }
+
+            $sendRes = WechatNotificationService::sendTemplateMessage($officialOpenid, 'resume_review_notify', [
+                'result' => $resultText,
+                'review_time' => date('Y-m-d H:i:s'),
+                'remark' => $remark,
+                'teacher_name' => (string)($teacher->name ?? ''),
+                'review_status' => (string)($teacher->review_status ?? '')
+            ]);
+
+            if (empty($sendRes['success'])) {
+                Log::warning('教师管理审核公众号通知发送失败: ' . ($sendRes['message'] ?? 'unknown'));
+            } else {
+                Log::info('教师管理审核公众号通知发送成功, to=' . $officialOpenid);
+            }
+        } catch (\Throwable $e) {
+            Log::error('教师管理审核公众号通知异常: ' . $e->getMessage());
+        }
+    }
+
+    /**
+     * 通过 mini_openid/unionid 解析公众号 openid（优先绑定表）
+     */
+    private function resolveOfficialOpenidByUnionid(string $miniOpenid): ?string
+    {
+        $this->ensureMiniUnionidBinding($miniOpenid);
+
+        $bind = Db::name('wechat_openid_bindings')
+            ->where('mini_openid', $miniOpenid)
+            ->order('update_time', 'desc')
+            ->field('mp_openid,unionid,is_subscribed')
+            ->find();
+        if ($bind && !empty($bind['mp_openid'])) {
+            $mpOpenid = trim((string)$bind['mp_openid']);
+            if ((int)($bind['is_subscribed'] ?? 0) === 1) {
+                return $mpOpenid;
+            }
+            // 兜底：实时查一次关注状态，避免绑定后未刷新导致不发送
+            $live = WechatNotificationService::getUserInfo($mpOpenid);
+            if (!empty($live['success']) && !empty($live['data']) && is_array($live['data'])) {
+                $sub = (int)($live['data']['subscribe'] ?? 0);
+                if ($sub === 1) {
+                    $now = date('Y-m-d H:i:s');
+                    Db::name('wechat_openid_bindings')
+                        ->where('mini_openid', $miniOpenid)
+                        ->update([
+                            'is_subscribed' => 1,
+                            'subscribe_time' => (int)($live['data']['subscribe_time'] ?? time()),
+                            'unionid' => trim((string)($live['data']['unionid'] ?? ($bind['unionid'] ?? ''))) ?: null,
+                            'update_time' => $now
+                        ]);
+                    Db::name('wechat_users')
+                        ->where('openid', $mpOpenid)
+                        ->update([
+                            'subscribe' => 1,
+                            'subscribe_time' => (int)($live['data']['subscribe_time'] ?? time()),
+                            'unionid' => trim((string)($live['data']['unionid'] ?? '')) ?: null,
+                            'update_time' => $now
+                        ]);
+                    return $mpOpenid;
+                }
+            }
+        }
+
+        $base = Db::name('wechat_users')
+            ->where('openid', $miniOpenid)
+            ->field('openid,unionid,subscribe')
+            ->find();
+        if (!$base) {
+            return null;
+        }
+
+        $unionid = trim((string)($base['unionid'] ?? ''));
+        if ($unionid !== '') {
+            $bindByUnion = Db::name('wechat_openid_bindings')
+                ->where('unionid', $unionid)
+                ->where('mp_openid', '<>', '')
+                ->order('update_time', 'desc')
+                ->field('mp_openid,is_subscribed')
+                ->find();
+            if ($bindByUnion && !empty($bindByUnion['mp_openid']) && (int)($bindByUnion['is_subscribed'] ?? 1) === 1) {
+                return trim((string)$bindByUnion['mp_openid']);
+            }
+
+            $official = Db::name('wechat_users')
+                ->where('unionid', $unionid)
+                ->where('subscribe', 1)
+                ->where('openid', '<>', '')
+                ->order('update_time', 'desc')
+                ->order('create_time', 'desc')
+                ->field('openid')
+                ->find();
+            if (!empty($official['openid'])) {
+                return trim((string)$official['openid']);
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * 发送前兜底：将小程序侧 unionid 回填到绑定表
+     */
+    private function ensureMiniUnionidBinding(string $miniOpenid): void
+    {
+        try {
+            $miniOpenid = trim((string)$miniOpenid);
+            if ($miniOpenid === '') {
+                return;
+            }
+            $unionid = trim((string)(Db::name('wechat_users')
+                ->where('openid', $miniOpenid)
+                ->value('unionid') ?? ''));
+            if ($unionid === '') {
+                return;
+            }
+            $now = date('Y-m-d H:i:s');
+            $bind = Db::name('wechat_openid_bindings')->where('mini_openid', $miniOpenid)->find();
+            if ($bind) {
+                if (trim((string)($bind['unionid'] ?? '')) === '') {
+                    Db::name('wechat_openid_bindings')->where('id', (int)$bind['id'])->update([
+                        'unionid' => $unionid,
+                        'update_time' => $now
+                    ]);
+                }
+            } else {
+                Db::name('wechat_openid_bindings')->insert([
+                    'mini_openid' => $miniOpenid,
+                    'unionid' => $unionid,
+                    'scene_key' => 'send_before_' . $miniOpenid,
+                    'is_subscribed' => 0,
+                    'create_time' => $now,
+                    'update_time' => $now
+                ]);
+            }
+        } catch (\Throwable $e) {
+            Log::warning('教师审核发送前 unionid 回填失败: ' . $e->getMessage());
         }
     }
 }

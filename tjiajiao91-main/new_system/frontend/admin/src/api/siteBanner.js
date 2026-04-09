@@ -3,7 +3,7 @@ import request from '@/utils/request'
 /**
  * 获取横幅列表
  */
-export function getBannerList(params) {
+export function getBannerList(params = {}) {
   return request({
     url: '/site-banners',
     method: 'get',

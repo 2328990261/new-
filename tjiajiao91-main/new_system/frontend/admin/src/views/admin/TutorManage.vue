@@ -1384,6 +1384,7 @@ export default {
 
 <script setup>
 import { ref, reactive, onMounted, onUnmounted, computed, nextTick, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { 
   Plus, MagicStick, DocumentCopy, Delete, DocumentDelete, 
   UploadFilled, Document, ArrowUp, ArrowDown, ArrowRight, Tools, Download, Promotion, InfoFilled, Refresh, Loading
@@ -1402,6 +1403,8 @@ import TutorManageMobile from '@/components/TutorManageMobile.vue'
 
 const appStore = useAppStore()
 const userStore = useUserStore()
+const route = useRoute()
+const router = useRouter()
 
 // 计算批量操作栏的 left 值（根据侧边栏折叠状态）
 const batchActionsLeft = computed(() => {
@@ -1671,6 +1674,17 @@ const handleResize = () => {
 onMounted(() => {
   // 根据用户角色设置默认显示模式
   updateDefaultViewScope()
+
+  // 从“预约/订单详情”的关联家教ID跳转过来：自动用ID定位
+  const focusId = route.query?.focus_id
+  if (focusId != null && String(focusId).trim() !== '') {
+    // 直接以 ID 作为关键字搜索（后端支持 id like 匹配）
+    searchForm.keyword = String(focusId).trim()
+    // 切到全部订单，避免“我的/渠道”看不到
+    viewScope.value = 'all'
+    // 清理 query，避免刷新重复触发
+    router.replace({ path: '/tutor', query: {} }).catch(() => {})
+  }
   
   // 优先加载主数据
   loadData()

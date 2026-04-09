@@ -30,6 +30,7 @@ class PaymentConfig extends BaseController
                 'cert_path' => '',
                 'key_path' => '',
                 'notify_url' => '',
+                'refund_follow_qrcode' => '',
                 'is_enabled' => 0
             ];
             

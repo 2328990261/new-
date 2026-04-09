@@ -25,6 +25,7 @@ class Payment extends Model
         'payment_method'        => 'string',
         'payer_name'            => 'string',
         'payer_contact'         => 'string',
+        'openid'                => 'string',
         'transaction_id'        => 'string',
         'status'                => 'string',
         'refund_status'         => 'string',
@@ -32,7 +33,17 @@ class Payment extends Model
         'refund_reason'         => 'string',
         'reject_reason'         => 'string',
         'refund_voucher'        => 'string',
+        // remark：交易/管理端备注（不要与退款备注混用）
         'remark'                => 'string',
+        // pay_remark：用户支付时的备注（列表默认不展示，仅详情展示）
+        'pay_remark'            => 'string',
+        // refund_remark：退款审核备注（原先误写入 remark）
+        'refund_remark'         => 'string',
+        'is_pinned'             => 'int',
+        'pinned_at'             => 'datetime',
+        // 软删除：仅隐藏前端列表展示，不物理删除
+        'is_deleted'            => 'int',
+        'deleted_at'            => 'datetime',
         'paid_time'             => 'datetime',
         'refund_time'           => 'datetime',
         'refund_apply_time'     => 'datetime',

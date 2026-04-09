@@ -128,6 +128,10 @@
                 <span class="label">老师类型</span>
                 <span class="value">{{ order.teacher_type || '-' }}</span>
               </div>
+              <div class="info-item">
+                <span class="label">可辅导时段</span>
+                <span class="value">{{ formatTimeSlots(order.available_time_slots) || '-' }}</span>
+              </div>
             </div>
 
             <el-divider class="section-divider" />
@@ -161,7 +165,7 @@
               </div>
               <div class="info-item" v-if="order.tutor_id">
                 <span class="label">关联家教ID</span>
-                <el-link type="primary" :underline="false">
+                <el-link type="primary" :underline="false" @click="openTutorDetail(order.tutor_id)">
                   {{ order.tutor_id }}
                 </el-link>
                 <el-tag type="success" size="small" style="margin-left: 8px">已转化</el-tag>
@@ -256,6 +260,9 @@
         </el-form-item>
         <el-form-item label="上课时长">
           <el-input v-model="editForm.duration" placeholder="例如：2小时" />
+        </el-form-item>
+        <el-form-item label="可辅导时段(JSON)">
+          <el-input v-model="editForm.available_time_slots" type="textarea" :rows="3" placeholder='例如：[{"week_day":1,"start_time":"18:30","duration_minutes":90,"end_time":"20:00"}]' />
         </el-form-item>
         <el-form-item label="时薪范围">
           <el-input v-model="editForm.salary" placeholder="例如：100-150元/小时" />
@@ -458,6 +465,21 @@ const getSalaryDisplay = (row) => {
   return '-'
 }
 
+const formatTimeSlots = (rawSlots) => {
+  if (!rawSlots) return ''
+  let slots = rawSlots
+  if (typeof slots === 'string') {
+    try {
+      slots = JSON.parse(slots)
+    } catch (e) {
+      return ''
+    }
+  }
+  if (!Array.isArray(slots) || !slots.length) return ''
+  const weekMap = { 1: '周一', 2: '周二', 3: '周三', 4: '周四', 5: '周五', 6: '周六', 7: '周日' }
+  return slots.map((slot) => `${weekMap[slot.week_day] || '周?'} ${slot.start_time || '--:--'}-${slot.end_time || '--:--'}`).join('；')
+}
+
 // 生成家教单内容
 const generateTutorContent = (order) => {
   if (!order || !order.id) return '暂无数据'
@@ -471,6 +493,7 @@ const generateTutorContent = (order) => {
   const studentInfo = order.student_info || order.child_description || ''
   const frequency = order.frequency || ''
   const duration = order.duration || ''
+  const timeSlotsText = formatTimeSlots(order.available_time_slots)
   const salary = getSalaryDisplay(order)
   const teacherType = order.teacher_type || ''
   const teacherGender = order.teacher_gender || ''
@@ -481,6 +504,9 @@ const generateTutorContent = (order) => {
   let content = `${titlePrefix}【${cityArea}${address ? ' ' + address : ''} ${grade} ${subject}】\n`
   content += `【学生情况】${studentGender}${studentGender && studentInfo ? '，' : ''}${studentInfo}\n`
   content += `【时间频率】${frequency}${frequency && duration ? '，' : ''}${duration}\n`
+  if (timeSlotsText) {
+    content += `【可辅导时段】${timeSlotsText}\n`
+  }
   content += `【时薪范围】${salary}\n`
   content += `【老师要求】${teacherType}${teacherType && teacherGender ? '，' : ''}${teacherGender}\n`
   content += `【家长称呼】${parentName}\n`
@@ -513,6 +539,15 @@ const openTeacherDetail = (teacherId) => {
   router.push(path)
 }
 
+// 打开家教单详情（跳转到家教信息管理，并用ID定位）
+const openTutorDetail = (tutorId) => {
+  if (!tutorId) return
+  const path = `/tutor?focus_id=${encodeURIComponent(String(tutorId))}`
+  const title = `家教单${tutorId}`
+  tabsStore.addTab(path, title, true)
+  router.push(path)
+}
+
 // 显示编辑对话框
 const showEditDialog = () => {
   if (!order.value || !order.value.id) {
@@ -531,6 +566,9 @@ const showEditDialog = () => {
     student_info: order.value.student_info || '',
     frequency: order.value.frequency || '',
     duration: order.value.duration || '',
+    available_time_slots: typeof order.value.available_time_slots === 'string'
+      ? order.value.available_time_slots
+      : JSON.stringify(order.value.available_time_slots || []),
     salary: order.value.salary || '',
     teacher_type: order.value.teacher_type || '',
     teacher_gender: order.value.teacher_gender || '',

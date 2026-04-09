@@ -4,6 +4,20 @@
       <el-tabs v-model="activeTab" class="field-tabs">
         <el-tab-pane label="横幅管理" name="banner">
           <div class="banner-manage">
+            <div class="banner-scene-panel">
+              <div class="banner-scene-panel-title">横幅展示位置</div>
+              <el-radio-group v-model="bannerSceneTab" size="large" class="banner-scene-tabs">
+                <el-radio-button label="default">网站轮播横幅</el-radio-button>
+                <el-radio-button label="h5_home">网页用户端（H5）首页横幅</el-radio-button>
+                <el-radio-button label="parent_mini_home">小程序家长端首页横幅图展示</el-radio-button>
+              </el-radio-group>
+              <p v-if="bannerSceneTab === 'h5_home'" class="banner-scene-tip banner-scene-tip-inline">
+                用于网页用户端（H5）首页顶部横幅；<strong>启用</strong>的横幅按排序取第 1 张展示；每条可单独配置跳转链接。
+              </p>
+              <p v-if="bannerSceneTab === 'parent_mini_home'" class="banner-scene-tip banner-scene-tip-inline">
+                用于微信小程序家长端「91家教」首页顶部；<strong>启用</strong>的横幅按排序展示，<strong>多条时自动轮播并可左右滑动</strong>；每条可单独配置跳转链接。
+              </p>
+            </div>
             <div class="toolbar">
               <el-button type="primary" @click="handleAddBanner">
                 <el-icon><Plus /></el-icon>
@@ -11,8 +25,16 @@
               </el-button>
             </div>
 
-            <el-table :data="bannerList" v-loading="bannerLoading" row-key="id" class="banner-table">
+            <el-table :data="filteredBannerList" v-loading="bannerLoading" row-key="id" class="banner-table">
               <el-table-column type="index" label="序号" width="60" />
+
+              <el-table-column label="展示位置" width="200" align="center">
+                <template #default="{ row }">
+                  <el-tag :type="bannerSceneTagType(row.banner_scene || 'default')" size="small">
+                    {{ bannerSceneLabel(row.banner_scene || 'default') }}
+                  </el-tag>
+                </template>
+              </el-table-column>
               
               <el-table-column label="横幅图片" width="200">
                 <template #default="{ row }">
@@ -68,6 +90,65 @@
                 <template #default="{ row }">
                   <el-button type="primary" size="small" @click="handleEditBanner(row)">编辑</el-button>
                   <el-button type="danger" size="small" @click="handleDeleteBanner(row)">删除</el-button>
+                </template>
+              </el-table-column>
+            </el-table>
+          </div>
+        </el-tab-pane>
+
+        <el-tab-pane label="案例管理" name="successCase">
+          <div class="success-case-manage">
+            <div class="toolbar">
+              <el-button type="primary" @click="handleAddSuccessCase">
+                <el-icon><Plus /></el-icon>
+                添加案例
+              </el-button>
+            </div>
+            <p class="success-case-tip">
+              小程序端以<strong>固定卡片</strong>展示：顶部图 + 年级/科目/主题标签 + 标题 + 学生背景、辅导成果、家长评语（不再展示「课程情况介绍」）；后三项保存时必填。
+            </p>
+            <el-table :data="successCaseList" v-loading="successCaseLoading" row-key="id" class="success-case-table">
+              <el-table-column type="index" label="序号" width="60" />
+              <el-table-column label="顶部图" width="100" align="center">
+                <template #default="{ row }">
+                  <img
+                    v-if="successCaseCoverFirst(row)"
+                    :src="getImageUrl(successCaseCoverFirst(row))"
+                    alt=""
+                    class="sc-thumb"
+                  />
+                  <span v-else class="no-image">无</span>
+                </template>
+              </el-table-column>
+              <el-table-column label="年级" prop="grade" width="100" show-overflow-tooltip />
+              <el-table-column label="科目" prop="subject" width="100" show-overflow-tooltip />
+              <el-table-column label="主题标签" prop="theme_tag" width="110" show-overflow-tooltip />
+              <el-table-column label="标题" prop="title" min-width="120" show-overflow-tooltip />
+              <el-table-column label="排序" width="120" align="center">
+                <template #default="{ row }">
+                  <el-input-number
+                    v-model="row.sort_order"
+                    :min="0"
+                    :max="9999"
+                    size="small"
+                    @change="handleSuccessCaseSortChange(row)"
+                  />
+                </template>
+              </el-table-column>
+              <el-table-column label="状态" width="90" align="center">
+                <template #default="{ row }">
+                  <el-switch
+                    v-model="row.status"
+                    :active-value="1"
+                    :inactive-value="0"
+                    @change="handleToggleSuccessCase(row)"
+                  />
+                </template>
+              </el-table-column>
+              <el-table-column label="操作" width="170" align="center" fixed="right">
+                <template #default="{ row }">
+                  <el-button type="primary" size="small" @click="handleEditSuccessCase(row)">编辑</el-button>
+                  <el-button type="danger" size="small" @click="handleDeleteSuccessCase(row)">删除</el-button>
                 </template>
               </el-table-column>
             </el-table>
@@ -235,6 +316,9 @@
       :close-on-click-modal="false"
     >
       <el-form :model="bannerForm" :rules="bannerRules" ref="bannerFormRef" label-width="100px">
+        <el-form-item label="展示位置">
+          <span class="banner-scene-readonly">{{ bannerSceneLabel(bannerForm.banner_scene) }}</span>
+        </el-form-item>
         <el-form-item label="横幅标题">
           <el-input v-model="bannerForm.title" placeholder="请输入横幅标题（可选）" />
         </el-form-item>
@@ -252,7 +336,7 @@
           <el-upload
             :action="uploadAction"
             :headers="uploadHeaders"
-            :data="{ type: 'banner' }"
+            :data="{ type: 'banner', skip_watermark: 1 }"
             :before-upload="beforeBannerImageUpload"
             :on-success="onBannerImageSuccess"
             :on-error="onBannerImageError"
@@ -304,6 +388,94 @@
         <el-button type="primary" @click="handleSaveBanner" :loading="bannerSaving">保存</el-button>
       </template>
     </el-dialog>
+
+    <!-- 成功案例编辑对话框 -->
+    <el-dialog
+      v-model="successCaseDialogVisible"
+      :title="successCaseForm.id ? '编辑案例' : '添加案例'"
+      width="720px"
+      top="5vh"
+      :close-on-click-modal="false"
+    >
+      <el-form :model="successCaseForm" ref="successCaseFormRef" label-width="130px" class="success-case-form">
+        <el-form-item label="年级" required>
+          <el-input v-model="successCaseForm.grade" placeholder="如：初二、初中" maxlength="64" show-word-limit />
+        </el-form-item>
+        <el-form-item label="科目" required>
+          <el-input v-model="successCaseForm.subject" placeholder="如：数学" maxlength="64" show-word-limit />
+        </el-form-item>
+        <el-form-item label="主题标签">
+          <el-input v-model="successCaseForm.theme_tag" placeholder="可选，如：几何突破、成绩进步" maxlength="64" show-word-limit />
+        </el-form-item>
+        <el-form-item label="顶部图片" required>
+          <el-upload
+            :http-request="handleSuccessCaseCoverUpload"
+            :show-file-list="false"
+            accept="image/*"
+            class="sc-cover-upload"
+          >
+            <el-button type="primary" plain>
+              <el-icon><Plus /></el-icon>
+              上传图片
+            </el-button>
+          </el-upload>
+          <span class="form-tip">至少 1 张，可多张；小程序端多图时将宫格展示</span>
+          <div class="sc-cover-list">
+            <div v-for="(url, idx) in successCaseForm.cover_images" :key="idx + '-' + url" class="sc-cover-item">
+              <img :src="getImageUrl(url)" alt="" />
+              <el-button type="danger" size="small" circle class="sc-cover-remove" @click="removeSuccessCaseCover(idx)">
+                ×
+              </el-button>
+            </div>
+          </div>
+        </el-form-item>
+        <el-form-item label="标题" required>
+          <el-input v-model="successCaseForm.title" placeholder="案例主标题" maxlength="255" show-word-limit />
+        </el-form-item>
+        <el-form-item label="学生背景" required>
+          <el-input
+            v-model="successCaseForm.student_background"
+            type="textarea"
+            :rows="4"
+            maxlength="2000"
+            show-word-limit
+            placeholder="学习基础、薄弱点等"
+          />
+        </el-form-item>
+        <el-form-item label="辅导成果" required>
+          <el-input
+            v-model="successCaseForm.tutoring_results"
+            type="textarea"
+            :rows="4"
+            maxlength="2000"
+            show-word-limit
+            placeholder="成绩或能力变化等"
+          />
+        </el-form-item>
+        <el-form-item label="家长评语" required>
+          <el-input
+            v-model="successCaseForm.parent_comment"
+            type="textarea"
+            :rows="4"
+            maxlength="2000"
+            show-word-limit
+            placeholder="家长原话或总结性评价"
+          />
+        </el-form-item>
+        <el-form-item label="排序值">
+          <el-input-number v-model="successCaseForm.sort_order" :min="0" :max="9999" />
+          <span class="form-tip">数值越小越靠前</span>
+        </el-form-item>
+        <el-form-item label="状态">
+          <el-switch v-model="successCaseForm.status" :active-value="1" :inactive-value="0" />
+          <span class="form-tip">{{ successCaseForm.status === 1 ? '启用' : '禁用' }}</span>
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="successCaseDialogVisible = false">取消</el-button>
+        <el-button type="primary" @click="handleSaveSuccessCase" :loading="successCaseSaving">保存</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -313,6 +485,13 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { Plus, Edit } from '@element-plus/icons-vue'
 import { getSiteConfig, updateSiteConfig } from '@/api/siteConfig'
 import { getBannerList, createBanner, updateBanner, deleteBanner, toggleBannerStatus } from '@/api/siteBanner'
+import {
+  getSuccessCaseList,
+  createSuccessCase,
+  updateSuccessCase,
+  deleteSuccessCase,
+  toggleSuccessCaseStatus
+} from '@/api/successCase'
 import { uploadImage } from '@/api/upload'
 import CityManage from './CityManage.vue'
 import DistrictManage from './DistrictManage.vue'
@@ -364,7 +543,11 @@ const siteRules = {
 }
 
 // ==================== 横幅管理相关 ====================
+const bannerSceneTab = ref('default')
 const bannerList = ref([])
+const filteredBannerList = computed(() =>
+  bannerList.value.filter((b) => (b.banner_scene || 'default') === bannerSceneTab.value)
+)
 const bannerLoading = ref(false)
 const bannerDialogVisible = ref(false)
 const bannerDialogTitle = computed(() => bannerForm.id ? '编辑横幅' : '添加横幅')
@@ -373,6 +556,7 @@ const bannerSaving = ref(false)
 
 const bannerForm = reactive({
   id: null,
+  banner_scene: 'default',
   title: '',
   description: '',
   image_url: '',
@@ -382,17 +566,282 @@ const bannerForm = reactive({
   status: 1
 })
 
+const bannerSceneLabel = (scene) =>
+  scene === 'parent_mini_home'
+    ? '小程序家长端首页横幅图展示'
+    : scene === 'h5_home'
+      ? '网页用户端（H5）首页横幅'
+      : '网站轮播横幅'
+
+const bannerSceneTagType = (scene) => {
+  if (scene === 'parent_mini_home') return 'success'
+  if (scene === 'h5_home') return 'warning'
+  return 'info'
+}
+
 const bannerRules = {
   image_url: [
     { required: true, message: '请上传横幅图片', trigger: 'change' }
   ]
 }
 
+// ==================== 成功案例管理 ====================
+const successCaseList = ref([])
+const successCaseLoading = ref(false)
+const successCaseDialogVisible = ref(false)
+const successCaseSaving = ref(false)
+const successCaseFormRef = ref()
+
+const successCaseForm = reactive({
+  id: null,
+  grade: '',
+  subject: '',
+  theme_tag: '',
+  cover_images: [],
+  title: '',
+  student_background: '',
+  tutoring_results: '',
+  parent_comment: '',
+  sort_order: 0,
+  status: 1
+})
+
+const successCaseCoverFirst = (row) => {
+  const raw = row?.cover_images
+  if (!raw) return ''
+  if (Array.isArray(raw) && raw.length) return raw[0]
+  if (typeof raw === 'string') {
+    try {
+      const a = JSON.parse(raw)
+      return Array.isArray(a) && a[0] ? a[0] : ''
+    } catch {
+      return ''
+    }
+  }
+  return ''
+}
+
+const parseSuccessCaseCovers = (row) => {
+  const raw = row?.cover_images
+  if (!raw) return []
+  if (Array.isArray(raw)) return [...raw]
+  if (typeof raw === 'string') {
+    try {
+      const a = JSON.parse(raw)
+      return Array.isArray(a) ? [...a] : []
+    } catch {
+      return []
+    }
+  }
+  return []
+}
+
+const loadSuccessCaseList = async () => {
+  successCaseLoading.value = true
+  try {
+    const res = await getSuccessCaseList({ limit: 500 })
+    if (res.success) {
+      const list = res.data || []
+      successCaseList.value = list.map((item) => ({
+        ...item,
+        status: item && item.status !== undefined && item.status !== null ? Number(item.status) : 0,
+        sort_order: item && item.sort_order !== undefined && item.sort_order !== null ? Number(item.sort_order) : 0
+      }))
+    }
+  } catch (e) {
+    console.error('加载成功案例失败:', e)
+  } finally {
+    successCaseLoading.value = false
+  }
+}
+
+const handleAddSuccessCase = () => {
+  Object.assign(successCaseForm, {
+    id: null,
+    grade: '',
+    subject: '',
+    theme_tag: '',
+    cover_images: [],
+    title: '',
+    student_background: '',
+    tutoring_results: '',
+    parent_comment: '',
+    sort_order: 0,
+    status: 1
+  })
+  successCaseDialogVisible.value = true
+}
+
+const handleEditSuccessCase = (row) => {
+  Object.assign(successCaseForm, {
+    id: row.id,
+    grade: row.grade || '',
+    subject: row.subject || '',
+    theme_tag: row.theme_tag || '',
+    cover_images: parseSuccessCaseCovers(row),
+    title: row.title || '',
+    student_background: row.student_background || '',
+    tutoring_results: row.tutoring_results || '',
+    parent_comment: row.parent_comment || '',
+    sort_order: row.sort_order ?? 0,
+    status: row.status !== undefined ? Number(row.status) : 1
+  })
+  successCaseDialogVisible.value = true
+}
+
+const handleSuccessCaseCoverUpload = async (options) => {
+  const file = options.file
+  const okType = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'].includes(file.type)
+  if (!okType) {
+    ElMessage.error('只能上传 jpg/png/gif/webp')
+    options.onError?.(new Error('type'))
+    return
+  }
+  if (file.size / 1024 / 1024 > 10) {
+    ElMessage.error('图片不能超过 10MB')
+    options.onError?.(new Error('size'))
+    return
+  }
+  try {
+    const res = await uploadImage(file, 'other')
+    if (res.success && res.data?.url) {
+      successCaseForm.cover_images.push(res.data.url)
+      ElMessage.success('已添加图片')
+      options.onSuccess?.(res)
+    } else {
+      ElMessage.error(res.error || '上传失败')
+      options.onError?.(new Error(res.error))
+    }
+  } catch (e) {
+    ElMessage.error('上传失败')
+    options.onError?.(e)
+  }
+}
+
+const removeSuccessCaseCover = (idx) => {
+  successCaseForm.cover_images.splice(idx, 1)
+}
+
+const handleSaveSuccessCase = async () => {
+  if (!successCaseForm.grade?.trim()) {
+    ElMessage.warning('请填写年级')
+    return
+  }
+  if (!successCaseForm.subject?.trim()) {
+    ElMessage.warning('请填写科目')
+    return
+  }
+  if (!successCaseForm.cover_images.length) {
+    ElMessage.warning('请至少上传一张顶部图片')
+    return
+  }
+  if (!successCaseForm.title?.trim()) {
+    ElMessage.warning('请填写标题')
+    return
+  }
+  if (!successCaseForm.student_background?.trim()) {
+    ElMessage.warning('请填写学生背景')
+    return
+  }
+  if (!successCaseForm.tutoring_results?.trim()) {
+    ElMessage.warning('请填写辅导成果')
+    return
+  }
+  if (!successCaseForm.parent_comment?.trim()) {
+    ElMessage.warning('请填写家长评语')
+    return
+  }
+
+  const payload = {
+    grade: successCaseForm.grade.trim(),
+    subject: successCaseForm.subject.trim(),
+    theme_tag: (successCaseForm.theme_tag || '').trim(),
+    cover_images: successCaseForm.cover_images,
+    title: successCaseForm.title.trim(),
+    course_intro: '',
+    student_background: successCaseForm.student_background.trim(),
+    tutoring_results: successCaseForm.tutoring_results.trim(),
+    parent_comment: successCaseForm.parent_comment.trim(),
+    sort_order: successCaseForm.sort_order,
+    status: successCaseForm.status
+  }
+
+  successCaseSaving.value = true
+  try {
+    let res
+    if (successCaseForm.id) {
+      res = await updateSuccessCase(successCaseForm.id, payload)
+    } else {
+      res = await createSuccessCase(payload)
+    }
+    if (res.success) {
+      ElMessage.success(successCaseForm.id ? '更新成功' : '添加成功')
+      successCaseDialogVisible.value = false
+      loadSuccessCaseList()
+    } else {
+      ElMessage.error(res.error || '保存失败')
+    }
+  } catch (e) {
+    ElMessage.error('保存失败')
+  } finally {
+    successCaseSaving.value = false
+  }
+}
+
+const handleDeleteSuccessCase = (row) => {
+  ElMessageBox.confirm('确定删除该案例？', '提示', {
+    confirmButtonText: '确定',
+    cancelButtonText: '取消',
+    type: 'warning'
+  })
+    .then(async () => {
+      try {
+        const res = await deleteSuccessCase(row.id)
+        if (res.success) {
+          ElMessage.success('删除成功')
+          loadSuccessCaseList()
+        } else {
+          ElMessage.error(res.error || '删除失败')
+        }
+      } catch (e) {
+        ElMessage.error('删除失败')
+      }
+    })
+    .catch(() => {})
+}
+
+const handleToggleSuccessCase = async (row) => {
+  try {
+    const res = await toggleSuccessCaseStatus(row.id)
+    if (!res.success) {
+      ElMessage.error(res.error || '状态更新失败')
+      row.status = row.status === 1 ? 0 : 1
+    }
+  } catch (e) {
+    ElMessage.error('状态更新失败')
+    row.status = row.status === 1 ? 0 : 1
+  }
+}
+
+const handleSuccessCaseSortChange = async (row) => {
+  try {
+    const res = await updateSuccessCase(row.id, { sort_order: row.sort_order })
+    if (res.success) {
+      ElMessage.success('排序更新成功')
+      loadSuccessCaseList()
+    } else {
+      ElMessage.error(res.error || '排序更新失败')
+    }
+  } catch (e) {
+    ElMessage.error('排序更新失败')
+  }
+}
+
 // 加载横幅列表
 const loadBannerList = async () => {
   bannerLoading.value = true
   try {
-    const res = await getBannerList({ limit: 100 })
+    const res = await getBannerList({ limit: 200 })
     if (res.success) {
       const list = res.data || []
       // 统一字段类型，避免 el-switch 因 "1"/"0" 字符串导致回弹
@@ -413,6 +862,7 @@ const loadBannerList = async () => {
 const handleAddBanner = () => {
   Object.assign(bannerForm, {
     id: null,
+    banner_scene: bannerSceneTab.value,
     title: '',
     description: '',
     image_url: '',
@@ -428,6 +878,7 @@ const handleAddBanner = () => {
 const handleEditBanner = (row) => {
   Object.assign(bannerForm, {
     id: row.id,
+    banner_scene: row.banner_scene || 'default',
     title: row.title || '',
     description: row.description || '',
     image_url: row.image_url || '',
@@ -558,6 +1009,7 @@ const onBannerImageError = (error) => {
 
 onMounted(() => {
   loadBannerList()
+  loadSuccessCaseList()
   loadSiteConfig()
 })
 
@@ -677,8 +1129,105 @@ const handleUploadError = (error) => {
   padding: 20px 0;
 }
 
+.success-case-manage {
+  padding: 20px 0;
+}
+
+.success-case-manage .toolbar {
+  margin-bottom: 12px;
+}
+
+.success-case-tip {
+  margin: 0 0 16px;
+  font-size: 13px;
+  color: #909399;
+  line-height: 1.5;
+}
+
+.sc-thumb {
+  width: 72px;
+  height: 72px;
+  object-fit: cover;
+  border-radius: 6px;
+  vertical-align: middle;
+}
+
+.sc-cover-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 12px;
+}
+
+.sc-cover-item {
+  position: relative;
+  width: 100px;
+  height: 100px;
+  border-radius: 8px;
+  overflow: hidden;
+  border: 1px solid #ebeef5;
+}
+
+.sc-cover-item img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.sc-cover-remove {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  min-height: 24px !important;
+  padding: 0 6px !important;
+}
+
 .banner-manage .toolbar {
-  margin-bottom: 20px;
+  margin-bottom: 16px;
+}
+
+.banner-scene-panel {
+  margin-bottom: 16px;
+  padding: 16px 18px;
+  background: #f5f7fa;
+  border: 1px solid #e4e7ed;
+  border-radius: 8px;
+}
+
+.banner-scene-panel-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: #303133;
+  margin-bottom: 12px;
+}
+
+.banner-scene-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.banner-scene-tabs :deep(.el-radio-button__inner) {
+  white-space: normal;
+  line-height: 1.35;
+  padding: 10px 14px;
+  text-align: center;
+}
+
+.banner-scene-tip {
+  margin: 0 0 16px;
+  font-size: 13px;
+  color: #909399;
+  line-height: 1.5;
+}
+
+.banner-scene-tip-inline {
+  margin: 12px 0 0;
+}
+
+.banner-scene-readonly {
+  color: #606266;
 }
 
 .banner-table {

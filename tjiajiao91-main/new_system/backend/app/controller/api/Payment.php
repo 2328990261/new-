@@ -130,7 +130,48 @@ class Payment extends BaseController
     public function create()
     {
         try {
-            $data = $this->request->post();
+            // 合并 POST 与原始 JSON（部分代理/环境下仅其一可用；避免 staff_id/staff_name 丢失）
+            $post = $this->request->post();
+            if (!is_array($post)) {
+                $post = [];
+            }
+            $rawJson = json_decode((string) $this->request->getInput(), true);
+            $data = is_array($rawJson) ? array_merge($post, $rawJson) : $post;
+
+            // 兼容前端 camelCase
+            if (!isset($data['staff_id']) && isset($data['staffId'])) {
+                $data['staff_id'] = $data['staffId'];
+            }
+            if (!isset($data['staff_name']) && isset($data['staffName'])) {
+                $data['staff_name'] = $data['staffName'];
+            }
+            if (!isset($data['real_name']) && isset($data['realName'])) {
+                $data['real_name'] = $data['realName'];
+            }
+            if (!isset($data['tutor_info']) && isset($data['tutorInfo'])) {
+                $data['tutor_info'] = $data['tutorInfo'];
+            }
+            if (!isset($data['payer_contact']) && isset($data['phoneNumber'])) {
+                $data['payer_contact'] = $data['phoneNumber'];
+            }
+            // 支付备注（选填）：写入 pay_remark（不要写入 remark，remark 是管理员订单备注）
+            if (!isset($data['pay_remark']) && isset($data['payment_remark'])) {
+                $data['pay_remark'] = $data['payment_remark'];
+            }
+            if (!isset($data['pay_remark']) && isset($data['paymentRemark'])) {
+                $data['pay_remark'] = $data['paymentRemark'];
+            }
+            if (!isset($data['pay_remark']) && isset($data['payRemark'])) {
+                $data['pay_remark'] = $data['payRemark'];
+            }
+
+            // 手机号可选：仅认 payer_contact / mobile / phone（用户端 H5 已不再传手机）
+            // 规范化后若非完整 11 位大陆号则置空，避免误带字段、半截数字等触发「请填写正确的11位手机号」
+            $rawPhone = (string)($data['payer_contact'] ?? $data['mobile'] ?? $data['phone'] ?? '');
+            $data['payer_contact'] = preg_replace('/\D/', '', $rawPhone);
+            if ($data['payer_contact'] === '' || !preg_match('/^1\d{10}$/', $data['payer_contact'])) {
+                $data['payer_contact'] = '';
+            }
             
             // 记录请求数据用于调试
             trace('创建支付订单请求: ' . json_encode($data, JSON_UNESCAPED_UNICODE), 'info');
@@ -144,7 +185,7 @@ class Payment extends BaseController
             if (isset($data['tutor_info'])) {
                 $data['tutor_name'] = $data['tutor_info'];
             }
-            if (isset($data['staff_id'])) {
+            if (isset($data['staff_id']) && $data['staff_id'] !== '' && $data['staff_id'] !== null) {
                 $data['dispatcher_id'] = $data['staff_id'];
             }
             
@@ -167,7 +208,7 @@ class Payment extends BaseController
                     'message' => $validate->getError()
                 ]);
             }
-            
+
             // 如果有tutor_order_id,检查订单是否存在
             if (isset($data['tutor_order_id']) && $data['tutor_order_id']) {
                 $tutorOrder = TutorOrder::where('id', $data['tutor_order_id'])
@@ -198,6 +239,11 @@ class Payment extends BaseController
             $orderNo = PaymentModel::generateOrderNo();
             
             // 准备支付记录数据
+            $openidParam = trim((string)($this->request->param('openid', '') ?: ($data['openid'] ?? '')));
+            if ($openidParam !== '' && strlen($openidParam) > 100) {
+                $openidParam = mb_substr($openidParam, 0, 100, 'UTF-8');
+            }
+
             $paymentData = [
                 'order_no' => $orderNo,
                 'tutor_order_id' => $data['tutor_order_id'] ?? null,
@@ -205,17 +251,105 @@ class Payment extends BaseController
                 'amount' => $data['amount'],
                 'payment_method' => $data['payment_method'],
                 'payer_name' => $data['payer_name'],
-                'payer_contact' => $data['payer_contact'] ?? '',
+                // 约定：老师姓名与支付人姓名一致（前端支付页填写的姓名必须写入两字段，避免各页面取值不一致）
+                'teacher_name' => $data['payer_name'],
+                'payer_contact' => $data['payer_contact'],
                 'status' => 'pending'
             ];
+            if ($openidParam !== '') {
+                $paymentData['openid'] = $openidParam;
+            }
             
             // 只有当dispatcher_id字段存在时才添加
             if (isset($data['dispatcher_id'])) {
-                $paymentData['dispatcher_id'] = $data['dispatcher_id'];
+                $paymentData['dispatcher_id'] = (int) $data['dispatcher_id'];
+            }
+
+            // 未传派单客服时，从家教订单上继承 dispatcher_id（预约单支付常见）
+            $dispatcherId = (int) ($paymentData['dispatcher_id'] ?? 0);
+            $tutorOrderId = $paymentData['tutor_order_id'] ?? null;
+            if ($dispatcherId <= 0 && $tutorOrderId !== null && $tutorOrderId !== '') {
+                $ord = TutorOrder::where('id', $tutorOrderId)->field('dispatcher_id')->find();
+                if ($ord && !empty($ord['dispatcher_id'])) {
+                    $dispatcherId = (int) $ord['dispatcher_id'];
+                    $paymentData['dispatcher_id'] = $dispatcherId;
+                }
+            }
+
+            // 对接同学：写入展示名（与 Db::name(admin) 一致，避免模型与表配置不一致时查不到人）
+            $contactStudent = '';
+            if ($dispatcherId > 0) {
+                $admRow = Db::name('admin')->where('id', $dispatcherId)->field('nickname,username')->find();
+                if ($admRow) {
+                    $contactStudent = (string) (($admRow['nickname'] ?? '') !== '' ? $admRow['nickname'] : ($admRow['username'] ?? ''));
+                }
+            }
+            // 展示名：支持多种键名（前端可能传 staff_name / staffName / contact_student）
+            $staffName = '';
+            foreach (['staff_name', 'staffName', 'contact_student'] as $_snKey) {
+                if (!isset($data[$_snKey])) {
+                    continue;
+                }
+                $cand = trim((string) $data[$_snKey]);
+                if ($cand !== '') {
+                    $staffName = $cand;
+                    break;
+                }
+            }
+            if ($contactStudent === '' && $staffName !== '') {
+                $contactStudent = $staffName;
+            }
+            // 仅有 dispatcher_id、库里查不到昵称时，至少写入可辨认占位，避免 contact_student 全空
+            if ($contactStudent === '' && $dispatcherId > 0) {
+                $contactStudent = '客服#' . $dispatcherId;
+            }
+            if ($contactStudent !== '') {
+                $paymentData['contact_student'] = mb_substr($contactStudent, 0, 50, 'UTF-8');
+            }
+
+            // 支付备注（用户端选填）：写入 pay_remark
+            $payRemark = trim((string)($data['pay_remark'] ?? ''));
+            if ($payRemark !== '') {
+                $paymentData['pay_remark'] = mb_substr($payRemark, 0, 500, 'UTF-8');
+            }
+
+            if (isset($paymentData['dispatcher_id']) && (int) $paymentData['dispatcher_id'] <= 0) {
+                unset($paymentData['dispatcher_id']);
             }
             
             // 创建支付记录
             $payment = PaymentModel::create($paymentData);
+
+            // 再次用 Db 写入对接信息：防止 ORM 与表字段缓存不一致时 insert 静默丢掉 contact_student / dispatcher_id
+            $persistPatch = [];
+            if (!empty($paymentData['contact_student'])) {
+                $persistPatch['contact_student'] = $paymentData['contact_student'];
+            }
+            if (!empty($paymentData['dispatcher_id'])) {
+                $persistPatch['dispatcher_id'] = (int) $paymentData['dispatcher_id'];
+            }
+            if (!empty($paymentData['openid'])) {
+                $persistPatch['openid'] = $paymentData['openid'];
+            }
+            if (!empty($paymentData['teacher_name'])) {
+                $persistPatch['teacher_name'] = $paymentData['teacher_name'];
+            }
+            if (!empty($paymentData['payer_name'])) {
+                $persistPatch['payer_name'] = $paymentData['payer_name'];
+            }
+            if (!empty($paymentData['pay_remark'])) {
+                $persistPatch['pay_remark'] = $paymentData['pay_remark'];
+            }
+            if ($persistPatch !== [] && $payment && $payment->id) {
+                $persistPatch['update_time'] = date('Y-m-d H:i:s');
+                Db::name('payments')->where('id', (int) $payment->id)->update($persistPatch);
+                $payment->contact_student = $persistPatch['contact_student'] ?? $payment->contact_student;
+                if (isset($persistPatch['dispatcher_id'])) {
+                    $payment->dispatcher_id = $persistPatch['dispatcher_id'];
+                }
+            }
+
+            trace('创建支付订单落库: id=' . ($payment->id ?? '') . ' contact_student=' . ($paymentData['contact_student'] ?? '') . ' dispatcher_id=' . ($paymentData['dispatcher_id'] ?? ''), 'info');
             
             // 调用微信支付接口
             if ($data['payment_method'] === 'wechat') {
@@ -564,20 +698,36 @@ class Payment extends BaseController
     public function dispatchers()
     {
         try {
-            // 从数据库获取派单客服
+            // 可对接人员：派单组 + 客服组 + 组长（与支付页「派单客服」一致；原仅 dispatcher 时客服账号不会出现在列表）
             $dispatchers = Db::name('admin')
                 ->where('status', 1)
-                ->where('role', 'dispatcher')
+                ->whereIn('role', ['dispatcher', 'customer_service', 'team_leader'])
                 ->field('id,username,nickname,contact,status')
-                ->select();
+                ->order('id', 'asc')
+                ->select()
+                ->toArray();
             
             // 如果没有数据，返回测试数据
+            $out = [];
+            foreach ($dispatchers as $row) {
+                $out[] = [
+                    'id' => (int) $row['id'],
+                    'username' => $row['username'] ?? '',
+                    'nickname' => $row['nickname'] ?? '',
+                    'name' => ($row['nickname'] ?? '') !== '' ? $row['nickname'] : ($row['username'] ?? ''),
+                    'contact' => $row['contact'] ?? '',
+                    'status' => (int) ($row['status'] ?? 1),
+                ];
+            }
+            $dispatchers = $out;
+
             if (empty($dispatchers)) {
                 $dispatchers = [
                     [
                         'id' => 1,
                         'username' => 'admin1',
                         'nickname' => '客服小王',
+                        'name' => '客服小王',
                         'contact' => '13800138001',
                         'status' => 1
                     ],
@@ -585,6 +735,7 @@ class Payment extends BaseController
                         'id' => 2,
                         'username' => 'admin2',
                         'nickname' => '客服小李',
+                        'name' => '客服小李',
                         'contact' => '13800138002',
                         'status' => 1
                     ],
@@ -592,6 +743,7 @@ class Payment extends BaseController
                         'id' => 3,
                         'username' => 'admin3',
                         'nickname' => '客服小张',
+                        'name' => '客服小张',
                         'contact' => '13800138003',
                         'status' => 1
                     ]
@@ -607,6 +759,7 @@ class Payment extends BaseController
                     'id' => 1,
                     'username' => 'admin1',
                     'nickname' => '客服小王',
+                    'name' => '客服小王',
                     'contact' => '13800138001',
                     'status' => 1
                 ],
@@ -614,6 +767,7 @@ class Payment extends BaseController
                     'id' => 2,
                     'username' => 'admin2',
                     'nickname' => '客服小李',
+                    'name' => '客服小李',
                     'contact' => '13800138002',
                     'status' => 1
                 ]

@@ -144,6 +144,16 @@
 							</view>
 						</picker>
 					</view>
+
+					<view class="form-item">
+						<text class="label">可辅导时间段</text>
+						<available-time-slots
+							ref="availableTimeSlotsRef"
+							v-model="formData.availableTimeSlots"
+							@input="onAvailableTimeSlotsInput"
+							:duration-text="formData.duration"
+						/>
+					</view>
 				</view>
 
 				<!-- 教师要求 -->
@@ -265,8 +275,11 @@
 <script>
 import { searchApi, bookingApi, teacherApi } from '@/utils/api.js'
 import auth from '@/utils/auth.js'
+import { formatAvailableTimeSlotsForApi } from '@/utils/availableTimeSlotsFormat.js'
+import AvailableTimeSlots from '@/components/available-time-slots/index.vue'
 
 export default {
+	components: { AvailableTimeSlots },
 	data() {
 		return {
 			statusBarHeight: 0,
@@ -297,7 +310,10 @@ export default {
 				contactName: '',
 				contactPhone: '',
 				wechat: ''
+				,
+				availableTimeSlots: []
 			},
+			_latestAvailableTimeSlots: [],
 			gradeLevels: ['幼儿', '小学', '初中', '高中'],
 			gradeMap: {
 				'幼儿': ['小班', '中班', '大班'],
@@ -363,6 +379,10 @@ export default {
 		}
 	},
 	methods: {
+		onAvailableTimeSlotsInput(v) {
+			this._latestAvailableTimeSlots = Array.isArray(v) ? v : []
+			this.$set(this.formData, 'availableTimeSlots', this._latestAvailableTimeSlots)
+		},
 		loadUserInfo() {
 			// 自动获取用户信息
 			const userInfo = auth.getUserInfo()
@@ -698,7 +718,21 @@ export default {
 					budget: budgetText,
 					budget_min: budgetMin,
 					budget_max: budgetMax,
-					teacher_id: this.teacherId || null // 添加教师ID
+					teacher_id: this.teacherId || null, // 添加教师ID
+					available_time_slots: (() => {
+						// 兜底：部分端(v-model 未同步)表单里是空，但组件内部有值
+						const sourceSlots = (Array.isArray(this._latestAvailableTimeSlots) && this._latestAvailableTimeSlots.length)
+							? this._latestAvailableTimeSlots
+							: this.formData.availableTimeSlots
+						const fromModel = formatAvailableTimeSlotsForApi(sourceSlots, this.formData.duration)
+						if (Array.isArray(fromModel) && fromModel.length > 0) return fromModel
+						const ref = this.$refs.availableTimeSlotsRef
+						if (ref && typeof ref.formatForApi === 'function') {
+							const fromRef = ref.formatForApi()
+							return Array.isArray(fromRef) ? fromRef : []
+						}
+						return []
+					})()
 				}
 
 				// 调用后端API（传递管理员信息以便后台显示归属管理员）
@@ -1139,6 +1173,37 @@ export default {
 
 .address-display:active {
 	background: #E8EBF0;
+}
+
+.slot-list {
+	display: flex;
+	flex-direction: column;
+	gap: 16rpx;
+}
+
+.slot-row {
+	background: #F8FAFC;
+	padding: 16rpx;
+	border-radius: 12rpx;
+	display: flex;
+	flex-direction: column;
+	gap: 12rpx;
+}
+
+.slot-end-text {
+	font-size: 24rpx;
+	color: #666;
+}
+
+.slot-add {
+	margin-top: 12rpx;
+	color: #52C9A6;
+	font-size: 26rpx;
+}
+
+.slot-remove {
+	color: #F56C6C;
+	font-size: 24rpx;
 }
 
 .address-text {

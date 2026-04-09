@@ -6,7 +6,7 @@
 				<view class="navbar-back" @click="handleBack">
 					<text class="back-icon">‹</text>
 				</view>
-				<text class="navbar-title">预约家教</text>
+				<text class="navbar-title">免费找家教</text>
 				<view class="navbar-placeholder"></view>
 			</view>
 		</view>
@@ -22,12 +22,19 @@
 			</view>
 		</view>
 		
-		<!-- 表单内容 -->
-		<scroll-view class="content" scroll-y>
+		<!-- 表单滚动区；底部按钮与平台说明在 footer-fixed-dock 内固定 -->
+		<!-- :key 换步重建；scroll-into-view 仅在换步时滚顶（不写 @scroll），避免 0→1 时底栏 padding 变化+科目异步增高仍停在底部 -->
+		<scroll-view
+			class="content"
+			scroll-y
+			:key="'booking-scroll-' + currentStep"
+			:scroll-into-view="scrollIntoView"
+			:scroll-with-animation="false"
+			:style="{ paddingBottom: contentPaddingBottom }"
+		>
+			<view id="stepBookingScrollTopAnchor" class="scroll-top-anchor" />
 			<!-- 步骤0: 学生信息 -->
 			<view v-if="currentStep === 0" class="form-section">
-				<view class="section-title">学生信息</view>
-				
 				<view class="form-item">
 					<text class="label">年级段 <text class="required">*</text></text>
 					<view class="grid">
@@ -65,7 +72,7 @@
 			
 			<!-- 步骤1: 辅导信息 -->
 			<view v-if="currentStep === 1" class="form-section">
-				<view class="section-title">辅导信息</view>
+				
 				
 				<view class="form-item">
 					<text class="label">辅导科目 <text class="required">*</text></text>
@@ -107,8 +114,18 @@
 					<view class="grid">
 						<view v-for="item in durations" :key="item"
 							class="item" :class="{ active: formData.duration === item }"
-							@click="formData.duration = item">{{ item }}</view>
+							@click="setDuration(item)">{{ item }}</view>
 					</view>
+				</view>
+
+				<view class="form-item">
+					<text class="label">可辅导时间段</text>
+					<available-time-slots
+						ref="availableTimeSlotsRef"
+						v-model="formData.availableTimeSlots"
+						@input="onAvailableTimeSlotsInput"
+						:duration-text="formData.duration"
+					/>
 				</view>
 				
 				<view class="form-item">
@@ -131,7 +148,7 @@
 			
 			<!-- 步骤2: 老师要求 -->
 			<view v-if="currentStep === 2" class="form-section">
-				<view class="section-title">老师要求</view>
+				
 				
 				<view class="form-item">
 					<text class="label">教师类型 <text class="required">*</text></text>
@@ -173,7 +190,7 @@
 			
 			<!-- 步骤3: 联系信息 -->
 			<view v-if="currentStep === 3" class="form-section">
-				<view class="section-title">联系信息</view>
+				
 				
 				<view class="form-item">
 					<text class="label">联系人 <text class="required">*</text></text>
@@ -195,10 +212,25 @@
 			</view>
 		</scroll-view>
 		
-		<!-- 底部按钮 -->
-		<view class="footer" :style="{ paddingBottom: (safeAreaBottom + 20) + 'rpx' }">
-			<button v-if="currentStep > 0" class="btn prev" @click="prevStep">上一步</button>
-			<button class="btn next" @click="nextStep">{{ isLastStep ? '提交预约' : '下一步' }}</button>
+		<!-- 底部固定：有平台说明时在按钮上方；无说明时仅按钮贴底 -->
+		<view class="footer-fixed-dock">
+			<view v-if="showTrustPanel" class="footer-trust-block">
+				<view class="trust-grid">
+					<view v-for="(item, idx) in trustHighlights" :key="idx" class="trust-item">
+						<view class="trust-icon" :class="'trust-icon--' + item.tone">
+							<uni-icons :type="item.iconType" :size="trustIconPx" color="#ffffff" />
+						</view>
+						<view class="trust-texts">
+							<text class="trust-title">{{ item.title }}</text>
+							<text class="trust-desc">{{ item.desc }}</text>
+						</view>
+					</view>
+				</view>
+			</view>
+			<view class="footer-actions footer-actions--fixed">
+				<button v-if="currentStep > 0" class="btn prev" @click="prevStep">上一步</button>
+				<button class="btn next" @click="nextStep">{{ isLastStep ? '提交预约' : (currentStep === 0 ? '开始匹配家教' : '下一步') }}</button>
+			</view>
 		</view>
 	</view>
 </template>
@@ -206,20 +238,31 @@
 <script>
 import { searchApi, bookingApi } from '@/utils/api.js'
 import auth from '@/utils/auth.js'
+import { formatAvailableTimeSlotsForApi } from '@/utils/availableTimeSlotsFormat.js'
+import AvailableTimeSlots from '@/components/available-time-slots/index.vue'
+import UniIcons from '@/uni_modules/uni-icons/components/uni-icons/uni-icons.vue'
 
 export default {
+	components: { AvailableTimeSlots, UniIcons },
 	data() {
 		return {
 			statusBarHeight: 0,
 			navbarHeight: 0,
-			safeAreaBottom: 0,
 			adminOpenid: null,  // 从URL获取的管理员openid（小程序内分享使用）
 			adminId: null,     // 从URL获取的管理员ID（管理后台复制的链接使用）
 			currentStep: 0,
 			totalSteps: 4,
 			stepTitles: ['学生信息', '辅导信息', '老师要求', '联系信息'],
+			trustIconPx: 20,
+			trustHighlights: [
+				{ title: '严格认证', desc: '教师身份资质审核', iconType: 'auth-filled', tone: 'green' },
+				{ title: '快速匹配', desc: '智能算法精准推荐', iconType: 'fire-filled', tone: 'blue' },
+				{ title: '价格透明', desc: '课时费直接付给老师', iconType: 'wallet-filled', tone: 'orange' },
+				{ title: '安心陪伴', desc: '平台客服全程保障沟通', iconType: 'heart-filled', tone: 'red' }
+			],
 			hasCheckedLogin: false, // 标记是否已经检查过登录
 			isReturningFromLogin: false, // 标记是否从登录页返回
+			scrollIntoView: '',
 			formData: {
 				gradeLevel: '',
 				grade: '',
@@ -242,7 +285,10 @@ export default {
 				contactName: '',
 				contactPhone: '',
 				wechat: ''
+				,
+				availableTimeSlots: []
 			},
+			_latestAvailableTimeSlots: [],
 			gradeLevels: ['幼儿', '小学', '初中', '高中'],
 			gradeMap: {
 				'幼儿': ['小班', '中班', '大班'],
@@ -265,6 +311,9 @@ export default {
 		isLastStep() {
 			return this.currentStep === this.totalSteps - 1
 		},
+		showTrustPanel() {
+			return this.currentStep === 0 || this.currentStep === 3
+		},
 		currentGrades() {
 			return this.gradeMap[this.formData.gradeLevel] || []
 		},
@@ -273,35 +322,43 @@ export default {
 				return []
 			}
 			return this.subjectsData[this.formData.subjectCategory].map(item => item.name)
+		},
+		/**
+		 * 为底部固定 dock 留白（与 .footer-fixed-dock 实际高度对齐，避免过大空白）
+		 */
+		contentPaddingBottom() {
+			const safe = 'env(safe-area-inset-bottom)'
+			if (this.showTrustPanel) {
+				return `calc(430rpx + ${safe})`
+			}
+			return `calc(132rpx + ${safe})`
 		}
+	},
+	onHide() {
+		this.flushSaveFormData()
+	},
+	onUnload() {
+		this.flushSaveFormData()
 	},
 	onLoad(options) {
 		const systemInfo = uni.getSystemInfoSync()
 		this.statusBarHeight = systemInfo.statusBarHeight || 0
 		this.navbarHeight = this.statusBarHeight + 44
-		this.safeAreaBottom = systemInfo.safeAreaInsets?.bottom || 0
 		
-		// ===== 调试信息：显示URL参数 =====
 		console.log('=== 页面加载调试信息 ===')
 		console.log('URL参数:', options)
-		console.log('admin_openid参数:', options.admin_openid)
-		// ===== 调试信息结束 =====
 		
-		// 获取URL参数：支持 admin_openid（小程序内分享）或 admin_id（管理后台复制的链接）
+		// 获取URL参数
 		if (options.admin_openid) {
 			this.adminOpenid = options.admin_openid
 			this.saveAdminParamsToStorage()
 			uni.setStorageSync('booking_share_admin_openid', options.admin_openid)
-			console.log('✅ 从URL获取管理员openid:', this.adminOpenid)
 		} else if (options.admin_id) {
 			this.adminId = options.admin_id
 			this.saveAdminParamsToStorage()
 			uni.setStorageSync('booking_share_admin_id', options.admin_id)
-			console.log('✅ 从URL获取管理员ID:', this.adminId)
 		} else {
-			// 尝试从 storage 恢复（例如：登录后返回时可能丢失 URL 参数）
 			this.restoreAdminParamsFromStorage()
-			// 再从全局兜底缓存恢复
 			if (!this.adminOpenid) {
 				const cachedOpenid = uni.getStorageSync('booking_share_admin_openid')
 				if (cachedOpenid) this.adminOpenid = cachedOpenid
@@ -310,14 +367,6 @@ export default {
 				const cachedAdminId = uni.getStorageSync('booking_share_admin_id')
 				if (cachedAdminId) this.adminId = cachedAdminId
 			}
-			if (!this.adminOpenid && !this.adminId) {
-				console.log('❌ URL中没有admin_openid或admin_id参数')
-			}
-		}
-		
-		// 检查是否从登录页返回
-		if (options.from === 'login') {
-			this.isReturningFromLogin = true
 		}
 		
 		this.loadSubjects()
@@ -325,74 +374,69 @@ export default {
 		this.loadSavedData()
 	},
 	onShow() {
-		// 每次显示页面时检查登录状态
-		this.checkLoginStatus()
+		// 每次页面显示时检查是否需要恢复步骤
+		const savedStep = uni.getStorageSync('step_booking_current_step')
+		if (savedStep !== null && savedStep !== undefined && savedStep !== '') {
+			const stepNum = parseInt(savedStep, 10)
+			if (!Number.isNaN(stepNum) && stepNum >= 0 && stepNum < this.totalSteps) {
+				console.log('onShow: 从storage恢复步骤:', stepNum)
+				this.currentStep = stepNum
+			}
+			uni.removeStorageSync('step_booking_current_step')
+		}
 	},
 	watch: {
+		currentStep(newVal, oldVal) {
+			this.$nextTick(() => {
+				this.bumpScrollToTopAnchor()
+				// 学生信息→辅导信息：去掉大 padding 后 + 科目接口渲染会改变可滚高度，易残留「在底部」的偏移，延迟再顶一次
+				if (newVal === 1 && oldVal === 0) {
+					setTimeout(() => this.bumpScrollToTopAnchor(), 80)
+					setTimeout(() => this.bumpScrollToTopAnchor(), 240)
+				}
+			})
+		},
 		formData: {
-			handler(newVal) {
-				// 实时保存表单数据到本地
-				this.saveFormData()
+			handler() {
+				// 深度监听每次变更都会跑，防抖写入存储，减少主线程与 IO 压力（输入/点选时更跟手）
+				if (this._formSaveTimer) clearTimeout(this._formSaveTimer)
+				this._formSaveTimer = setTimeout(() => {
+					this._formSaveTimer = null
+					this.saveFormData()
+				}, 400)
 			},
 			deep: true
 		}
 	},
 	methods: {
-		// 统一处理返回：始终回到家长端老师列表
-		handleBack() {
-			uni.reLaunch({
-				url: '/pages/teacher-library/index'
+		onAvailableTimeSlotsInput(v) {
+			this._latestAvailableTimeSlots = Array.isArray(v) ? v : []
+			this.$set(this.formData, 'availableTimeSlots', this._latestAvailableTimeSlots)
+		},
+		bumpScrollToTopAnchor() {
+			this.scrollIntoView = ''
+			this.$nextTick(() => {
+				this.scrollIntoView = 'stepBookingScrollTopAnchor'
+				this.$nextTick(() => {
+					this.scrollIntoView = ''
+				})
 			})
 		},
-		// 检查登录状态
-		checkLoginStatus() {
-			// 如果已经检查过登录，不再重复检查
-			if (this.hasCheckedLogin) {
-				return
+		flushSaveFormData() {
+			if (this._formSaveTimer) {
+				clearTimeout(this._formSaveTimer)
+				this._formSaveTimer = null
 			}
-			
-			// 检查是否登录
-			if (!auth.isLoggedIn()) {
-				// 跳转登录前保存管理员参数，以便登录后恢复
-				const adminParams = {}
-				if (this.adminOpenid) adminParams.admin_openid = this.adminOpenid
-				if (this.adminId) adminParams.admin_id = this.adminId
-				if (Object.keys(adminParams).length) {
-					uni.setStorageSync('booking_redirect_admin', adminParams)
-				}
-				// 如果是从登录页返回的，显示提示并延迟跳转
-				if (this.isReturningFromLogin) {
-					uni.showToast({
-						title: '请先登录后使用',
-						icon: 'none',
-						duration: 2000
-					})
-					
-					// 延迟3秒后再跳转
-					setTimeout(() => {
-						auth.navigateToLogin({ extraQuery: 'from=step-booking' })
-					}, 3000)
-				} else {
-					// 首次进入，立即提示并跳转
-					uni.showToast({
-						title: '请先登录',
-						icon: 'none'
-					})
-					
-					setTimeout(() => {
-						auth.navigateToLogin({ extraQuery: 'from=step-booking' })
-					}, 1500)
-				}
-				
-				// 标记已经检查过登录
-				this.hasCheckedLogin = true
-				return false
-			}
-			
-			// 已登录，标记已检查
-			this.hasCheckedLogin = true
-			return true
+			this.saveFormData()
 		},
+		// 统一处理返回：回到家长端新首页
+		handleBack() {
+			this.flushSaveFormData()
+			uni.reLaunch({
+				url: '/pages/parent-home/index'
+			})
+		},
+		// 删除 checkLoginStatus 方法，不再在进入页面时检查登录
 		
 		async loadSubjects() {
 			try {
@@ -400,6 +444,11 @@ export default {
 				if (res.success && res.data) {
 					this.subjectsData = res.data
 					this.subjectCategories = Object.keys(res.data)
+					if (this.currentStep === 1) {
+						this.$nextTick(() => {
+							this.bumpScrollToTopAnchor()
+						})
+					}
 				}
 			} catch (error) {
 				console.error('加载科目失败:', error)
@@ -508,6 +557,9 @@ export default {
 				this.formData.subject = ''
 			}
 		},
+		setDuration(item) {
+			this.formData.duration = item
+		},
 		chooseLocation() {
 			uni.chooseLocation({
 				success: (res) => {
@@ -542,12 +594,14 @@ export default {
 				if (this.isLastStep) {
 					this.submit()
 				} else {
+					this.flushSaveFormData()
 					this.currentStep++
 				}
 			}
 		},
 		prevStep() {
 			if (this.currentStep > 0) {
+				this.flushSaveFormData()
 				this.currentStep--
 			}
 		},
@@ -649,15 +703,28 @@ export default {
 			return true
 		},
 		async submit() {
-			// 再次检查登录状态
+			// 提交时检查登录状态
 			if (!auth.isLoggedIn()) {
+				this.flushSaveFormData()
+				// 保存当前步骤，登录后返回到这个步骤
+				uni.setStorageSync('step_booking_current_step', this.currentStep)
+				
+				// 保存管理员参数
+				const adminParams = {}
+				if (this.adminOpenid) adminParams.admin_openid = this.adminOpenid
+				if (this.adminId) adminParams.admin_id = this.adminId
+				if (Object.keys(adminParams).length) {
+					uni.setStorageSync('booking_redirect_admin', adminParams)
+				}
+				
 				uni.showToast({ title: '请先登录', icon: 'none' })
 				setTimeout(() => {
-					auth.navigateToLogin()
+					auth.navigateToLogin({ extraQuery: 'from=step-booking' })
 				}, 1500)
 				return
 			}
 			
+			this.flushSaveFormData()
 			const userInfo = auth.getUserInfo()
 			uni.showLoading({ title: '提交中...' })
 			
@@ -682,6 +749,20 @@ export default {
 						: '',
 					budget_min: parseInt(this.formData.budgetMin) || 0,
 					budget_max: parseInt(this.formData.budgetMax) || 0
+					,
+					available_time_slots: (() => {
+						const sourceSlots = (Array.isArray(this._latestAvailableTimeSlots) && this._latestAvailableTimeSlots.length)
+							? this._latestAvailableTimeSlots
+							: this.formData.availableTimeSlots
+						const fromModel = formatAvailableTimeSlotsForApi(sourceSlots, this.formData.duration)
+						if (Array.isArray(fromModel) && fromModel.length > 0) return fromModel
+						const ref = this.$refs.availableTimeSlotsRef
+						if (ref && typeof ref.formatForApi === 'function') {
+							const fromRef = ref.formatForApi()
+							return Array.isArray(fromRef) ? fromRef : []
+						}
+						return []
+					})()
 				}
 				
 				const res = await bookingApi.createBooking({
@@ -694,15 +775,21 @@ export default {
 				uni.hideLoading()
 				
 				if (res.code === 200) {
-					uni.showToast({ title: '预约成功', icon: 'success' })
-					
-					// 提交成功后清除保存的数据
+					const d = res.data || {}
+					try {
+						uni.setStorageSync('booking_success_last', {
+							contact_qrcode_url: d.contact_qrcode_url || '',
+							booking_service_phone: d.booking_service_phone || '',
+							contact_admin_nickname: d.contact_admin_nickname || '',
+							order_no: d.order_no || ''
+						})
+					} catch (e) {
+						// ignore
+					}
 					this.clearSavedData()
-					
-					setTimeout(() => {
-						// 家长端提交成功后回到优师精选页，方便继续浏览老师
-						uni.reLaunch({ url: '/pages/teacher-library/index' })
-					}, 1500)
+					// 清除保存的步骤
+					uni.removeStorageSync('step_booking_current_step')
+					uni.redirectTo({ url: '/pages/booking-success/index' })
 				} else {
 					uni.showToast({ title: res.message || '预约失败', icon: 'none' })
 				}
@@ -776,8 +863,14 @@ export default {
 
 <style lang="scss" scoped>
 .step-booking {
+	/* 必须同时给出 height：仅 min-height 时，真机 flex 子项 flex:1 常算不出高度，scroll-view 会变成 0 高 */
+	height: 100vh;
 	min-height: 100vh;
 	background: #F5F7FA;
+	display: flex;
+	flex-direction: column;
+	box-sizing: border-box;
+	overflow: hidden;
 }
 
 /* 自定义导航栏：复用预约表单的风格，保持顶部白色背景和系统感 */
@@ -826,6 +919,7 @@ export default {
 }
 
 .header {
+	flex-shrink: 0;
 	background: #fff;
 	padding: 20rpx 30rpx 30rpx;
 	box-shadow: 0 2rpx 8rpx rgba(0, 0, 0, 0.05);
@@ -842,27 +936,43 @@ export default {
 	transition: width 0.3s;
 }
 .step-info {
+	position: relative;
 	display: flex;
-	justify-content: space-between;
+	align-items: center;
+	justify-content: center;
 	margin-top: 20rpx;
+	min-height: 48rpx;
 }
 .step-title {
 	font-size: 32rpx;
 	font-weight: 600;
 	color: #1a202c;
+	text-align: center;
 }
 .step-count {
+	position: absolute;
+	right: 0;
+	top: 50%;
+	transform: translateY(-50%);
 	font-size: 28rpx;
 	color: #52C9A6;
 }
 .content {
-	padding: 30rpx 30rpx 200rpx;
+	flex: 1;
+	height: 0;
+	min-height: 0;
+	padding: 24rpx 24rpx 0;
+	/* padding-bottom 由模板 :style contentPaddingBottom 按步骤动态设置 */
 	box-sizing: border-box;
+}
+.scroll-top-anchor {
+	width: 100%;
+	height: 1px;
 }
 .form-section {
 	background: #fff;
 	border-radius: 20rpx;
-	padding: 40rpx 30rpx;
+	padding: 28rpx 24rpx;
 	box-shadow: 0 2rpx 12rpx rgba(0, 0, 0, 0.04);
 }
 .section-title {
@@ -873,7 +983,7 @@ export default {
 	text-align: center;
 }
 .form-item {
-	margin-bottom: 40rpx;
+	margin-bottom: 28rpx;
 }
 .form-item:last-child {
 	margin-bottom: 0;
@@ -882,7 +992,7 @@ export default {
 	display: block;
 	font-size: 28rpx;
 	color: #4a5568;
-	margin-bottom: 20rpx;
+	margin-bottom: 14rpx;
 	font-weight: 500;
 }
 .required {
@@ -892,13 +1002,13 @@ export default {
 .grid {
 	display: grid;
 	grid-template-columns: repeat(3, 1fr);
-	gap: 15rpx;
+	gap: 12rpx;
 }
 .grid-2 {
 	grid-template-columns: repeat(2, 1fr);
 }
 .item {
-	padding: 20rpx;
+	padding: 16rpx 12rpx;
 	background: #F5F7FA;
 	border-radius: 12rpx;
 	text-align: center;
@@ -1074,22 +1184,104 @@ export default {
 	font-size: 32rpx;
 	margin-left: 20rpx;
 }
-.footer {
+/* 表单与平台说明之间的操作区：浅绿灰底 + 主题色描边，与页灰底区分又不抢白卡片 */
+.action-bar {
+	margin-top: 32rpx;
+	margin-bottom: 24rpx;
+	padding: 32rpx 30rpx;
+	background: linear-gradient(165deg, #e8f4f0 0%, #e2f0eb 55%, #dcece6 100%);
+	border: 2rpx solid rgba(82, 201, 166, 0.45);
+	border-radius: 20rpx;
+	box-shadow: 0 4rpx 18rpx rgba(59, 168, 136, 0.1);
+	box-sizing: border-box;
+}
+.footer-actions {
+	display: flex;
+	gap: 24rpx;
+	width: 100%;
+}
+/* 整页底部固定：平台说明在上、操作按钮在下；安全区落在 dock 最底部 */
+.footer-fixed-dock {
 	position: fixed;
-	bottom: 0;
 	left: 0;
 	right: 0;
-	padding: 20rpx 30rpx;
-	background: #fff;
+	bottom: 0;
+	z-index: 100;
+	width: 100%;
+	background: #ffffff;
+	padding-bottom: env(safe-area-inset-bottom);
+	box-shadow: 0 -4rpx 20rpx rgba(0, 0, 0, 0.06);
+	box-sizing: border-box;
+}
+.footer-trust-block {
+	padding: 16rpx 24rpx 6rpx;
+	box-sizing: border-box;
+}
+.footer-actions--fixed {
+	padding: 12rpx 24rpx 16rpx;
+	box-sizing: border-box;
+}
+.trust-grid {
+	display: grid;
+	grid-template-columns: 1fr 1fr;
+	row-gap: 22rpx;
+	column-gap: 20rpx;
+	background: #f7fafc;
+	border-radius: 20rpx;
+	padding: 22rpx 22rpx 18rpx;
+	border: 1rpx solid #eef2f7;
+	box-sizing: border-box;
+}
+.trust-item {
 	display: flex;
-	gap: 20rpx;
-	box-shadow: 0 -2rpx 8rpx rgba(0, 0, 0, 0.05);
-	z-index: 99;
+	align-items: flex-start;
+	gap: 18rpx;
+	min-width: 0;
+}
+.trust-icon {
+	width: 60rpx;
+	height: 60rpx;
+	border-radius: 50%;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	flex-shrink: 0;
+	margin-top: 2rpx;
+}
+.trust-icon--green {
+	background: #10b981;
+}
+.trust-icon--blue {
+	background: #3b82f6;
+}
+.trust-icon--orange {
+	background: #f59e0b;
+}
+.trust-icon--red {
+	background: #ef4444;
+}
+.trust-texts {
+	flex: 1;
+	min-width: 0;
+	display: flex;
+	flex-direction: column;
+	gap: 8rpx;
+}
+.trust-title {
+	font-size: 26rpx;
+	font-weight: 600;
+	color: #1a202c;
+	line-height: 1.45;
+}
+.trust-desc {
+	font-size: 22rpx;
+	color: #6b7280;
+	line-height: 1.5;
 }
 .btn {
 	flex: 1;
-	height: 88rpx;
-	border-radius: 44rpx;
+	height: 96rpx;
+	border-radius: 48rpx;
 	font-size: 32rpx;
 	border: none;
 	display: flex;

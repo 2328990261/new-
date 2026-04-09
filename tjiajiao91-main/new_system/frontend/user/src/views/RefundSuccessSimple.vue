@@ -17,8 +17,14 @@ console.log('RefundSuccessSimple loaded')
 <style scoped>
 .refund-success-page {
   min-height: 100vh;
+  min-height: 100dvh;
+  height: 100dvh;
   background: #f5f5f5;
   padding: 20px;
+  overflow-x: hidden;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
 }
 
 .success-header {

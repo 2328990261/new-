@@ -1,8 +1,10 @@
-import { defineConfig } from 'vite'
+import { defineConfig, loadEnv } from 'vite'
 import vue from '@vitejs/plugin-vue'
 import path from 'path'
 
 export default defineConfig(({ command }) => {
+  const env = loadEnv(command === 'build' ? 'production' : 'development', process.cwd(), '')
+  const backendTarget = env.VITE_BACKEND_URL || 'http://localhost:8000'
   const config = {
     base: command === 'build' ? '/admin/' : '/',
     // 减少控制台输出 - 设置为silent完全不显示
@@ -29,19 +31,19 @@ export default defineConfig(({ command }) => {
       },
       proxy: {
         '/admin/api': {
-          target: 'http://localhost:8000',
+          target: backendTarget,
           changeOrigin: true,
           timeout: 300000,
           proxyTimeout: 300000
         },
         '/api': {
-          target: 'http://localhost:8000',
+          target: backendTarget,
           changeOrigin: true,
           timeout: 300000,
           proxyTimeout: 300000
         },
         '/uploads': {
-          target: 'http://localhost:8000',
+          target: backendTarget,
           changeOrigin: true
         }
       }

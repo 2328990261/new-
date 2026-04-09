@@ -23,6 +23,10 @@ Route::get('/', function () {
     ]);
 });
 
+// 微信/社交平台分享落地页（用于抓取 OG/meta，避免 SPA 链接仅显示 URL）
+Route::get('share/refund', 'api.Share/refund');
+Route::get('share/payment', 'api.Share/payment');
+
 // 引入管理端路由
 require_once __DIR__ . '/admin.php';
 

@@ -12,6 +12,139 @@ use think\Response;
 class MiniProgramBooking extends BaseController
 {
     /**
+     * 将相对路径二维码补全为可访问 URL
+     */
+    private function normalizeAssetUrl(string $raw): string
+    {
+        $raw = trim($raw);
+        if ($raw === '') {
+            return '';
+        }
+        if (preg_match('#^https?://#i', $raw)) {
+            return $raw;
+        }
+
+        return rtrim((string) $this->request->domain(), '/') . '/' . ltrim($raw, '/');
+    }
+
+    /**
+     * @return array{0: ?string, 1: ?string, 2: ?string} [qrcodeUrl, phone, displayName]
+     */
+    private function extractContactFromAdminRow($admin): array
+    {
+        if (!$admin) {
+            return [null, null, null];
+        }
+        $rawQr = trim((string) ($admin->wechat_qrcode ?? ''));
+        $url = $rawQr === '' ? null : $this->normalizeAssetUrl($rawQr);
+        $phone = trim((string) ($admin->booking_service_phone ?? ''));
+        $phoneOut = $phone === '' ? null : $phone;
+        $nick = trim((string) ($admin->nickname ?? ''));
+        if ($nick === '') {
+            $nick = trim((string) ($admin->username ?? ''));
+        }
+        $nameOut = $nick === '' ? null : $nick;
+
+        return [$url ?: null, $phoneOut, $nameOut];
+    }
+
+    /**
+     * 预约成功页：仅当订单已归属到具体管理员且该管理员配置了微信二维码时返回 URL；
+     *
+     * @return array{contact_qrcode_url: ?string, booking_service_phone: ?string, contact_admin_nickname: ?string}
+     */
+    private function resolveBookingContactForSuccess(?\app\model\Admin $admin): array
+    {
+        list($q, $p, $n) = $this->extractContactFromAdminRow($admin);
+        if ($q) {
+            return [
+                'contact_qrcode_url' => $q,
+                'booking_service_phone' => $p,
+                'contact_admin_nickname' => $n,
+            ];
+        }
+
+        return [
+            'contact_qrcode_url' => null,
+            'booking_service_phone' => $p,
+            'contact_admin_nickname' => $n,
+        ];
+    }
+
+    private function normalizeAvailableTimeSlots($slots)
+    {
+        if (is_string($slots) && $slots !== '') {
+            $decoded = json_decode($slots, true);
+            if (json_last_error() === JSON_ERROR_NONE) {
+                $slots = $decoded;
+            }
+        }
+
+        // 可辅导时间段为选填：空数组直接通过；有数据时仅保留校验通过的项，不阻断下单
+        if (!is_array($slots) || empty($slots)) {
+            return [true, '', []];
+        }
+
+        $normalized = [];
+        foreach ($slots as $slot) {
+            if (!is_array($slot)) {
+                continue;
+            }
+            $weekDay = intval($slot['week_day'] ?? 0);
+            $startTime = trim((string)($slot['start_time'] ?? ''));
+            $endTime = trim((string)($slot['end_time'] ?? ''));
+
+            if ($weekDay < 1 || $weekDay > 7) {
+                continue;
+            }
+            // 允许 end_time 为 24:00（跨天的边界），其余必须为 HH:mm 且分钟为 00/30
+            if (!preg_match('/^\d{2}:\d{2}$/', $startTime) || !preg_match('/^\d{2}:\d{2}$/', $endTime)) {
+                continue;
+            }
+
+            // 将时间转换为分钟（0-1440）
+            $startTs = strtotime('2000-01-01 ' . $startTime . ':00');
+            // end_time=24:00 时 strtotime 会进到下一天，这里手动处理为 1440 分钟
+            $endMinutes = null;
+            if ($endTime === '24:00') {
+                $endMinutes = 24 * 60;
+            } else {
+                $endTs = strtotime('2000-01-01 ' . $endTime . ':00');
+                if ($endTs !== false) {
+                    $endMinutes = (int)(($endTs - strtotime('2000-01-01 00:00:00')) / 60);
+                }
+            }
+            if ($startTs === false || $endMinutes === null) {
+                continue;
+            }
+            $startMinutes = (int)(($startTs - strtotime('2000-01-01 00:00:00')) / 60);
+            if ($endMinutes <= $startMinutes) {
+                continue;
+            }
+
+            // duration_minutes：优先取入参；不合法/不一致时按时间差兜底计算
+            $durationMinutesRaw = intval($slot['duration_minutes'] ?? 0);
+            $computedDuration = (int)($endMinutes - $startMinutes);
+            $durationMinutes = $durationMinutesRaw > 0 ? $durationMinutesRaw : $computedDuration;
+            if ($durationMinutes <= 0 || $durationMinutes % 30 !== 0) {
+                continue;
+            }
+            if ($computedDuration > 0 && $computedDuration % 30 === 0 && $durationMinutes !== $computedDuration) {
+                // 若传入时长与时间差不一致，则以时间差为准（避免前端/历史数据导致被过滤成空）
+                $durationMinutes = $computedDuration;
+            }
+
+            $normalized[] = [
+                'week_day' => $weekDay,
+                'start_time' => $startTime,
+                'duration_minutes' => $durationMinutes,
+                'end_time' => $endTime
+            ];
+        }
+
+        return [true, '', $normalized];
+    }
+    /**
      * 创建预约订单
      * @return Response
      */
@@ -132,6 +265,8 @@ class MiniProgramBooking extends BaseController
             $teacherGender = $bookingData['teacher_gender'] ?? '';
             $teacherRequirement = trim($teacherType . ' ' . $teacherGender);
             
+            list(, , $normalizedSlots) = $this->normalizeAvailableTimeSlots($bookingData['available_time_slots'] ?? []);
+
             // 创建订单 - 所有字段独立保存
             $order = ParentOrder::create([
                 'order_no' => $orderNo,
@@ -149,12 +284,13 @@ class MiniProgramBooking extends BaseController
                 'teacher_requirement' => $teacherRequirement,  // 教师要求
                 'teacher_type' => $bookingData['teacher_type'] ?? '',
                 'teacher_gender' => $bookingData['teacher_gender'] ?? '',
-                'teacher_id' => $bookingData['teacher_id'] ?? null,  // 预约的教师ID
+                'teacher_id' => $bookingData['teacher_id'] ?? ($bookingData['selected_teacher_id'] ?? null),  // 预约的教师ID
                 'teaching_method' => $bookingData['teaching_method'] ?? '',
                 'address' => $bookingData['address'] ?? '',
                 'province_id' => $bookingData['province_id'] ?? 0,
                 'city_id' => $bookingData['city_id'] ?? 0,
                 'district_id' => $bookingData['district_id'] ?? 0,
+                'available_time_slots' => json_encode($normalizedSlots, JSON_UNESCAPED_UNICODE),
                 'parent_name' => $bookingData['contact'] ?? '',
                 'parent_contact' => $user->phone ?? '',
                 'remark' => $adminNickname ? "小程序预约（{$adminNickname}）" : '小程序预约',  // 在备注中显示管理员昵称
@@ -189,6 +325,8 @@ class MiniProgramBooking extends BaseController
                 \think\facade\Log::error('邮件发送异常: ' . $e->getMessage() . ' | ' . $e->getFile() . ':' . $e->getLine());
                 trace('邮件发送异常: ' . $e->getMessage(), 'error');
             }
+
+            $contactPayload = $this->resolveBookingContactForSuccess($admin);
             
             return json([
                 'code' => 200,
@@ -196,7 +334,10 @@ class MiniProgramBooking extends BaseController
                 'data' => [
                     'order_no' => $order->order_no,
                     'order_id' => $order->id,
-                    'order' => $order
+                    'order' => $order,
+                    'contact_qrcode_url' => $contactPayload['contact_qrcode_url'],
+                    'booking_service_phone' => $contactPayload['booking_service_phone'],
+                    'contact_admin_nickname' => $contactPayload['contact_admin_nickname'],
                 ]
             ]);
         } catch (\Exception $e) {
@@ -244,11 +385,18 @@ class MiniProgramBooking extends BaseController
                     'page' => $page
                 ]);
             
+            $items = [];
+            foreach ($list->items() as $item) {
+                $row = $item instanceof \think\Model ? $item->toArray() : $item;
+                $row['available_time_slots'] = json_decode((string)($row['available_time_slots'] ?? '[]'), true) ?: [];
+                $items[] = $row;
+            }
+
             return json([
                 'code' => 200,
                 'message' => '获取成功',
                 'data' => [
-                    'list' => $list->items(),
+                    'list' => $items,
                     'total' => $list->total(),
                     'page' => $page,
                     'pageSize' => $pageSize
@@ -300,10 +448,13 @@ class MiniProgramBooking extends BaseController
                 ]);
             }
             
+            $row = $order->toArray();
+            $row['available_time_slots'] = json_decode((string)($row['available_time_slots'] ?? '[]'), true) ?: [];
+
             return json([
                 'code' => 200,
                 'message' => '获取成功',
-                'data' => $order
+                'data' => $row
             ]);
         } catch (\Exception $e) {
             return json([

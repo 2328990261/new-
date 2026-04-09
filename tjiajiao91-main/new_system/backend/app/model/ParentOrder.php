@@ -35,6 +35,7 @@ class ParentOrder extends Model
         'province_id'         => 'int',     // 省份ID
         'city_id'             => 'int',     // 城市ID
         'district_id'         => 'int',     // 区县ID
+        'available_time_slots'=> 'string',  // 可辅导时间段(JSON)
         'parent_name'         => 'string',
         'parent_contact'      => 'string',
         'remark'              => 'string',

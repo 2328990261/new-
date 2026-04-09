@@ -6,7 +6,7 @@
       :closable="false"
       style="margin-bottom: 20px"
     >
-      配置微信支付和支付宝支付参数
+      配置微信支付和支付宝支付参数。微信支付卡片内设有「退费关注二维码」上传，用于用户端退费页未关注公众号时的引导图（与支付开关无关，可随时上传）。
     </el-alert>
 
     <!-- 微信支付配置 -->
@@ -51,7 +51,7 @@
         <el-form-item label="支付回调地址">
           <el-input v-model="wechatForm.notify_url" placeholder="支付成功后的回调URL" />
         </el-form-item>
-        
+
         <el-form-item>
           <el-button 
             type="primary" 
@@ -62,6 +62,38 @@
             测试配置
           </el-button>
           <span class="form-tip" style="margin-left: 10px">测试与微信支付服务器的连接</span>
+        </el-form-item>
+      </el-form>
+
+      <el-divider content-position="left">
+        <span style="font-weight: 600; color: #409eff">用户端退费 · 关注公众号二维码</span>
+      </el-divider>
+      <p class="divider-desc">以下图片展示在用户退费页：未关注服务号时出现。不随上方「微信支付」开关禁用，可随时上传；保存配置后生效。</p>
+      <el-form :model="wechatForm" label-width="140px">
+        <el-form-item label="退费关注二维码">
+          <div style="display: flex; flex-wrap: wrap; align-items: flex-start; gap: 12px;">
+            <el-upload
+              :show-file-list="false"
+              :on-success="handleRefundQrcodeSuccess"
+              :before-upload="beforeRefundQrcodeUpload"
+              action="/admin/api/upload/image"
+              :headers="{ Authorization: 'Bearer ' + getToken() }"
+              :data="{ skip_watermark: 1 }"
+              accept="image/*"
+            >
+              <el-button size="small" type="primary">上传二维码图片</el-button>
+            </el-upload>
+            <el-button v-if="wechatForm.refund_follow_qrcode" size="small" @click="clearRefundQrcode">清除</el-button>
+          </div>
+          <div v-if="wechatForm.refund_follow_qrcode" style="margin-top: 10px; position: relative; display: inline-block;">
+            <el-image
+              :src="getImageUrl(wechatForm.refund_follow_qrcode)"
+              :preview-src-list="[getImageUrl(wechatForm.refund_follow_qrcode)]"
+              fit="contain"
+              style="max-width: 200px; max-height: 200px; border-radius: 8px; border: 1px solid #e4e7ed;"
+            />
+          </div>
+          <div class="form-tip">请上传服务号「带参数二维码」或关注引导图；用户端退费流程会读取此图（需点击页面底部「保存配置」写入数据库）。</div>
         </el-form-item>
       </el-form>
     </el-card>
@@ -142,6 +174,8 @@ import { ElMessage } from 'element-plus'
 import { ChatDotRound, Coin } from '@element-plus/icons-vue'
 import { getPaymentConfig, updatePaymentConfig, testPaymentConfig } from '@/api/payment'
 
+const getToken = () => localStorage.getItem('admin_token') || ''
+
 const saving = ref(false)
 const testingWechat = ref(false)
 const testingAlipay = ref(false)
@@ -154,8 +188,48 @@ const wechatForm = reactive({
   app_secret: '',
   cert_path: '',
   key_path: '',
-  notify_url: ''
+  notify_url: '',
+  refund_follow_qrcode: ''
 })
+
+const beforeRefundQrcodeUpload = (file) => {
+  const isImage = file.type.startsWith('image/')
+  const isLt10M = file.size / 1024 / 1024 < 10
+  if (!isImage) {
+    ElMessage.error('只能上传图片文件')
+    return false
+  }
+  if (!isLt10M) {
+    ElMessage.error('图片大小不能超过 10MB')
+    return false
+  }
+  return true
+}
+
+const handleRefundQrcodeSuccess = (response) => {
+  if (response.success && response.data?.url) {
+    wechatForm.refund_follow_qrcode = response.data.url
+    ElMessage.success('二维码已上传')
+  } else {
+    ElMessage.error(response.error || '上传失败')
+  }
+}
+
+const clearRefundQrcode = () => {
+  wechatForm.refund_follow_qrcode = ''
+}
+
+// 预览图：相对路径用站点根（与当前页同源 HTTPS），勿默认 localhost 以免 Mixed Content
+const getImageUrl = (path) => {
+  if (!path) return ''
+  if (path.startsWith('http://') || path.startsWith('https://')) return path
+  const imagePath = path.startsWith('/') ? path : `/${path}`
+  const base = import.meta.env.VITE_BACKEND_URL
+  if (base && String(base).trim() !== '') {
+    return `${String(base).replace(/\/$/, '')}${imagePath}`
+  }
+  return imagePath
+}
 
 const alipayForm = reactive({
   enabled: false,
@@ -340,6 +414,13 @@ const handleTestAlipay = async () => {
 
 .config-card :deep(.el-form-item__label) {
   font-weight: 500;
+}
+
+.divider-desc {
+  font-size: 13px;
+  color: #909399;
+  margin: -8px 0 16px;
+  line-height: 1.5;
 }
 </style>
 

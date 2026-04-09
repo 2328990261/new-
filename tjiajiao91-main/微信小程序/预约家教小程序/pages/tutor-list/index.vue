@@ -1,12 +1,12 @@
 <template>
 	<view class="tutor-list-container">
 		<!-- 自定义导航栏 -->
-		<view class="nav-bar" :style="{paddingTop: statusBarHeight + 'px'}">
+		<view class="nav-bar" :style="{paddingTop: statusBarHeight + 'px'}" @click="scrollToTop">
 			<view class="nav-left">
 				<!-- 空白占位，保持布局对称 -->
 			</view>
 			<view class="nav-title">生源信息</view>
-			<view class="nav-right" @click="showShareMenu">
+			<view class="nav-right" @click.stop="showShareMenu">
 				<text class="share-icon">⋯</text>
 			</view>
 		</view>
@@ -478,6 +478,7 @@ export default {
 			
 			// 滚动相关
 			scrollTop: 0,
+			currentScrollTop: 0,
 			isSearchBarFixed: false,
 			bannerHeight: 320, // banner高度（rpx）
 			
@@ -657,6 +658,7 @@ export default {
 		// 滚动监听
 		handleScroll(e) {
 			const scrollTop = e.detail.scrollTop
+			this.currentScrollTop = scrollTop
 			// 将rpx转换为px：banner高度320rpx
 			const bannerHeightPx = uni.upx2px(this.bannerHeight)
 			
@@ -664,6 +666,17 @@ export default {
 			if (this.bannerList.length > 0) {
 				this.isSearchBarFixed = scrollTop > bannerHeightPx
 			}
+		},
+
+		// 点击顶部导航栏回到顶部
+		scrollToTop() {
+			// scroll-view 的 scroll-top 需要“发生变化”才会触发回顶
+			// 因为本页 scrollTop 通常保持为 0，所以用一次跳变确保生效
+			const from = this.currentScrollTop || 0
+			this.scrollTop = from
+			this.$nextTick(() => {
+				this.scrollTop = 0
+			})
 		},
 		
 		// 显示分享菜单

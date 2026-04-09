@@ -5,26 +5,29 @@
 // 获取微信分享配置
 let shareConfig = null
 let wxConfigReady = false
+let wxConfigError = null
 
 /**
  * 初始化微信分享配置
+ * 签名 url 必须与当前页 location 一致（含 query，不含 #）。
+ * SPA history 路由切换后须重新 init，见官方文档「变化 url 的 SPA」说明。
  */
 export async function initWechatShare() {
+  wxConfigReady = false
   try {
     const { getWechatShareConfig } = await import('@/api/wechat')
-    
-    // 获取当前页面完整URL（不包含 # 后面的部分）
+
     const url = window.location.href.split('#')[0]
     
     const res = await getWechatShareConfig(url)
     if (res.success && res.data) {
       shareConfig = res.data
-      
+
       // 如果在微信环境且配置已启用，初始化微信 JS-SDK
       if (shareConfig.enabled && shareConfig.signature && isWechatBrowser()) {
         await initWxConfig(shareConfig)
       }
-      
+
       return shareConfig
     }
   } catch (error) {
@@ -61,13 +64,16 @@ async function initWxConfig(config) {
  * 配置微信 JS-SDK
  */
 function configWx(config, resolve, reject) {
+  wxConfigError = null
+  const debug = shouldEnableWxDebug()
   window.wx.config({
-    debug: false, // 开发时可以设置为 true 查看详细信息
+    debug, // 默认 false；地址加 ?wxdebug=1 时 true，便于看 config 报错
     appId: config.appId,
     timestamp: config.timestamp,
     nonceStr: config.nonceStr,
     signature: config.signature,
     jsApiList: config.jsApiList || [
+      'checkJsApi',
       'updateAppMessageShareData',
       'updateTimelineShareData',
       'onMenuShareTimeline',
@@ -82,6 +88,14 @@ function configWx(config, resolve, reject) {
 
   window.wx.error((err) => {
     wxConfigReady = false
+    wxConfigError = err
+    try {
+      // 方便在微信内置浏览器调试台查看
+      // eslint-disable-next-line no-console
+      console.warn('[wechatShare] wx.config error:', err)
+    } catch {
+      // ignore
+    }
     reject(err)
   })
 }
@@ -112,6 +126,104 @@ function loadWxScript() {
  * @param {string} options.link 分享链接
  * @param {string} options.imgUrl 分享图片
  */
+function applyWxShareData(shareData) {
+  if (!window.wx) return
+  const { title, desc, link, imgUrl } = shareData
+  const toFriend = { title, desc, link, imgUrl }
+  const toTimeline = { title, link, imgUrl }
+
+  const legacyFriend = () => {
+    if (typeof window.wx.onMenuShareAppMessage === 'function') {
+      window.wx.onMenuShareAppMessage(shareData)
+    }
+  }
+  const legacyTimeline = () => {
+    if (typeof window.wx.onMenuShareTimeline === 'function') {
+      window.wx.onMenuShareTimeline({ title, link, imgUrl })
+    }
+  }
+
+  const applyWithCheckResult = (res) => {
+    const cr = (res && res.checkResult) || {}
+    // 部分环境（如 PC 微信、旧客户端）有方法名但会报 function not implement，须以 checkResult 为准并保留 fail 回退
+    const canNewFriend = !!cr.updateAppMessageShareData
+    const canNewTimeline = !!cr.updateTimelineShareData
+
+    if (canNewFriend && typeof window.wx.updateAppMessageShareData === 'function') {
+      window.wx.updateAppMessageShareData({
+        ...toFriend,
+        fail: () => {
+          legacyFriend()
+        }
+      })
+      // 部分微信版本仅「转发给朋友」预览仍像纯链接；再挂一次旧版同参作兼容（与线上常见写法一致）
+      if (typeof window.wx.onMenuShareAppMessage === 'function') {
+        window.wx.onMenuShareAppMessage(shareData)
+      }
+    } else {
+      legacyFriend()
+    }
+
+    if (canNewTimeline && typeof window.wx.updateTimelineShareData === 'function') {
+      window.wx.updateTimelineShareData({
+        ...toTimeline,
+        fail: () => {
+          legacyTimeline()
+        }
+      })
+      if (typeof window.wx.onMenuShareTimeline === 'function') {
+        window.wx.onMenuShareTimeline({ title, link, imgUrl })
+      }
+    } else {
+      legacyTimeline()
+    }
+  }
+
+  if (typeof window.wx.checkJsApi === 'function') {
+    window.wx.checkJsApi({
+      jsApiList: [
+        'updateAppMessageShareData',
+        'updateTimelineShareData',
+        'onMenuShareAppMessage',
+        'onMenuShareTimeline'
+      ],
+      success: (res) => applyWithCheckResult(res),
+      fail: () => {
+        legacyFriend()
+        legacyTimeline()
+      }
+    })
+    return
+  }
+
+  if (typeof window.wx.updateAppMessageShareData === 'function') {
+    window.wx.updateAppMessageShareData({
+      ...toFriend,
+      fail: () => {
+        legacyFriend()
+      }
+    })
+    if (typeof window.wx.onMenuShareAppMessage === 'function') {
+      window.wx.onMenuShareAppMessage(shareData)
+    }
+  } else {
+    legacyFriend()
+  }
+  if (typeof window.wx.updateTimelineShareData === 'function') {
+    window.wx.updateTimelineShareData({
+      ...toTimeline,
+      fail: () => {
+        legacyTimeline()
+      }
+    })
+    if (typeof window.wx.onMenuShareTimeline === 'function') {
+      window.wx.onMenuShareTimeline({ title, link, imgUrl })
+    }
+  } else {
+    legacyTimeline()
+  }
+}
+
 export function setWechatShare(options = {}) {
   // 合并配置
   const shareData = {
@@ -127,17 +239,24 @@ export function setWechatShare(options = {}) {
   // 优先设置Meta标签（适用于所有情况）
   setMetaTags(shareData)
 
-  // 检查是否在微信环境中并且JS-SDK已配置
-  if (isWechatBrowser() && shareConfig && shareConfig.enabled && window.wx && wxConfigReady) {
-    // 微信环境且JS-SDK已就绪，使用微信JS-SDK
-    window.wx.ready(() => {
-      // 分享给朋友
-      window.wx.updateAppMessageShareData(shareData)
-      
-      // 分享到朋友圈
-      window.wx.updateTimelineShareData(shareData)
-    })
+  // 微信内：须在用户点右上角分享前完成 updateAppMessageShareData（官方文档）
+  if (!isWechatBrowser() || !shareConfig || !shareConfig.enabled || !window.wx) return
+
+  const run = () => applyWxShareData(shareData)
+
+  if (wxConfigReady) {
+    // config 已成功：直接设置；部分环境下重复 wx.ready 可能不触发
+    try {
+      run()
+    } catch (e) {
+      // eslint-disable-next-line no-console
+      console.warn('[wechatShare] apply share failed:', e)
+    }
+    window.wx.ready(run)
+    return
   }
+
+  window.wx.ready(run)
 }
 
 /**
@@ -146,6 +265,15 @@ export function setWechatShare(options = {}) {
 function isWechatBrowser() {
   const ua = navigator.userAgent.toLowerCase()
   return ua.includes('micromessenger')
+}
+
+function shouldEnableWxDebug() {
+  try {
+    const q = new URL(window.location.href).searchParams
+    return q.get('wxdebug') === '1'
+  } catch {
+    return false
+  }
 }
 
 /**
@@ -237,11 +365,19 @@ function getShareLink() {
 }
 
 /**
+ * H5 部署在 /user/ 子路径时（vite base），public 资源实际为 /user/static/...
+ */
+export function resolveUserH5Url(pathSegment) {
+  const base = import.meta.env.BASE_URL || '/'
+  const seg = String(pathSegment || '').replace(/^\//, '')
+  return `${window.location.origin}${base}${seg}`
+}
+
+/**
  * 获取默认分享图片
  */
 function getDefaultShareImage() {
-  // 返回默认的分享图片URL
-  return window.location.origin + '/favicon.ico'
+  return resolveUserH5Url('static/images/share-logo.png')
 }
 
 /**
@@ -330,4 +466,11 @@ function fallbackCopyToClipboard(text) {
  */
 export function getShareConfig() {
   return shareConfig
+}
+
+/**
+ * 获取微信 JS-SDK 配置错误（用于排查签名/域名问题）
+ */
+export function getWxConfigError() {
+  return wxConfigError
 }

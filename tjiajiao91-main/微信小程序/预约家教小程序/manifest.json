@@ -1,6 +1,6 @@
 {
     "name" : "预约家教小程序",
-    "appid" : "__UNI__25B9ED3",
+    "appid" : "__UNI__249E41C",
     "description" : "",
     "versionName" : "1.0.0",
     "versionCode" : "100",
@@ -36,7 +36,9 @@
                     "<uses-permission android:name=\"android.permission.WRITE_SETTINGS\"/>"
                 ]
             },
-            "ios" : {},
+            "ios" : {
+                "dSYMs" : false
+            },
             "sdkConfigs" : {}
         }
     },

@@ -16,6 +16,9 @@
       @view="handleView"
       @refund="handleRefund"
       @reject="handleReject"
+      @pin="handleTogglePin"
+      @remark="openRemarkDialog"
+      @remove="handleRemove"
       @load-more="loadMore"
       @go-to-data-panel="goToDataPanel"
     />
@@ -60,13 +63,13 @@
             </el-form-item>
           </el-col>
           <el-col :span="6">
-            <el-form-item label="家教名称">
-              <el-input v-model="searchForm.tutorName" placeholder="家教名称" clearable />
+            <el-form-item label="家教标题">
+              <el-input v-model="searchForm.tutorName" placeholder="家教标题" clearable />
             </el-form-item>
           </el-col>
           <el-col :span="6">
             <el-form-item label="老师姓名">
-              <el-input v-model="searchForm.teacherName" placeholder="老师姓名" clearable />
+              <el-input v-model="searchForm.payerName" placeholder="老师姓名" clearable />
             </el-form-item>
           </el-col>
           <el-col :span="6">
@@ -207,22 +210,67 @@
         </div>
       </div>
 
-      <el-table :data="paymentList" v-loading="loading" stripe border :default-sort="{ prop: 'paid_time', order: 'descending' }">
-        <el-table-column v-if="isColumnVisible('paid_time')" prop="paid_time" label="支付时间" min-width="150" sortable />
-        <el-table-column v-if="isColumnVisible('tutor_name')" prop="tutor_name" label="家教名称" min-width="180" show-overflow-tooltip />
-        <el-table-column v-if="isColumnVisible('teacher_name')" prop="teacher_name" label="老师姓名" min-width="90" />
-        <el-table-column v-if="isColumnVisible('status')" label="状态" min-width="96">
+      <!-- 批量操作栏（桌面端） -->
+      <div v-if="selectedRows.length > 0" class="batch-actions-bar">
+        <div class="batch-actions-left">
+          已选择 <b>{{ selectedRows.length }}</b> 条
+          <el-button size="small" @click="selectCurrentPage">选择本页</el-button>
+          <el-button size="small" @click="clearSelection">清空</el-button>
+        </div>
+        <div class="batch-actions-right">
+          <el-button size="small" type="primary" :loading="batchPinLoading" @click="handleBatchPin">
+            批量置顶
+          </el-button>
+          <el-button size="small" type="danger" :loading="batchRemoveLoading" @click="handleBatchRemove">
+            批量移除
+          </el-button>
+        </div>
+      </div>
+
+      <!-- 不要用 default-sort / 本地 sortable 按支付时间排序，否则会覆盖后端「置顶 + pinned_at」顺序 -->
+      <el-table
+        ref="tableRef"
+        :data="paymentList"
+        v-loading="loading"
+        stripe
+        border
+        @selection-change="handleSelectionChange"
+      >
+        <!-- 最左侧勾选 -->
+        <el-table-column type="selection" width="48" align="center" fixed="left" />
+        <el-table-column v-if="isColumnVisible('id')" prop="id" label="ID" min-width="70" align="center" />
+        <el-table-column v-if="isColumnVisible('order_no')" prop="order_no" label="订单编号" min-width="180" show-overflow-tooltip />
+        <el-table-column v-if="isColumnVisible('paid_time')" prop="paid_time" label="支付时间" min-width="150" />
+        <el-table-column v-if="isColumnVisible('tutor_name')" prop="tutor_name" label="家教标题" min-width="180" show-overflow-tooltip />
+        <el-table-column v-if="isColumnVisible('payer_name')" prop="payer_name" label="老师姓名" min-width="90">
+          <template #default="{ row }">
+            {{ row.teacher_name || row.payer_name || '' }}
+          </template>
+        </el-table-column>
+        <el-table-column
+          v-if="isColumnVisible('openid')"
+          prop="openid"
+          label="openid"
+          min-width="220"
+          show-overflow-tooltip
+        />
+        <el-table-column
+          v-if="isColumnVisible('status')"
+          label="状态"
+          min-width="118"
+          class-name="col-payment-status"
+        >
           <template #default="{ row }">
             <el-tag v-if="row.status === 'pending'" type="warning">待支付</el-tag>
             <el-tag v-else-if="(row.status === 'paid' || row.status === 'success') && !row.refund_status" type="success">已支付</el-tag>
-            <el-tag v-else-if="row.refund_status === 'pending'" type="warning">退款待处理</el-tag>
-            <el-tag v-else-if="row.refund_status === 'rejected'" type="danger">退款驳回</el-tag>
-            <el-tag v-else-if="row.refund_status === 'completed'" type="info">已退费</el-tag>
+            <el-tag v-else-if="String(row.refund_status || '').trim() === 'pending'" type="warning">退款待处理</el-tag>
+            <el-tag v-else-if="String(row.refund_status || '').trim() === 'rejected'" type="danger">退款驳回</el-tag>
+            <el-tag v-else-if="String(row.refund_status || '').trim() === 'completed'" type="info">已退费</el-tag>
             <el-tag v-else type="info">{{ row.status }}</el-tag>
           </template>
         </el-table-column>
         <el-table-column v-if="isColumnVisible('contact_student')" prop="contact_student" label="对接的同学" min-width="105" show-overflow-tooltip />
-        <el-table-column v-if="isColumnVisible('amount')" prop="amount" label="信息费金额" min-width="95" align="right" sortable>
+        <el-table-column v-if="isColumnVisible('amount')" prop="amount" label="信息费金额" min-width="95" align="right">
           <template #default="{ row }">
             {{ row.amount ? row.amount.toFixed(2) : '0.00' }}
           </template>
@@ -237,49 +285,55 @@
             {{ Number(row.refund_apply_amount || 0) > 0 ? Number(row.refund_apply_amount).toFixed(2) : '' }}
           </template>
         </el-table-column>
+        <el-table-column
+          v-if="isColumnVisible('remark')"
+          prop="remark"
+          label="订单备注"
+          min-width="180"
+          show-overflow-tooltip
+        />
+        <el-table-column
+          v-if="isColumnVisible('refund_reason')"
+          prop="refund_reason"
+          label="申请说明"
+          min-width="180"
+          show-overflow-tooltip
+        />
+        <el-table-column
+          v-if="isColumnVisible('pay_remark')"
+          prop="pay_remark"
+          label="支付备注"
+          min-width="180"
+          show-overflow-tooltip
+        />
         <el-table-column v-if="isColumnVisible('refunded_amount')" prop="refunded_amount" label="已退金额" min-width="90" align="right">
           <template #default="{ row }">
             {{ Number(row.refunded_amount || 0) > 0 ? Number(row.refunded_amount).toFixed(2) : '' }}
           </template>
         </el-table-column>
         <el-table-column v-if="isColumnVisible('refund_time')" prop="refund_time" label="退款时间" min-width="150" />
-        <el-table-column v-if="isColumnVisible('actual_amount')" prop="actual_amount" label="实收金额" min-width="95" align="right" sortable>
+        <el-table-column v-if="isColumnVisible('actual_amount')" prop="actual_amount" label="实收金额" min-width="95" align="right">
           <template #default="{ row }">
             {{ row.actual_amount ? row.actual_amount.toFixed(2) : '0.00' }}
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="240">
+        <el-table-column label="操作" min-width="300" fixed="right">
           <template #default="{ row }">
             <div class="operation-actions">
               <el-button type="primary" size="small" @click="handleView(row)">查看</el-button>
-              <el-button 
-                v-if="row.refund_status === 'pending'" 
-                type="success" 
-                size="small" 
+              <el-button
+                v-if="rowHasRefund(row)"
+                type="success"
+                size="small"
                 @click="handleRefund(row)"
               >
-                退费
+                审核
               </el-button>
-              <el-button 
-                v-if="row.refund_status === 'pending'" 
-                type="danger" 
-                size="small" 
-                @click="handleReject(row)"
-              >
-                驳回
+              <el-button type="warning" size="small" @click="handleTogglePin(row)">
+                {{ Number(row.is_pinned) ? '取消置顶' : '置顶' }}
               </el-button>
-              <el-dropdown trigger="click" @command="(cmd) => handleMoreAction(cmd, row)">
-                <el-button type="info" size="small">
-                  更多<el-icon class="el-icon--right"><MoreFilled /></el-icon>
-                </el-button>
-                <template #dropdown>
-                  <el-dropdown-menu>
-                    <el-dropdown-item command="query">查询</el-dropdown-item>
-                    <el-dropdown-item command="remark">备注</el-dropdown-item>
-                    <el-dropdown-item command="export">导出</el-dropdown-item>
-                  </el-dropdown-menu>
-                </template>
-              </el-dropdown>
+              <el-button size="small" @click="openRemarkDialog(row)">备注</el-button>
+              <el-button type="danger" size="small" @click="handleRemove(row)">移除</el-button>
             </div>
           </template>
         </el-table-column>
@@ -302,8 +356,8 @@
       <el-descriptions :column="2" border v-if="currentPayment">
         <el-descriptions-item label="订单号">{{ displayOrderNo(currentPayment) }}</el-descriptions-item>
         <el-descriptions-item label="支付时间">{{ currentPayment.paid_time }}</el-descriptions-item>
-        <el-descriptions-item label="家教名称">{{ currentPayment.tutor_name }}</el-descriptions-item>
-        <el-descriptions-item label="老师姓名">{{ currentPayment.teacher_name }}</el-descriptions-item>
+        <el-descriptions-item label="家教标题">{{ currentPayment.tutor_name }}</el-descriptions-item>
+        <el-descriptions-item label="老师姓名">{{ currentPayment.teacher_name || currentPayment.payer_name }}</el-descriptions-item>
         <el-descriptions-item label="对接同学">{{ currentPayment.contact_student || '-' }}</el-descriptions-item>
         <el-descriptions-item label="信息费金额">¥{{ currentPayment.amount }}</el-descriptions-item>
         <el-descriptions-item label="收到课酬">¥{{ currentPayment.deposit_amount || '0.00' }}</el-descriptions-item>
@@ -339,26 +393,57 @@
           </div>
           <span v-else>-</span>
         </el-descriptions-item>
-        <el-descriptions-item label="备注" :span="2">{{ currentPayment.remark || '-' }}</el-descriptions-item>
+        <el-descriptions-item label="订单备注" :span="2">{{ currentPayment.remark || '-' }}</el-descriptions-item>
+        <el-descriptions-item label="支付备注" :span="2">{{ currentPayment.pay_remark || '-' }}</el-descriptions-item>
       </el-descriptions>
     </el-dialog>
 
-    <!-- 退款弹窗 -->
-    <el-dialog v-model="refundDialogVisible" title="退款处理" width="500px">
-      <el-form :model="refundForm" label-width="100px">
-        <el-form-item label="退款金额">
-          <el-input-number v-model="refundForm.refundAmount" :min="0.01" :max="maxRefundAmount" :precision="2" />
-          <div style="color: #999; font-size: 12px; margin-top: 5px;">
-            可退金额：¥{{ maxRefundAmount }}
+    <!-- 退款弹窗：同意退款（可修改退费金额） -->
+    <el-dialog
+      v-model="refundDialogVisible"
+      title="同意退款"
+      width="620px"
+      :close-on-click-modal="false"
+      destroy-on-close
+    >
+      <div class="refund-approve-modal">
+        <div class="refund-approve-info">
+          <div class="refund-approve-info-row">
+            <span class="refund-approve-label">信息费金额</span>
+            <span class="refund-approve-value">
+              {{
+                currentPayment && currentPayment.amount != null ? Number(currentPayment.amount).toFixed(2) : '0.00'
+              }}
+            </span>
           </div>
-        </el-form-item>
-        <el-form-item label="备注">
-          <el-input v-model="refundForm.remark" type="textarea" :rows="3" placeholder="请输入备注" />
-        </el-form-item>
-      </el-form>
+          <div class="refund-approve-info-row">
+            <span class="refund-approve-label">申请应退</span>
+            <span class="refund-approve-value">
+              {{ Number(currentPayment?.refund_apply_amount || 0).toFixed(2) }}
+            </span>
+          </div>
+        </div>
+
+        <el-form :model="refundForm" label-position="left" label-width="100px" class="refund-approve-form">
+          <el-form-item label="退费金额" :required="true">
+            <el-input-number
+              v-model="refundForm.refundAmount"
+              :min="0.01"
+              :max="maxRefundAmount"
+              :precision="2"
+              controls-position="right"
+              placeholder="请输入退费金额"
+            />
+            <div class="refund-approve-hint">
+              可退金额：¥{{ Number(maxRefundAmount).toFixed(2) }}
+            </div>
+          </el-form-item>
+        </el-form>
+      </div>
+
       <template #footer>
-        <el-button @click="refundDialogVisible = false">取消</el-button>
-        <el-button type="primary" @click="confirmRefund" :loading="refundLoading">确定退费</el-button>
+        <el-button @click="resetRefundAmount">重置</el-button>
+        <el-button type="primary" @click="confirmRefund" :loading="refundLoading">确定</el-button>
       </template>
     </el-dialog>
 
@@ -374,16 +459,54 @@
         <el-button type="danger" @click="confirmReject" :loading="rejectLoading">确定驳回</el-button>
       </template>
     </el-dialog>
+
+    <el-dialog
+      v-model="reviewDialogVisible"
+      title="退费申请"
+      width="920px"
+      destroy-on-close
+      append-to-body
+      :close-on-click-modal="false"
+      class="payment-refund-dialog"
+    >
+      <div class="refund-dialog-body">
+        <RefundApplicationEmbed
+          v-if="reviewDialogVisible && reviewPaymentId"
+          embedded
+          :embed-payment-id="reviewPaymentId"
+          :seed-detail="reviewSeedDetail"
+          @processed="onReviewProcessed"
+          @updated="onReviewUpdated"
+        />
+      </div>
+    </el-dialog>
+
+    <!-- 备注（写入 tutor_orders_new.remark） -->
+    <el-dialog v-model="remarkAdminDialogVisible" title="备注" width="520px" destroy-on-close>
+      <el-input
+        v-model="remarkAdminText"
+        type="textarea"
+        :rows="6"
+        placeholder="请输入备注"
+        maxlength="2000"
+        show-word-limit
+      />
+      <template #footer>
+        <el-button @click="remarkAdminDialogVisible = false">取消</el-button>
+        <el-button type="primary" :loading="remarkAdminSaving" @click="saveAdminRemark">保存</el-button>
+      </template>
+    </el-dialog>
     </div>
   </div>
 </template>
 
 <script setup>
 import { ref, reactive, onMounted, computed, watch, onBeforeUnmount } from 'vue'
-import { ElMessage, ElMessageBox } from 'element-plus'
-import { RefreshRight, Grid, Download, Search, MoreFilled, Picture, DataAnalysis } from '@element-plus/icons-vue'
+import { ElMessage } from 'element-plus'
+import { RefreshRight, Grid, Download, Search, Picture, DataAnalysis } from '@element-plus/icons-vue'
 import { useRouter } from 'vue-router'
 import PaymentManageMobile from '@/components/payment/PaymentManageMobile.vue'
+import RefundApplicationEmbed from './PaymentDetail.vue'
 
 const router = useRouter()
 import { 
@@ -391,7 +514,10 @@ import {
   getPaymentStatistics,
   processRefund,
   rejectRefund,
-  getDispatchers
+  getDispatchers,
+  updatePaymentOrderRemark,
+  removePayment,
+  setPaymentPinned
 } from '@/api/payment'
 
 // 日期快捷选项
@@ -487,19 +613,26 @@ const getVoucherUrls = (voucherJson) => {
 
 // 列配置
 const allColumns = ref([
+  // 需求：列显示里“除了状态必须显示，其余都可去掉”
   { prop: 'id', label: 'ID', visible: false, required: false },
   { prop: 'order_no', label: '订单编号', visible: false, required: false },
-  { prop: 'paid_time', label: '支付时间', visible: true, required: true },
-  { prop: 'tutor_name', label: '家教名称', visible: true, required: true },
-  { prop: 'teacher_name', label: '老师姓名', visible: true, required: false },
+  { prop: 'paid_time', label: '支付时间', visible: true, required: false },
+  { prop: 'tutor_name', label: '家教标题', visible: true, required: false },
+  { prop: 'payer_name', label: '老师姓名', visible: true, required: false },
+  { prop: 'openid', label: 'openid', visible: false, required: false },
   { prop: 'status', label: '状态', visible: true, required: true },
   { prop: 'contact_student', label: '对接的同学', visible: true, required: false },
-  { prop: 'amount', label: '信息费金额', visible: true, required: true },
-  // 与旧版管理端保持一致：默认展示退款关键字段
-  { prop: 'deposit_amount', label: '收到课酬', visible: true, required: true },
-  { prop: 'refund_apply_amount', label: '申请应退', visible: true, required: true },
-  { prop: 'refunded_amount', label: '已退金额', visible: true, required: true },
-  { prop: 'refund_time', label: '退款时间', visible: true, required: true },
+  { prop: 'amount', label: '信息费金额', visible: true, required: false },
+  { prop: 'deposit_amount', label: '收到课酬', visible: true, required: false },
+  { prop: 'refund_apply_amount', label: '申请应退', visible: true, required: false },
+  // 申请说明：用户退费时填写的说明（列表默认不显示）
+  { prop: 'refund_reason', label: '申请说明', visible: false, required: false },
+  // 订单备注：管理员后台备注（列表默认显示）
+  { prop: 'remark', label: '订单备注', visible: true, required: false },
+  // 支付备注：用户支付时备注（列表默认不显示，仅详情展示）
+  { prop: 'pay_remark', label: '支付备注', visible: false, required: false },
+  { prop: 'refunded_amount', label: '已退金额', visible: true, required: false },
+  { prop: 'refund_time', label: '退款时间', visible: true, required: false },
   { prop: 'actual_amount', label: '实收金额', visible: true, required: false }
 ])
 
@@ -511,6 +644,8 @@ const initVisibleColumns = () => {
   const defaultVisible = allColumns.value.filter(col => col.visible).map(col => col.prop)
   const requiredColumns = allColumns.value.filter(col => col.required).map(col => col.prop)
   const savedColumns = localStorage.getItem('payment_visible_columns')
+  const savedVersion = localStorage.getItem('payment_visible_columns_version') || ''
+  const CURRENT_VERSION = '2026-04-08-hide-refund-reason-and-pay-remark'
   if (savedColumns) {
     let parsed = []
     try {
@@ -518,6 +653,14 @@ const initVisibleColumns = () => {
       if (!Array.isArray(parsed)) parsed = []
     } catch (e) {
       parsed = []
+    }
+    parsed = parsed.map((col) => (col === 'teacher_name' ? 'payer_name' : col))
+    // 列配置迁移：将“申请说明/支付备注”默认改为不展示
+    // - 仅在旧版本配置上执行一次，避免影响用户之后手动勾选偏好
+    if (savedVersion !== CURRENT_VERSION) {
+      parsed = parsed.filter((c) => c !== 'refund_reason' && c !== 'pay_remark')
+      localStorage.setItem('payment_visible_columns_version', CURRENT_VERSION)
+      localStorage.setItem('payment_visible_columns', JSON.stringify(parsed))
     }
     // 兼容历史列配置：补齐新增默认列与必选列，避免页面升级后看不到关键字段
     visibleColumns.value = Array.from(new Set([...parsed, ...defaultVisible, ...requiredColumns]))
@@ -554,6 +697,66 @@ const activeTab = ref('all')
 // 加载状态
 const loading = ref(false)
 
+// 表格多选（桌面端）
+const tableRef = ref(null)
+const selectedRows = ref([])
+const batchRemoveLoading = ref(false)
+const batchPinLoading = ref(false)
+
+const handleSelectionChange = (rows) => {
+  selectedRows.value = Array.isArray(rows) ? rows : []
+}
+
+const clearSelection = () => {
+  selectedRows.value = []
+  tableRef.value?.clearSelection?.()
+}
+
+// 选择当前页（把当前 paymentList 全选）
+const selectCurrentPage = () => {
+  tableRef.value?.clearSelection?.()
+  ;(paymentList.value || []).forEach((row) => {
+    tableRef.value?.toggleRowSelection?.(row, true)
+  })
+}
+
+const handleBatchRemove = async () => {
+  if (selectedRows.value.length <= 0) return
+  batchRemoveLoading.value = true
+  try {
+    const ids = selectedRows.value.map((r) => r.id).filter(Boolean)
+    const results = await Promise.allSettled(ids.map((id) => removePayment(id)))
+    const ok = results.filter((r) => r.status === 'fulfilled').length
+    const fail = results.length - ok
+    ElMessage.success(`已移除 ${ok} 条` + (fail ? `，失败 ${fail} 条` : ''))
+    clearSelection()
+    getList()
+    getStatistics()
+  } catch (e) {
+    ElMessage.error('批量移除失败')
+  } finally {
+    batchRemoveLoading.value = false
+  }
+}
+
+const handleBatchPin = async () => {
+  if (selectedRows.value.length <= 0) return
+  batchPinLoading.value = true
+  try {
+    const ids = selectedRows.value.map((r) => r.id).filter(Boolean)
+    const results = await Promise.allSettled(ids.map((id) => setPaymentPinned(id, true)))
+    const ok = results.filter((r) => r.status === 'fulfilled').length
+    const fail = results.length - ok
+    ElMessage.success(`已置顶 ${ok} 条` + (fail ? `，失败 ${fail} 条` : ''))
+    clearSelection()
+    getList()
+  } catch (e) {
+    ElMessage.error('批量置顶失败')
+  } finally {
+    batchPinLoading.value = false
+  }
+}
+
 // 搜索关键字
 const searchKeyword = ref('')
 
@@ -561,7 +764,7 @@ const searchKeyword = ref('')
 const searchForm = reactive({
   payTime: null,
   tutorName: '',
-  teacherName: '',
+  payerName: '',
   status: undefined,
   amountMin: '',
   amountMax: '',
@@ -603,14 +806,18 @@ const displayOrderNo = (payment) => {
 // 退款
 const refundDialogVisible = ref(false)
 const refundLoading = ref(false)
+const refundRemarkDefault = '管理员同意退款'
 const refundForm = reactive({
   id: null,
   refundAmount: 0,
-  remark: ''
+  remark: refundRemarkDefault
 })
+const refundDefaultAmount = ref(0)
 const maxRefundAmount = computed(() => {
   if (!currentPayment.value) return 0
-  return currentPayment.value.amount - currentPayment.value.refunded_amount
+  const canRefund =
+    Number(currentPayment.value.amount || 0) - Number(currentPayment.value.refunded_amount || 0)
+  return Math.max(0, canRefund)
 })
 
 // 驳回
@@ -620,6 +827,18 @@ const rejectForm = reactive({
   id: null,
   rejectReason: ''
 })
+const reviewDialogVisible = ref(false)
+const reviewPaymentId = ref(null)
+const reviewSeedDetail = ref(null)
+
+const remarkAdminDialogVisible = ref(false)
+const remarkAdminSaving = ref(false)
+const remarkAdminText = ref('')
+const remarkAdminId = ref(null)
+/** 存在退款流程时显示「审核」（跳转退款申请页） */
+const rowHasRefund = (row) => {
+  return String(row?.refund_status || '').trim() === 'pending'
+}
 
 // 标签页切换
 const handleTabClick = (tab) => {
@@ -630,7 +849,8 @@ const handleTabClick = (tab) => {
   } else if (tab.props.name === 'paid') {
     // 后端支付成功状态使用 success（不是 paid）
     searchForm.status = 'success'
-    delete searchForm.refund_status
+    // 已支付 Tab：排除所有退款状态（pending/rejected/completed），仅保留 refund_status 为空的订单
+    searchForm.refund_status = 'none'
   } else {
     // 退款相关状态仅在已支付(success)数据上筛选
     searchForm.status = 'success'
@@ -652,7 +872,7 @@ const getList = async () => {
 
     // 添加有值的筛选参数
     if (searchForm.tutorName) params.tutor_name = searchForm.tutorName
-    if (searchForm.teacherName) params.teacher_name = searchForm.teacherName
+    if (searchForm.payerName) params.payer_name = searchForm.payerName
     if (searchForm.status) params.status = searchForm.status
     if (searchForm.dispatcherId) params.dispatcher_id = searchForm.dispatcherId
     if (searchForm.amountMin) params.amount_min = searchForm.amountMin
@@ -683,8 +903,26 @@ const getList = async () => {
 
     const res = await getPaymentList(params)
     if (res.success || res.code === 200) {
-      paymentList.value = res.data.list || []
+      const list = res.data.list || []
+      // 默认按时间倒序（同时兼容置顶优先）
+      const toTs = (v) => {
+        const s = String(v || '').trim()
+        if (!s) return 0
+        const t = Date.parse(s.replace(/-/g, '/'))
+        return Number.isFinite(t) ? t : 0
+      }
+      paymentList.value = [...list].sort((a, b) => {
+        const ap = Number(a?.is_pinned || 0)
+        const bp = Number(b?.is_pinned || 0)
+        if (ap !== bp) return bp - ap
+        const at = toTs(a?.pinned_at) || toTs(a?.paid_time) || toTs(a?.refund_time) || toTs(a?.create_time)
+        const bt = toTs(b?.pinned_at) || toTs(b?.paid_time) || toTs(b?.refund_time) || toTs(b?.create_time)
+        if (at !== bt) return bt - at
+        return Number(b?.id || 0) - Number(a?.id || 0)
+      })
       pagination.total = res.data.total || 0
+      // 翻页/刷新后，避免“勾选残留”与数据不一致
+      clearSelection()
     }
   } catch (error) {
     
@@ -701,7 +939,7 @@ const getStatistics = async () => {
 
     // 添加有值的筛选参数
     if (searchForm.tutorName) params.tutor_name = searchForm.tutorName
-    if (searchForm.teacherName) params.teacher_name = searchForm.teacherName
+    if (searchForm.payerName) params.payer_name = searchForm.payerName
     if (searchForm.dispatcherId) params.dispatcher_id = searchForm.dispatcherId
     if (searchForm.amountMin) params.amount_min = searchForm.amountMin
     if (searchForm.amountMax) params.amount_max = searchForm.amountMax
@@ -752,7 +990,7 @@ const handleSearch = () => {
 const handleReset = () => {
   searchForm.payTime = null
   searchForm.tutorName = ''
-  searchForm.teacherName = ''
+  searchForm.payerName = ''
   searchForm.status = undefined
   searchForm.amountMin = ''
   searchForm.amountMax = ''
@@ -774,11 +1012,13 @@ const handleView = (row) => {
       order_no: row.order_no || '',
       paid_time: row.paid_time || '',
       tutor_name: row.tutor_name || '',
-      teacher_name: row.teacher_name || '',
+      payer_name: row.payer_name || row.teacher_name || '',
+      teacher_name: row.teacher_name || row.payer_name || '',
       contact_student: row.contact_student || '',
       amount: row.amount ?? '',
       deposit_amount: row.deposit_amount ?? '',
       refund_apply_amount: row.refund_apply_amount ?? '',
+      refund_apply_time: row.refund_apply_time || '',
       refunded_amount: row.refunded_amount ?? '',
       refund_time: row.refund_time || '',
       actual_amount: row.actual_amount ?? '',
@@ -786,31 +1026,100 @@ const handleView = (row) => {
       customer_service: row.customer_service || '',
       refund_reason: row.refund_reason || '',
       reject_reason: row.reject_reason || '',
+      pay_remark: row.pay_remark || '',
       refund_voucher: row.refund_voucher || '',
+      refund_remark: row.refund_remark || '',
       remark: row.remark || ''
     }
   })
 }
 
-// 退费（进入退费申请处理页）
-const handleRefund = (row) => {
-  router.push({
-    path: `/payment/${row.id}`,
-    query: {
-      tutor_name: row.tutor_name || '',
-      teacher_name: row.teacher_name || '',
-      amount: row.amount ?? '',
-      deposit_amount: row.deposit_amount ?? '',
-      refund_apply_amount: row.refund_apply_amount ?? '',
-      refunded_amount: row.refunded_amount ?? '',
-      refund_apply_time: row.refund_apply_time || '',
-      contact_student: row.contact_student || '',
-      customer_service: row.customer_service || '',
-      refund_reason: row.refund_reason || '',
-      refund_voucher: row.refund_voucher || '',
-      refund_status: row.refund_status || ''
+const openRemarkDialog = (row) => {
+  remarkAdminId.value = row.id
+  remarkAdminText.value = row.remark || ''
+  remarkAdminDialogVisible.value = true
+}
+
+const saveAdminRemark = async () => {
+  if (!remarkAdminId.value) return
+  remarkAdminSaving.value = true
+  try {
+    const res = await updatePaymentOrderRemark(remarkAdminId.value, remarkAdminText.value)
+    if (res.success || res.code === 200) {
+      ElMessage.success('备注已保存')
+      remarkAdminDialogVisible.value = false
+      getList()
+    } else {
+      ElMessage.error(res.message || '保存失败')
     }
-  })
+  } catch (e) {
+    ElMessage.error('保存失败')
+  } finally {
+    remarkAdminSaving.value = false
+  }
+}
+
+const handleRemove = async (row) => {
+  try {
+    const ok = window.confirm('确定要移除该支付订单吗？移除后将不在列表展示。')
+    if (!ok) return
+    const res = await removePayment(row.id)
+    if (res.success || res.code === 200) {
+      ElMessage.success(res.message || '已移除')
+      pagination.page = 1
+      await getList()
+      await getStatistics()
+    } else {
+      ElMessage.error(res.message || '移除失败')
+    }
+  } catch (e) {
+    ElMessage.error('移除失败')
+  }
+}
+
+const handleTogglePin = async (row) => {
+  const next = Number(row.is_pinned) ? 0 : 1
+  try {
+    const res = await setPaymentPinned(row.id, next)
+    if (res.success || res.code === 200) {
+      ElMessage.success(res.message || (next ? '已置顶' : '已取消置顶'))
+      if (next === 1) {
+        pagination.page = 1
+      }
+      getList()
+      getStatistics()
+    } else {
+      ElMessage.error(res.message || '操作失败')
+    }
+  } catch (e) {
+    const msg = e?.response?.data?.message || e?.message || ''
+    ElMessage.error(
+      msg ||
+        '置顶失败，请确认已执行数据库脚本：patch_payments_is_pinned.sql 与 patch_payments_pinned_at.sql'
+    )
+  }
+}
+
+// 审核：列表页直接弹出退费申请弹窗
+const handleRefund = (row) => {
+  reviewPaymentId.value = row.id
+  reviewSeedDetail.value = { ...row }
+  reviewDialogVisible.value = true
+}
+
+const onReviewProcessed = async () => {
+  reviewDialogVisible.value = false
+  await getList()
+  await getStatistics()
+}
+
+const onReviewUpdated = async () => {
+  await getList()
+}
+
+// 弹窗：重置退费金额到默认值
+const resetRefundAmount = () => {
+  refundForm.refundAmount = refundDefaultAmount.value
 }
 
 // 确认退款
@@ -830,7 +1139,7 @@ const confirmRefund = async () => {
     const res = await processRefund({
       id: refundForm.id,
       refund_amount: refundForm.refundAmount,
-      remark: refundForm.remark
+      remark: refundForm.remark || refundRemarkDefault
     })
     if (res.success || res.code === 200) {
       ElMessage.success('退款成功')
@@ -882,32 +1191,6 @@ const confirmReject = async () => {
     ElMessage.error('驳回失败')
   } finally {
     rejectLoading.value = false
-  }
-}
-
-// 查询
-const handleQuery = (row) => {
-  ElMessage.info('查询功能待开发')
-}
-
-// 更多操作
-const handleMoreAction = (command, row) => {
-  if (command === 'query') {
-    ElMessage.info('查询功能待开发')
-  } else if (command === 'remark') {
-    ElMessage.info('备注功能待开发')
-  } else if (command === 'export') {
-    ElMessage.info('导出功能待开发')
-  } else if (command === 'edit') {
-    ElMessage.info('编辑功能待开发')
-  } else if (command === 'delete') {
-    ElMessageBox.confirm('确定要删除该记录吗？', '提示', {
-      confirmButtonText: '确定',
-      cancelButtonText: '取消',
-      type: 'warning'
-    }).then(() => {
-      ElMessage.info('删除功能待开发')
-    })
   }
 }
 
@@ -990,7 +1273,7 @@ const handleMobileFilterChange = (filters) => {
   
   // 更新桌面端筛选条件
   searchForm.tutorName = filters.keyword || ''
-  searchForm.teacherName = filters.keyword || ''
+  searchForm.payerName = filters.keyword || ''
   searchForm.dispatcherId = filters.dispatcherId
   
   if (filters.payTimeStart && filters.payTimeEnd) {
@@ -1014,6 +1297,68 @@ const loadMore = () => {
 <style scoped>
 .payment-manage {
   padding: 0;
+}
+
+.batch-actions-bar {
+  margin: 10px 0 6px;
+  padding: 10px 12px;
+  border: 1px solid #e4e7ed;
+  border-radius: 10px;
+  background: #fafbfc;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.batch-actions-left,
+.batch-actions-right {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+/* 同意退款弹窗：对齐参考图 */
+.payment-manage .refund-approve-modal {
+  padding: 6px 4px 0;
+}
+
+.payment-manage .refund-approve-info {
+  background: #f8fafb;
+  border: 1px solid #e8ecef;
+  border-radius: 12px;
+  padding: 14px 16px;
+  margin-bottom: 14px;
+}
+
+.payment-manage .refund-approve-info-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin-bottom: 10px;
+}
+
+.payment-manage .refund-approve-info-row:last-child {
+  margin-bottom: 0;
+}
+
+.payment-manage .refund-approve-label {
+  color: #64748b;
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.payment-manage .refund-approve-value {
+  color: #0f172a;
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.payment-manage .refund-approve-hint {
+  color: #94a3b8;
+  font-size: 12px;
+  margin-top: 6px;
 }
 
 .payment-manage .voucher-list {
@@ -1238,7 +1583,7 @@ const loadMore = () => {
   display: flex;
   align-items: center;
   gap: 6px;
-  flex-wrap: nowrap;
+  flex-wrap: wrap;
 }
 
 .payment-manage .operation-actions :deep(.el-button) {
@@ -1261,6 +1606,12 @@ const loadMore = () => {
   padding: 0 8px;
   height: 24px;
   line-height: 22px;
+}
+
+/* 状态列：避免列宽过窄时省略号把「退款待处理」截成「..」 */
+.payment-manage :deep(.el-table td.col-payment-status .cell) {
+  overflow: visible;
+  white-space: nowrap;
 }
 
 /* 日期选择器样式优化 */

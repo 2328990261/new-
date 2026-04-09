@@ -175,11 +175,32 @@
 				</view>
 			</view>
 		</view>
+
+		<!-- 关注公众号二维码弹窗（仅在提交成功且待审核流程中展示，不在浏览预览页时打扰） -->
+		<view v-if="showOfficialQrcodePopup" class="modal" @click="closeOfficialQrcodePopup">
+			<view class="modal-box" @click.stop>
+				<text class="modal-title">提交成功，请关注服务号</text>
+				<text class="modal-text modal-text-center">请先扫码或保存二维码关注服务号，关注后点击「去绑定」完成授权，以便接收审核通知</text>
+				<image
+					v-if="officialQrcodeUrl"
+					class="qrcode-image"
+					:src="officialQrcodeUrl"
+					mode="aspectFit"
+					:show-menu-by-longpress="true"
+				/>
+				<view v-else class="qrcode-placeholder">二维码加载中...</view>
+				<view class="modal-btns modal-btns-qrcode">
+					<button class="modal-btn primary modal-btn-block" @click="openOfficialBindFromQrcode">去绑定</button>
+					<button class="modal-btn modal-btn-block" @click="saveOfficialQrcode">保存二维码</button>
+					<button class="modal-btn modal-btn-block" @click="closeOfficialQrcodePopup">稍后关注</button>
+				</view>
+			</view>
+		</view>
 	</view>
 </template>
 
 <script>
-import { teacherRegisterApi } from '@/utils/api.js'
+import { teacherRegisterApi, wechatLogin } from '@/utils/api.js'
 
 export default {
 	data() {
@@ -213,6 +234,12 @@ export default {
 			},
 			showConfirmDialog: false,
 			agreed: false,
+			showOfficialQrcodePopup: false,
+			officialQrcodeUrl: '',
+			officialBindAuthUrl: '',
+			officialBindPollingTimer: null,
+			officialBindPollingCount: 0,
+			officialBindPollingMax: 20,
 			readonly: false,
 			reviewStatus: '',
 			teacherId: null,
@@ -296,7 +323,177 @@ export default {
 			console.warn('没有提供teacher_id或data参数')
 		}
 	},
+	onUnload() {
+		this.stopOfficialBindPolling()
+	},
 	methods: {
+		logOfficialBindDebug(stage, payload = {}) {
+			const now = new Date().toISOString()
+			console.log('[服务号绑定调试]', stage, {
+				time: now,
+				...payload
+			})
+		},
+
+		openOfficialBindLink(url) {
+			const link = String(url || '').trim()
+			if (!link || !/^https?:\/\//.test(link)) {
+				uni.showToast({ title: '绑定链接无效', icon: 'none' })
+				return
+			}
+			const encoded = encodeURIComponent(link)
+			uni.navigateTo({
+				url: `/pages/webview/index?url=${encoded}`,
+				fail: () => {
+					// 兜底：若 web-view 受限，回退复制链接
+					uni.setClipboardData({
+						data: link,
+						success: () => uni.showToast({ title: '已复制，请在微信内打开', icon: 'none' }),
+						fail: () => uni.showToast({ title: '打开失败，请稍后重试', icon: 'none' })
+					})
+				}
+			})
+		},
+
+		stopOfficialBindPolling() {
+			if (this.officialBindPollingTimer) {
+				clearInterval(this.officialBindPollingTimer)
+				this.officialBindPollingTimer = null
+			}
+		},
+
+		startOfficialBindPolling(miniOpenid) {
+			this.stopOfficialBindPolling()
+			this.officialBindPollingCount = 0
+			if (!miniOpenid) return
+
+			this.logOfficialBindDebug('bind_status_polling_start', {
+				mini_openid: miniOpenid,
+				max_try: this.officialBindPollingMax
+			})
+			// 先主动刷新一次小程序登录态，尽量拿到最新 unionid
+			this.refreshMiniUnionidForBind(miniOpenid)
+
+			this.officialBindPollingTimer = setInterval(async () => {
+				this.officialBindPollingCount += 1
+				// 每 3 次再刷新一次，覆盖“用户刚关注后 unionid 延迟出现”的情况
+				if (this.officialBindPollingCount % 3 === 0) {
+					this.refreshMiniUnionidForBind(miniOpenid)
+				}
+				try {
+					const statusRes = await teacherRegisterApi.getOfficialBindStatus(miniOpenid)
+					const data = statusRes?.data || {}
+					this.logOfficialBindDebug('bind_status_polling_tick', {
+						try_index: this.officialBindPollingCount,
+						success: !!statusRes?.success,
+						is_bound: data?.is_bound,
+						is_subscribed: data?.is_subscribed,
+						mp_openid: data?.mp_openid || '',
+						unionid: data?.unionid || '',
+						reason: data?.reason || ''
+					})
+					if (Number(data?.is_bound) !== 1 && this.officialBindPollingCount % 3 === 1) {
+						try {
+							const evRes = await teacherRegisterApi.getOfficialLatestEventDebug(miniOpenid)
+							const latest = evRes?.data?.latest || null
+							this.logOfficialBindDebug('event_debug_latest', {
+								success: !!evRes?.success,
+								stage: latest?.stage || '',
+								event: latest?.event || '',
+								event_key: latest?.event_key || '',
+								mini_openid_parsed: latest?.mini_openid_parsed || '',
+								receiver: latest?.receiver || '',
+								error_msg: latest?.error_msg || ''
+							})
+						} catch (ee) {
+							this.logOfficialBindDebug('event_debug_error', {
+								error: ee?.message || String(ee)
+							})
+						}
+					}
+
+					if (statusRes?.success && Number(data?.is_bound) === 1) {
+						this.stopOfficialBindPolling()
+						uni.showToast({ title: '服务号绑定成功', icon: 'success' })
+						this.logOfficialBindDebug('bind_status_polling_bound', {
+							mp_openid: data?.mp_openid || '',
+							unionid: data?.unionid || ''
+						})
+						return
+					}
+				} catch (e) {
+					this.logOfficialBindDebug('bind_status_polling_error', {
+						try_index: this.officialBindPollingCount,
+						error: e?.message || String(e)
+					})
+				}
+
+				if (this.officialBindPollingCount >= this.officialBindPollingMax) {
+					this.stopOfficialBindPolling()
+					this.logOfficialBindDebug('bind_status_polling_timeout', {
+						max_try: this.officialBindPollingMax
+					})
+					uni.showToast({
+						title: '请先关注服务号，绑定可在首页继续完成',
+						icon: 'none',
+						duration: 2200
+					})
+				}
+			}, 3000)
+		},
+
+		/** 提交成功二维码弹窗内：关注后打开 OAuth 绑定页（与二维码分步，避免浏览预览页反复弹窗） */
+		openOfficialBindFromQrcode() {
+			const url = String(this.officialBindAuthUrl || '').trim()
+			if (!url) {
+				uni.showToast({ title: '绑定链接暂不可用，请先扫码关注服务号', icon: 'none' })
+				return
+			}
+			this.openOfficialBindLink(url)
+		},
+
+		refreshMiniUnionidForBind(miniOpenid) {
+			return new Promise((resolve) => {
+				if (!miniOpenid) {
+					resolve(false)
+					return
+				}
+				uni.login({
+					provider: 'weixin',
+					success: async (lr) => {
+						try {
+							const code = lr?.code || ''
+							if (!code) {
+								this.logOfficialBindDebug('mini_login_refresh_no_code')
+								resolve(false)
+								return
+							}
+							const resp = await wechatLogin.loginWithOpenid({ code, openid: miniOpenid })
+							const ok = resp && (resp.code === 200 || resp.success === true || !!resp.data)
+							const unionid = (resp && (resp.data?.unionid || resp.unionid || '')) || ''
+							this.logOfficialBindDebug('mini_login_refresh_result', {
+								success: !!ok,
+								has_unionid: !!unionid,
+								unionid: unionid || ''
+							})
+							resolve(!!ok)
+						} catch (e) {
+							this.logOfficialBindDebug('mini_login_refresh_error', {
+								error: e?.message || String(e)
+							})
+							resolve(false)
+						}
+					},
+					fail: (err) => {
+						this.logOfficialBindDebug('mini_login_refresh_fail', {
+							error: err?.errMsg || String(err)
+						})
+						resolve(false)
+					}
+				})
+			})
+		},
+
 		async loadTeacherData(teacherId) {
 			console.log('开始加载教师数据, teacherId:', teacherId)
 			this.loading = true
@@ -326,6 +523,9 @@ export default {
 				
 				if (res.success && res.data) {
 					const teacher = res.data
+					if (!this.reviewStatus && teacher.review_status) {
+						this.reviewStatus = teacher.review_status
+					}
 					this.resumeData = {
 						name: teacher.name || '',
 						gender: teacher.gender || '',
@@ -520,11 +720,12 @@ export default {
 			console.log('[预览页面] 当前简历数据:', JSON.stringify(this.resumeData).substring(0, 300))
 			
 			const certNote = '请在认证材料中身份证，学历证明，教师资格证三项中至少上传一项'
+			const userInfo = uni.getStorageSync('userInfo') || {}
+
 			uni.showLoading({ title: '提交中...' })
 			
 			try {
 				// 合并微信 openid、昵称，便于后端写入教师表
-				const userInfo = uni.getStorageSync('userInfo') || {}
 				// 准备提交数据 - 使用resumeData中的数据
 				const submitData = {
 					id: this.teacherId, // 编辑模式需要传id
@@ -579,17 +780,7 @@ const res = this.teacherId
 				console.log('[预览页面] 提交响应:', res)
 				
 				if (res.success) {
-					// 重新提交后一律为待审核，不再弹「已拒绝」；5 分钟后若三项仍为空由后端自动变为已拒绝
-					uni.showToast({
-						title: '提交成功，等待审核',
-						icon: 'success',
-						duration: 2000
-					})
-					setTimeout(() => {
-						uni.reLaunch({
-							url: '/pages/tutor-list/index'
-						})
-					}, 2000)
+					await this.showSubmitSuccessWithOfficialQrcode(userInfo)
 				} else {
 					console.error('[预览页面] 提交失败:', res.error)
 					uni.showToast({
@@ -605,6 +796,139 @@ const res = this.teacherId
 					icon: 'none'
 				})
 			}
+		},
+
+		async showSubmitSuccessWithOfficialQrcode(userInfo = {}) {
+			const miniOpenid = (userInfo.openid || '').trim()
+			this.logOfficialBindDebug('prepare_popup', {
+				mini_openid: miniOpenid || '(empty)'
+			})
+			if (!miniOpenid) {
+				this.logOfficialBindDebug('skip_popup_no_mini_openid')
+				this.goAfterSubmit()
+				return
+			}
+			try {
+				// 已绑定则不再弹二维码，直接进入提交成功流程
+				const statusRes = await teacherRegisterApi.getOfficialBindStatus(miniOpenid)
+				const statusData = statusRes?.data || {}
+				this.logOfficialBindDebug('bind_status_before_popup', {
+					success: !!statusRes?.success,
+					is_bound: statusData?.is_bound,
+					is_subscribed: statusData?.is_subscribed,
+					mp_openid: statusData?.mp_openid || ''
+				})
+				if (statusRes?.success && Number(statusData?.is_bound) === 1) {
+					this.logOfficialBindDebug('skip_popup_already_bound')
+					this.goAfterSubmit()
+					return
+				}
+
+				const qrRes = await teacherRegisterApi.getOfficialQrcode(miniOpenid)
+				const qrcodeUrl = qrRes?.data?.url || ''
+				this.logOfficialBindDebug('qrcode_api_result', {
+					success: !!qrRes?.success,
+					message: qrRes?.message || qrRes?.error || '',
+					scene: qrRes?.data?.scene || '',
+					ticket_prefix: (qrRes?.data?.ticket || '').slice(0, 16),
+					expire_seconds: qrRes?.data?.expire_seconds || null,
+					url_prefix: qrcodeUrl ? qrcodeUrl.slice(0, 80) : ''
+				})
+				if (qrRes?.success && qrcodeUrl) {
+					this.officialQrcodeUrl = qrcodeUrl
+					try {
+						const bindRes = await teacherRegisterApi.getOfficialBindAuthUrl(miniOpenid)
+						this.officialBindAuthUrl = bindRes?.data?.auth_url || ''
+						this.logOfficialBindDebug('bind_auth_url_result', {
+							success: !!bindRes?.success,
+							message: bindRes?.message || bindRes?.error || '',
+							state: bindRes?.data?.state || '',
+							auth_url_prefix: this.officialBindAuthUrl ? this.officialBindAuthUrl.slice(0, 120) : ''
+						})
+					} catch (e2) {
+						this.officialBindAuthUrl = ''
+						this.logOfficialBindDebug('bind_auth_url_exception', {
+							error: e2?.message || String(e2)
+						})
+					}
+					this.showOfficialQrcodePopup = true
+					this.startOfficialBindPolling(miniOpenid)
+					this.logOfficialBindDebug('popup_shown', {
+						has_qrcode: !!this.officialQrcodeUrl,
+						has_bind_auth_url: !!this.officialBindAuthUrl
+					})
+					return
+				}
+				uni.showToast({ title: (qrRes && (qrRes.message || qrRes.error)) ? String(qrRes.message || qrRes.error) : '二维码生成失败', icon: 'none' })
+			} catch (e) {
+				this.logOfficialBindDebug('qrcode_api_exception', {
+					error: e?.message || String(e)
+				})
+				uni.showToast({ title: '获取二维码失败', icon: 'none' })
+			}
+			this.goAfterSubmit()
+		},
+
+		closeOfficialQrcodePopup() {
+			this.stopOfficialBindPolling()
+			this.showOfficialQrcodePopup = false
+			this.goAfterSubmit()
+		},
+
+		saveOfficialQrcode() {
+			if (!this.officialQrcodeUrl) return
+			uni.downloadFile({
+				url: this.officialQrcodeUrl,
+				success: (res) => {
+					if (res.statusCode === 200 && res.tempFilePath) {
+						uni.saveImageToPhotosAlbum({
+							filePath: res.tempFilePath,
+							success: () => uni.showToast({ title: '已保存到相册', icon: 'success' }),
+							fail: () => uni.showToast({ title: '保存失败，请截图', icon: 'none' })
+						})
+					} else {
+						uni.showToast({ title: '下载失败，请截图', icon: 'none' })
+					}
+				},
+				fail: () => uni.showToast({ title: '下载失败，请截图', icon: 'none' })
+			})
+		},
+
+		copyOfficialBindLink() {
+			if (!this.officialBindAuthUrl) {
+				this.logOfficialBindDebug('copy_link_failed_empty')
+				uni.showToast({ title: '绑定链接暂不可用', icon: 'none' })
+				return
+			}
+			this.logOfficialBindDebug('copy_link_click', {
+				auth_url: this.officialBindAuthUrl
+			})
+			uni.setClipboardData({
+				data: this.officialBindAuthUrl,
+				success: () => {
+					this.logOfficialBindDebug('copy_link_success')
+					uni.showToast({ title: '已复制，微信中打开即可绑定', icon: 'none' })
+				},
+				fail: (err) => {
+					this.logOfficialBindDebug('copy_link_fail', {
+						error: err?.errMsg || String(err)
+					})
+					uni.showToast({ title: '复制失败', icon: 'none' })
+				}
+			})
+		},
+
+		goAfterSubmit() {
+			uni.showToast({
+				title: '提交成功，等待审核',
+				icon: 'success',
+				duration: 1500
+			})
+			setTimeout(() => {
+				uni.reLaunch({
+					url: '/pages/tutor-list/index'
+				})
+			}, 1500)
 		}
 	}
 }
@@ -1051,6 +1375,10 @@ const res = this.teacherId
 	margin-bottom: 24rpx;
 }
 
+.modal-text-center {
+	text-align: center;
+}
+
 .agreement {
 	padding: 20rpx;
 	background: #f5f7fa;
@@ -1081,6 +1409,16 @@ const res = this.teacherId
 	gap: 16rpx;
 }
 
+.modal-btns-qrcode {
+	flex-direction: column;
+	align-items: stretch;
+}
+
+.modal-btn-block {
+	flex: none;
+	width: 100%;
+}
+
 .modal-btn {
 	flex: 1;
 	height: 80rpx;
@@ -1101,5 +1439,27 @@ const res = this.teacherId
 
 .modal-btn:disabled {
 	opacity: 0.5;
+}
+
+.qrcode-image {
+	width: 420rpx;
+	height: 420rpx;
+	display: block;
+	margin: 0 auto 24rpx;
+	border-radius: 12rpx;
+	background: #f6f7f8;
+}
+
+.qrcode-placeholder {
+	width: 420rpx;
+	height: 420rpx;
+	margin: 0 auto 24rpx;
+	border-radius: 12rpx;
+	background: #f6f7f8;
+	color: #999;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	font-size: 26rpx;
 }
 </style>

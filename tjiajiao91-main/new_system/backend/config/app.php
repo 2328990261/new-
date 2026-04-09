@@ -10,7 +10,13 @@ return [
     'default_app'      => 'index',
     'default_timezone' => 'Asia/Shanghai',
 
-    'app_map'          => [],
+    // 开发环境经常以 /admin/... /api/... 作为“路径前缀”，
+    // 但 ThinkPHP 多应用会把第一个 path 段当成应用名，导致 /admin/api/login 被解析为「应用=admin，控制器=Api」而不是命中 route/admin.php 的路由组。
+    // 将常用前缀映射回默认应用，让路由按预期匹配（例如 /admin/api/login 命中 Route::group('admin/api', ...)）。
+    'app_map'          => [
+        'admin' => 'index',
+        'api'   => 'index',
+    ],
     'domain_bind'      => [],
     'deny_app_list'    => [],
 

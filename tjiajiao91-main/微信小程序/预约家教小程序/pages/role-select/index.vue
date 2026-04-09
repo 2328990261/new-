@@ -127,9 +127,9 @@ export default {
 			
 			if (role === 'parent') {
 				// 家长端首页：教员库
-				console.log('跳转到家长首页: /pages/teacher-library/index')
+				console.log('跳转到家长首页: /pages/parent-home/index')
 				uni.reLaunch({
-					url: '/pages/teacher-library/index',
+					url: '/pages/parent-home/index',
 					success: () => {
 						console.log('跳转成功')
 					},

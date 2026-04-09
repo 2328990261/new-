@@ -124,13 +124,17 @@
 
 <el-form-item label="Token">
   <el-input v-model="wechatForm.wechat_token" placeholder="服务器配置Token" />
-  <div class="form-tip">用于验证消息来源，可自定义</div>
+  <div class="form-tip">用于验证消息来源，须与公众平台「服务器配置」中的 Token 完全一致</div>
 </el-form-item>
 
 <el-form-item label="EncodingAESKey">
   <el-input v-model="wechatForm.wechat_encoding_aes_key" placeholder="消息加解密密钥" />
-  <div class="form-tip">43位字符，可在微信平台随机生成</div>
+  <div class="form-tip">43位字符，与公众平台一致。若启用兼容/安全模式，后台必须填写此项，否则关注/扫码事件无法解密，绑定表里拿不到公众号 openid</div>
 </el-form-item>
+
+<el-alert type="warning" :closable="false" style="margin-bottom: 16px;">
+  <p style="margin: 0;">公众平台「服务器配置」URL 请填：<code>https://你的域名/api/wechat/official/server</code>（与网页授权回调域名无关）。模板消息能发不代表事件推送已通，需 URL 可公网访问且验签通过。</p>
+</el-alert>
 
 <el-divider>网页授权配置（重要）</el-divider>
 
@@ -338,8 +342,19 @@
   <el-input v-model="testOpenid" placeholder="请输入接收测试消息的用户OpenID" />
   <div class="form-tip">用户需要先关注服务号，才能接收模板消息</div>
 </el-form-item>
+<el-form-item label="发送接口">
+  <el-select v-model="testApiType" style="width: 100%">
+    <el-option label="自动（先模板后订阅）" value="auto" />
+    <el-option label="仅模板消息（template/send）" value="template" />
+    <el-option label="仅订阅消息（subscribe/send）" value="subscribe" />
+  </el-select>
+</el-form-item>
+<el-form-item label="模板ID">
+  <el-input v-model="testTemplateId" placeholder="可选，不填则使用默认测试模板ID" />
+</el-form-item>
 <template #footer>
   <el-button @click="testWechatDialogVisible = false">取消</el-button>
+  <el-button @click="handleDebugWechatPermission" :loading="testing">权限诊断</el-button>
   <el-button type="primary" @click="handleTestWechat" :loading="testing">发送</el-button>
 </template>
 </el-dialog>
@@ -436,6 +451,8 @@ const testEmailDialogVisible = ref(false)
 const testWechatDialogVisible = ref(false)
 const testEmail = ref('')
 const testOpenid = ref('')
+const testApiType = ref('auto')
+const testTemplateId = ref('')
 
 // 模板管理
 const templates = ref([])
@@ -579,15 +596,116 @@ const handleTestWechat = async () => {
   }
   try {
     testing.value = true
-    const res = await request.post('/notification/test-wechat', { openid: testOpenid.value })
+    console.group('[wechat-test] request')
+    console.log('openid:', testOpenid.value)
+    console.log('api_type:', testApiType.value)
+    console.log('template_id_input:', testTemplateId.value || '(empty)')
+    console.groupEnd()
+    const res = await request.post('/notification/test-wechat', {
+      openid: testOpenid.value,
+      api_type: testApiType.value,
+      template_id: testTemplateId.value
+    })
+    console.group('[wechat-test] response')
+    console.log('raw response:', res)
+    if (res && res.debug) {
+      console.log('debug:', res.debug)
+    }
+    console.groupEnd()
     if (res.success) {
-      ElMessage.success('测试消息发送成功')
+      let successMsg = '测试消息发送成功'
+      if (res.debug) {
+        successMsg += `（接口: ${res.debug.api || '-'}）`
+      }
+      ElMessage.success(successMsg)
       testWechatDialogVisible.value = false
     } else {
-      ElMessage.error(res.message || '发送失败')
+      const debug = res.debug || {}
+      const debugText = [
+        `api: ${debug.api || '-'}`,
+        `errcode: ${debug.errcode ?? '-'}`,
+        `errmsg: ${debug.errmsg || '-'}`,
+        `template_id: ${debug.template_id || '-'}`,
+        `openid: ${debug.openid_masked || '-'}`,
+        `appid: ${debug.app_id_masked || '-'}`
+      ].join('\n')
+      ElMessage.error({
+        message: `${res.message || '发送失败'}\n${debugText}`,
+        duration: 9000
+      })
     }
   } catch (error) {
-    
+    console.group('[wechat-test] exception')
+    console.error(error)
+    if (error && error.response) {
+      console.error('error.response:', error.response)
+    }
+    console.groupEnd()
+  } finally {
+    testing.value = false
+  }
+}
+
+// 诊断微信模板权限
+const handleDebugWechatPermission = async () => {
+  if (!testOpenid.value) {
+    ElMessage.warning('请输入测试OpenID')
+    return
+  }
+  try {
+    testing.value = true
+    const res = await request.post('/notification/debug-wechat-permission', {
+      openid: testOpenid.value,
+      template_id: testTemplateId.value
+    })
+    console.group('[wechat-debug-permission] response')
+    console.log('raw response:', res)
+    if (res && res.data) {
+      console.log('report:', res.data)
+    }
+    console.groupEnd()
+
+    const report = res?.data || {}
+    const steps = Array.isArray(report.steps) ? report.steps : []
+    const stepText = steps.map((s) => {
+      const parts = [
+        `步骤: ${s.name || '-'}`,
+        `ok: ${String(!!s.ok)}`
+      ]
+      if (s.errcode !== undefined) parts.push(`errcode: ${s.errcode}`)
+      if (s.errmsg !== undefined) parts.push(`errmsg: ${s.errmsg}`)
+      if (s.template_count !== undefined) parts.push(`template_count: ${s.template_count}`)
+      if (s.msgid) parts.push(`msgid: ${s.msgid}`)
+      if (s.skipped) parts.push(`skipped: true (${s.reason || ''})`)
+      return parts.join('\n')
+    }).join('\n\n')
+
+    const content = [
+      `success: ${String(!!res.success)}`,
+      `message: ${res.message || '-'}`,
+      `time: ${report.time || '-'}`,
+      `app_id: ${report.app_id_masked || '-'}`,
+      `openid: ${report.openid_masked || '-'}`,
+      `template_input: ${report.template_id_input || '-'}`,
+      `template_used: ${report.template_id_used || '-'}`,
+      '',
+      stepText || '无步骤数据'
+    ].join('\n')
+
+    await ElMessageBox.alert(`<pre style="white-space: pre-wrap; word-break: break-all; margin: 0;">${content}</pre>`, '微信权限诊断结果', {
+      dangerouslyUseHTMLString: true,
+      confirmButtonText: '确定'
+    })
+
+    if (res.success) {
+      ElMessage.success('诊断完成，结果已输出到控制台')
+    } else {
+      ElMessage.error(res.message || '诊断失败')
+    }
+  } catch (error) {
+    console.group('[wechat-debug-permission] exception')
+    console.error(error)
+    console.groupEnd()
   } finally {
     testing.value = false
   }
