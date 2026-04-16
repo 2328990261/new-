@@ -101,6 +101,14 @@
 		<view class="menu-section">
 			<!-- 老师端菜单 -->
 			<view v-if="userRole === 'teacher'" class="menu-group">
+				<view class="menu-item" @click="goToTeachingInfo">
+					<view class="menu-icon-wrapper">
+						<uni-icons type="notification" size="28" color="#52C9A6" />
+					</view>
+					<text class="menu-text">订阅消息通知</text>
+					<text class="menu-arrow">›</text>
+				</view>
+
 				<view class="menu-item" @click="goToMyApplications">
 					<view class="menu-icon-wrapper">
 						<uni-icons type="paperplane" size="28" color="#52C9A6" />

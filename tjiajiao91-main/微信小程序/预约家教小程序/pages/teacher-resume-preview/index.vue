@@ -201,6 +201,7 @@
 
 <script>
 import { teacherRegisterApi, wechatLogin } from '@/utils/api.js'
+import { requestResumeReviewSubscribe } from '@/utils/subscribe.js'
 
 export default {
 	data() {
@@ -780,7 +781,7 @@ const res = this.teacherId
 				console.log('[预览页面] 提交响应:', res)
 				
 				if (res.success) {
-					await this.showSubmitSuccessWithOfficialQrcode(userInfo)
+					await this.showSubmitSuccessWithSubscribe(userInfo)
 				} else {
 					console.error('[预览页面] 提交失败:', res.error)
 					uni.showToast({
@@ -798,73 +799,12 @@ const res = this.teacherId
 			}
 		},
 
-		async showSubmitSuccessWithOfficialQrcode(userInfo = {}) {
-			const miniOpenid = (userInfo.openid || '').trim()
-			this.logOfficialBindDebug('prepare_popup', {
-				mini_openid: miniOpenid || '(empty)'
-			})
-			if (!miniOpenid) {
-				this.logOfficialBindDebug('skip_popup_no_mini_openid')
-				this.goAfterSubmit()
-				return
-			}
+		async showSubmitSuccessWithSubscribe(userInfo = {}) {
+			// 审核结果改为小程序订阅消息：提交成功后引导订阅一次（用户可拒绝，不影响主流程）
 			try {
-				// 已绑定则不再弹二维码，直接进入提交成功流程
-				const statusRes = await teacherRegisterApi.getOfficialBindStatus(miniOpenid)
-				const statusData = statusRes?.data || {}
-				this.logOfficialBindDebug('bind_status_before_popup', {
-					success: !!statusRes?.success,
-					is_bound: statusData?.is_bound,
-					is_subscribed: statusData?.is_subscribed,
-					mp_openid: statusData?.mp_openid || ''
-				})
-				if (statusRes?.success && Number(statusData?.is_bound) === 1) {
-					this.logOfficialBindDebug('skip_popup_already_bound')
-					this.goAfterSubmit()
-					return
-				}
-
-				const qrRes = await teacherRegisterApi.getOfficialQrcode(miniOpenid)
-				const qrcodeUrl = qrRes?.data?.url || ''
-				this.logOfficialBindDebug('qrcode_api_result', {
-					success: !!qrRes?.success,
-					message: qrRes?.message || qrRes?.error || '',
-					scene: qrRes?.data?.scene || '',
-					ticket_prefix: (qrRes?.data?.ticket || '').slice(0, 16),
-					expire_seconds: qrRes?.data?.expire_seconds || null,
-					url_prefix: qrcodeUrl ? qrcodeUrl.slice(0, 80) : ''
-				})
-				if (qrRes?.success && qrcodeUrl) {
-					this.officialQrcodeUrl = qrcodeUrl
-					try {
-						const bindRes = await teacherRegisterApi.getOfficialBindAuthUrl(miniOpenid)
-						this.officialBindAuthUrl = bindRes?.data?.auth_url || ''
-						this.logOfficialBindDebug('bind_auth_url_result', {
-							success: !!bindRes?.success,
-							message: bindRes?.message || bindRes?.error || '',
-							state: bindRes?.data?.state || '',
-							auth_url_prefix: this.officialBindAuthUrl ? this.officialBindAuthUrl.slice(0, 120) : ''
-						})
-					} catch (e2) {
-						this.officialBindAuthUrl = ''
-						this.logOfficialBindDebug('bind_auth_url_exception', {
-							error: e2?.message || String(e2)
-						})
-					}
-					this.showOfficialQrcodePopup = true
-					this.startOfficialBindPolling(miniOpenid)
-					this.logOfficialBindDebug('popup_shown', {
-						has_qrcode: !!this.officialQrcodeUrl,
-						has_bind_auth_url: !!this.officialBindAuthUrl
-					})
-					return
-				}
-				uni.showToast({ title: (qrRes && (qrRes.message || qrRes.error)) ? String(qrRes.message || qrRes.error) : '二维码生成失败', icon: 'none' })
+				await requestResumeReviewSubscribe()
 			} catch (e) {
-				this.logOfficialBindDebug('qrcode_api_exception', {
-					error: e?.message || String(e)
-				})
-				uni.showToast({ title: '获取二维码失败', icon: 'none' })
+				// ignore: 用户拒绝/取消不影响后续流程
 			}
 			this.goAfterSubmit()
 		},

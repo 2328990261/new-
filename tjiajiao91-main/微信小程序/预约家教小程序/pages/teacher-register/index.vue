@@ -644,6 +644,7 @@
 
 <script>
 import { teacherRegisterApi, regionApi } from '@/utils/api.js'
+import { requestResumeReviewSubscribe } from '@/utils/subscribe.js'
 
 export default {
 	data() {
@@ -2377,7 +2378,7 @@ export default {
 					// 清除本地存储
 					uni.removeStorageSync('teacher_register_progress')
 					// 提交后一律为待审核，不再弹「已拒绝」；若 5 分钟后三项认证仍为空，由后端自动改为已拒绝，用户进入页面时在简历预览/状态处可见
-					await this.showSubmitSuccessWithOfficialQrcode()
+					await this.showSubmitSuccessWithSubscribe()
 				} else {
 					uni.showToast({
 						title: res.error || '提交失败',
@@ -2394,45 +2395,12 @@ export default {
 			}
 		},
 
-		async showSubmitSuccessWithOfficialQrcode() {
-			const userInfo = uni.getStorageSync('userInfo') || {}
-			const miniOpenid = (userInfo.openid || '').trim()
-			if (!miniOpenid) {
-				uni.showModal({
-					title: '未获取到微信身份',
-					content: '当前用户openid为空，无法生成关注二维码。请重新登录后再提交。',
-					showCancel: false,
-					success: () => this.fallbackSubmitSuccess()
-				})
-				return
-			}
-
+		async showSubmitSuccessWithSubscribe() {
+			// 审核结果改为小程序订阅消息：提交成功后引导订阅一次（用户可拒绝，不影响主流程）
 			try {
-				const qrRes = await teacherRegisterApi.getOfficialQrcode(miniOpenid)
-				const qrcodeUrl = qrRes?.data?.url || ''
-				if (qrRes?.success && qrcodeUrl) {
-					this.officialQrcodeUrl = qrcodeUrl
-					try {
-						const bindRes = await teacherRegisterApi.getOfficialBindAuthUrl(miniOpenid)
-						this.officialBindAuthUrl = bindRes?.data?.auth_url || ''
-					} catch (e2) {
-						this.officialBindAuthUrl = ''
-					}
-					this.showOfficialQrcodePopup = true
-					return
-				}
-				uni.showModal({
-					title: '二维码生成失败',
-					content: (qrRes && (qrRes.message || qrRes.error)) ? String(qrRes.message || qrRes.error) : '接口未返回二维码地址',
-					showCancel: false
-				})
+				await requestResumeReviewSubscribe()
 			} catch (e) {
-				console.error('获取公众号二维码失败', e)
-				uni.showModal({
-					title: '二维码请求失败',
-					content: e?.message ? String(e.message) : '请检查接口 /api/wechat/official/qrcode 是否已部署到当前环境',
-					showCancel: false
-				})
+				// ignore
 			}
 			this.fallbackSubmitSuccess()
 		},

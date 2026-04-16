@@ -290,7 +290,7 @@
           <SubjectManage />
         </el-tab-pane>
 
-        <el-tab-pane label="支付配置" name="payment">
+        <el-tab-pane label="支付配置 · 多套" name="payment" lazy>
           <PaymentConfig />
         </el-tab-pane>
 
@@ -480,7 +480,8 @@
 </template>
 
 <script setup>
-import { ref, reactive, onMounted, computed } from 'vue'
+import { ref, reactive, onMounted, computed, watch } from 'vue'
+import { useRoute } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Plus, Edit } from '@element-plus/icons-vue'
 import { getSiteConfig, updateSiteConfig } from '@/api/siteConfig'
@@ -500,6 +501,29 @@ import PaymentConfig from './PaymentConfig.vue'
 import ServiceAgreement from './ServiceAgreement.vue'
 import SeoConfig from './SeoConfig.vue'
 import SslConfig from './SslConfig.vue'
+
+const route = useRoute()
+
+/** 与下方 el-tab-pane 的 name 一致，用于 ?tab=payment 等直达 */
+const fieldTabNames = [
+  'banner',
+  'successCase',
+  'site',
+  'city',
+  'district',
+  'subject',
+  'payment',
+  'agreement',
+  'seo',
+  'ssl'
+]
+
+function applyFieldTabFromRoute() {
+  const t = route.query.tab
+  if (typeof t === 'string' && fieldTabNames.includes(t)) {
+    activeTab.value = t
+  }
+}
 
 const activeTab = ref('banner')
 const siteSaving = ref(false)
@@ -1007,7 +1031,14 @@ const onBannerImageError = (error) => {
 
 // ==================== 网站配置相关 ====================
 
+watch(
+  () => route.query.tab,
+  () => applyFieldTabFromRoute(),
+  { immediate: true }
+)
+
 onMounted(() => {
+  applyFieldTabFromRoute()
   loadBannerList()
   loadSuccessCaseList()
   loadSiteConfig()

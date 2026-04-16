@@ -62,10 +62,25 @@ const routes = [
     meta: { title: '订单支付', hideNavbar: true }
   },
   {
+    path: '/h5/payment',
+    name: 'H5InfoFeePay',
+    component: () => import('@/views/H5InfoFeePay.vue'),
+    meta: { title: '信息费支付', hideNavbar: true }
+  },
+  // 易与组件名混淆时的兜底（避免打开 /H5InfoFeePay 空白页）
+  { path: '/H5InfoFeePay', redirect: '/h5/payment' },
+  { path: '/h5infofeepay', redirect: '/h5/payment' },
+  {
     path: '/payment-success',
     name: 'PaymentSuccess',
     component: () => import('@/views/PaymentSuccess.vue'),
     meta: { title: '支付凭证需保存', hideNavbar: true }
+  },
+  {
+    path: '/h5/payment-success',
+    name: 'H5PaymentSuccess',
+    component: () => import('@/views/H5PaymentSuccess.vue'),
+    meta: { title: '支付成功', hideNavbar: true }
   },
   {
     path: '/booking/:adminId',
@@ -79,6 +94,13 @@ const routes = [
     component: () => import('@/views/RefundApply.vue'),
     meta: { title: '退费申请', hideNavbar: true }
   },
+  {
+    path: '/h5/refund',
+    name: 'H5RefundApply',
+    component: () => import('@/views/H5RefundApply.vue'),
+    meta: { title: '退费申请', hideNavbar: true }
+  },
+  { path: '/H5RefundApply', redirect: '/h5/refund' },
   {
     path: '/refund-test',
     name: 'RefundTest',
@@ -97,7 +119,7 @@ const routes = [
     path: '/refund-success',
     name: 'RefundSuccess',
     component: () => import('@/views/RefundSuccess.vue'),
-    meta: { title: '退费处理中', hideNavbar: true }
+    meta: { title: '退费凭证', hideNavbar: true }
   },
   {
     path: '/wechat-bind',

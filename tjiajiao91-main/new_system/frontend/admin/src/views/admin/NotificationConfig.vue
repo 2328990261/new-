@@ -196,6 +196,48 @@
 </el-card>
 </el-tab-pane>
 
+<!-- 小程序订阅消息模板（与业务代码 tutor_recommend / resume_review 对应） -->
+<el-tab-pane label="小程序订阅消息" name="mini-subscribe-templates">
+<el-card>
+<el-alert type="info" :closable="false" style="margin-bottom: 20px;">
+  <p style="margin: 0;">配置微信小程序订阅消息模板 ID。请在公众平台添加模板后，将模板 ID 填入此处。业务代码 <code>tutor_recommend</code>（家教推荐）、<code>resume_review</code>（简历审核结果）需与后端、小程序约定一致。</p>
+</el-alert>
+<div style="margin-bottom: 20px;">
+  <el-button type="primary" @click="handleAddMiniSub">新增模板</el-button>
+  <el-button @click="loadMiniSubTemplates">刷新</el-button>
+</div>
+
+<el-table :data="miniSubTemplates" v-loading="miniSubLoading">
+  <el-table-column prop="template_code" label="业务代码" min-width="140" />
+  <el-table-column prop="template_name" label="名称" min-width="120" />
+  <el-table-column prop="template_id" label="微信模板ID" min-width="220" show-overflow-tooltip />
+  <el-table-column prop="is_enabled" label="状态" width="100">
+    <template #default="{ row }">
+      <el-tag :type="row.is_enabled ? 'success' : 'info'">
+        {{ row.is_enabled ? '已启用' : '已禁用' }}
+      </el-tag>
+    </template>
+  </el-table-column>
+  <el-table-column prop="remark" label="备注" min-width="120" show-overflow-tooltip />
+  <el-table-column label="操作" width="180">
+    <template #default="{ row }">
+      <el-button type="primary" size="small" @click="handleEditMiniSub(row)">编辑</el-button>
+      <el-button type="danger" size="small" @click="handleDeleteMiniSub(row)">删除</el-button>
+    </template>
+  </el-table-column>
+</el-table>
+
+<el-pagination 
+  v-model:current-page="miniSubPage" 
+  v-model:page-size="miniSubLimit" 
+  :total="miniSubTotal" 
+  layout="total, prev, pager, next" 
+  @current-change="loadMiniSubTemplates" 
+  style="margin-top: 20px; justify-content: center" 
+/>
+</el-card>
+</el-tab-pane>
+
 <!-- 订阅列表 -->
 <el-tab-pane label="订阅列表" name="subscriptions">
 <el-card>
@@ -391,6 +433,32 @@
 </template>
 </el-dialog>
 
+<!-- 小程序订阅消息模板编辑 -->
+<el-dialog v-model="miniSubDialogVisible" :title="miniSubForm.id ? '编辑小程序订阅模板' : '新增小程序订阅模板'" width="640px">
+<el-form :model="miniSubForm" label-width="120px">
+  <el-form-item label="业务代码" required>
+    <el-input v-model="miniSubForm.template_code" placeholder="如 tutor_recommend 或 resume_review" :disabled="!!miniSubForm.id" />
+    <div class="form-tip">新增后不可修改；需与系统约定一致</div>
+  </el-form-item>
+  <el-form-item label="名称">
+    <el-input v-model="miniSubForm.template_name" placeholder="展示用名称" />
+  </el-form-item>
+  <el-form-item label="微信模板ID" required>
+    <el-input v-model="miniSubForm.template_id" placeholder="公众平台订阅消息模板 ID" />
+  </el-form-item>
+  <el-form-item label="启用">
+    <el-switch v-model="miniSubForm.is_enabled" :active-value="1" :inactive-value="0" />
+  </el-form-item>
+  <el-form-item label="备注">
+    <el-input v-model="miniSubForm.remark" type="textarea" :rows="2" placeholder="可选" />
+  </el-form-item>
+</el-form>
+<template #footer>
+  <el-button @click="miniSubDialogVisible = false">取消</el-button>
+  <el-button type="primary" @click="handleSaveMiniSub" :loading="saving">保存</el-button>
+</template>
+</el-dialog>
+
 </div>
 </template>
 
@@ -469,6 +537,22 @@ const templateForm = reactive({
   template_id: '',
   field_mapping: '',
   url: '',
+  is_enabled: 1,
+  remark: ''
+})
+
+// 小程序订阅消息模板
+const miniSubTemplates = ref([])
+const miniSubLoading = ref(false)
+const miniSubPage = ref(1)
+const miniSubLimit = ref(20)
+const miniSubTotal = ref(0)
+const miniSubDialogVisible = ref(false)
+const miniSubForm = reactive({
+  id: null,
+  template_code: '',
+  template_name: '',
+  template_id: '',
   is_enabled: 1,
   remark: ''
 })
@@ -576,10 +660,10 @@ const handleTestEmail = async () => {
     testing.value = true
     const res = await request.post('/notification/test-email', { email: testEmail.value })
     if (res.success) {
-      ElMessage.success('测试邮件发送成功')
+      ElMessage.success(res.message || '测试邮件发送成功')
       testEmailDialogVisible.value = false
     } else {
-      ElMessage.error(res.message || '发送失败')
+      ElMessage.error(res.error || res.message || '发送失败')
     }
   } catch (error) {
     
@@ -804,6 +888,86 @@ const handleDeleteTemplate = async (row) => {
   }
 }
 
+const loadMiniSubTemplates = async () => {
+  try {
+    miniSubLoading.value = true
+    const res = await request.get('/notification/mini-subscribe-templates', {
+      params: { page: miniSubPage.value, limit: miniSubLimit.value }
+    })
+    if (res.success) {
+      miniSubTemplates.value = res.data
+      miniSubTotal.value = res.total
+    }
+  } catch (error) {
+    // ignore
+  } finally {
+    miniSubLoading.value = false
+  }
+}
+
+const handleAddMiniSub = () => {
+  Object.assign(miniSubForm, {
+    id: null,
+    template_code: '',
+    template_name: '',
+    template_id: '',
+    is_enabled: 1,
+    remark: ''
+  })
+  miniSubDialogVisible.value = true
+}
+
+const handleEditMiniSub = (row) => {
+  Object.assign(miniSubForm, {
+    id: row.id,
+    template_code: row.template_code,
+    template_name: row.template_name || '',
+    template_id: row.template_id,
+    is_enabled: row.is_enabled ? 1 : 0,
+    remark: row.remark || ''
+  })
+  miniSubDialogVisible.value = true
+}
+
+const handleSaveMiniSub = async () => {
+  if (!miniSubForm.template_code?.trim() || !miniSubForm.template_id?.trim()) {
+    ElMessage.warning('请填写业务代码与微信模板ID')
+    return
+  }
+  try {
+    saving.value = true
+    const res = await request.post('/notification/mini-subscribe-templates', { ...miniSubForm })
+    if (res.success) {
+      ElMessage.success(res.message || '保存成功')
+      miniSubDialogVisible.value = false
+      loadMiniSubTemplates()
+    } else {
+      ElMessage.error(res.error || '保存失败')
+    }
+  } catch (error) {
+    // ignore
+  } finally {
+    saving.value = false
+  }
+}
+
+const handleDeleteMiniSub = async (row) => {
+  try {
+    await ElMessageBox.confirm('确定要删除该小程序订阅模板吗？', '提示', { type: 'warning' })
+    const res = await request.delete(`/notification/mini-subscribe-templates/${row.id}`)
+    if (res.success) {
+      ElMessage.success('删除成功')
+      loadMiniSubTemplates()
+    } else {
+      ElMessage.error(res.error || '删除失败')
+    }
+  } catch (error) {
+    if (error !== 'cancel') {
+      // ignore
+    }
+  }
+}
+
 // 同步模板
 const handleSyncTemplates = async () => {
   try {
@@ -882,6 +1046,7 @@ const loadLogs = async () => {
 onMounted(() => {
   loadConfig()
   loadTemplates()
+  loadMiniSubTemplates()
   loadSubscriptions()
   loadLogs()
 })

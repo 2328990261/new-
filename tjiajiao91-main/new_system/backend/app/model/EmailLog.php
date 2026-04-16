@@ -55,12 +55,13 @@ class EmailLog extends Model
      */
     public static function log($data)
     {
+        // body 在库中多为 NOT NULL；失败日志常不传正文，用空串避免 1048 Column 'body' cannot be null
         return self::create([
             'email_type' => $data['email_type'] ?? null,
             'recipient_email' => $data['recipient_email'],
             'recipient_name' => $data['recipient_name'] ?? null,
             'subject' => $data['subject'],
-            'body' => $data['body'] ?? null,
+            'body' => $data['body'] ?? '',
             'related_id' => $data['related_id'] ?? null,
             'status' => $data['status'] ?? self::STATUS_PENDING,
             'error_message' => $data['error_msg'] ?? null,  // 使用 error_message 字段

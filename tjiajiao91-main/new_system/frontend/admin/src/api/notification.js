@@ -77,6 +77,30 @@ export function syncWechatTemplates() {
   })
 }
 
+// 小程序订阅消息模板列表
+export function getMiniSubscribeTemplates(params) {
+  return request({
+    url: '/notification/mini-subscribe-templates',
+    method: 'get',
+    params
+  })
+}
+
+export function saveMiniSubscribeTemplate(data) {
+  return request({
+    url: '/notification/mini-subscribe-templates',
+    method: 'post',
+    data
+  })
+}
+
+export function deleteMiniSubscribeTemplate(id) {
+  return request({
+    url: `/notification/mini-subscribe-templates/${id}`,
+    method: 'delete'
+  })
+}
+
 // 获取订阅列表
 export function getSubscriptionList(params) {
   return request({

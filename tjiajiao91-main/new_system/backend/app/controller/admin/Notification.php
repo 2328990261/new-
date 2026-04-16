@@ -359,6 +359,109 @@ class Notification extends BaseController
             return json(['success' => false, 'error' => $e->getMessage()]);
         }
     }
+
+    /**
+     * 小程序订阅消息模板列表
+     */
+    public function getMiniSubscribeTemplates()
+    {
+        if (session_status() === PHP_SESSION_NONE) {
+            session_start();
+        }
+        if (!isset($_SESSION['admin_id'])) {
+            return json(['success' => false, 'error' => '未登录']);
+        }
+
+        try {
+            $page = $this->request->get('page/d', 1);
+            $limit = $this->request->get('limit/d', 20);
+
+            $list = Db::name('mini_subscribe_templates')
+                ->order('id', 'asc')
+                ->paginate([
+                    'list_rows' => $limit,
+                    'page' => $page,
+                ]);
+
+            return json([
+                'success' => true,
+                'data' => $list->items(),
+                'total' => $list->total(),
+                'page' => $page,
+                'limit' => $limit,
+            ]);
+        } catch (\Exception $e) {
+            return json(['success' => false, 'error' => $e->getMessage()]);
+        }
+    }
+
+    /**
+     * 保存小程序订阅消息模板
+     */
+    public function saveMiniSubscribeTemplate()
+    {
+        if (session_status() === PHP_SESSION_NONE) {
+            session_start();
+        }
+        if (!isset($_SESSION['admin_id'])) {
+            return json(['success' => false, 'error' => '未登录']);
+        }
+
+        $raw = $this->request->post();
+        $data = [
+            'template_code' => isset($raw['template_code']) ? trim((string)$raw['template_code']) : '',
+            'template_name' => isset($raw['template_name']) ? trim((string)$raw['template_name']) : '',
+            'template_id' => isset($raw['template_id']) ? trim((string)$raw['template_id']) : '',
+            'is_enabled' => !empty($raw['is_enabled']) ? 1 : 0,
+            'remark' => isset($raw['remark']) ? trim((string)$raw['remark']) : '',
+        ];
+
+        if ($data['template_code'] === '' || $data['template_id'] === '') {
+            return json(['success' => false, 'error' => '请填写模板代码与微信模板ID']);
+        }
+
+        $now = date('Y-m-d H:i:s');
+
+        try {
+            if (!empty($raw['id'])) {
+                $data['update_time'] = $now;
+                Db::name('mini_subscribe_templates')->where('id', (int)$raw['id'])->update($data);
+                $message = '更新成功';
+            } else {
+                $data['create_time'] = $now;
+                $data['update_time'] = $now;
+                Db::name('mini_subscribe_templates')->insert($data);
+                $message = '添加成功';
+            }
+
+            return json(['success' => true, 'message' => $message]);
+        } catch (\Exception $e) {
+            return json(['success' => false, 'error' => '保存失败：' . $e->getMessage()]);
+        }
+    }
+
+    /**
+     * 删除小程序订阅消息模板
+     */
+    public function deleteMiniSubscribeTemplate()
+    {
+        if (session_status() === PHP_SESSION_NONE) {
+            session_start();
+        }
+        if (!isset($_SESSION['admin_id'])) {
+            return json(['success' => false, 'error' => '未登录']);
+        }
+
+        $id = $this->request->param('id');
+
+        try {
+            Db::name('mini_subscribe_templates')->where('id', $id)->delete();
+
+            return json(['success' => true, 'message' => '删除成功']);
+        } catch (\Exception $e) {
+            return json(['success' => false, 'error' => '删除失败：' . $e->getMessage()]);
+        }
+    }
     
     /**
      * 获取订阅列表

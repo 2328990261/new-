@@ -77,6 +77,19 @@
 					</view>
 				</view>
 
+				<!-- 订阅消息通知入口（放在搜索栏下、类型 Tab 上）
+				     规则：授课信息里“服务号通知/邮箱通知”任意开启，则这里隐藏 -->
+				<view v-if="showSubscribeEntry" class="subscribe-entry" @click="goToSubscribeNotify">
+					<view class="subscribe-entry-left">
+						<view class="subscribe-dot"></view>
+						<text class="subscribe-desc">开启后，匹配的生源信息将及时通知你</text>
+					</view>
+					<view class="subscribe-entry-right">
+						<text class="subscribe-btn">去订阅</text>
+						<text class="subscribe-arrow">›</text>
+					</view>
+				</view>
+
 				<!-- 类型 Tab 栏 -->
 				<view class="type-tabs">
 					<view 
@@ -535,7 +548,10 @@ export default {
 			shareMenuVisible: false,
 		
 		// 教师注册状态
-		isTeacherRegistered: false
+		isTeacherRegistered: false,
+
+		// 顶部订阅入口是否显示（默认显示；若授课信息里已开启任意通知则隐藏）
+		showSubscribeEntry: true
 	}
 	},
 	computed: {
@@ -594,8 +610,63 @@ export default {
 		this.loadSubjects()
 		this.loadTutorList()
 		this.checkTeacherRegistration()
+		this.refreshSubscribeEntryVisibility()
+	},
+	onShow() {
+		// 从“授课信息”返回时立即刷新显示状态
+		this.refreshSubscribeEntryVisibility()
 	},
 	methods: {
+		goToSubscribeNotify() {
+			uni.navigateTo({
+				url: '/pages/teaching-info/index'
+			})
+		},
+		// 若授课信息中已开启任意通知（服务号/邮箱），则隐藏顶部订阅入口
+		refreshSubscribeEntryVisibility() {
+			try {
+				// 先读本地缓存（从授课信息页切换开关后可立即生效）
+				const cached = Number(uni.getStorageSync('teaching_notify_any_enabled') || 0) === 1
+				if (cached) {
+					this.showSubscribeEntry = false
+				}
+
+				const token = uni.getStorageSync('token') || ''
+				if (!token) {
+					// 未登录时不强制隐藏
+					this.showSubscribeEntry = !cached
+					return
+				}
+
+				uni.request({
+					url: envConfig.API_BASE_URL + '/api/teaching-info/get',
+					method: 'GET',
+					header: {
+						'Content-Type': 'application/json',
+						'token': token
+					},
+					success: (res) => {
+						const payload = (res && res.data) ? res.data : {}
+						// 兼容两种返回：{success:true,data:{...}} 或 {code:200,data:{...}}
+						const ok = payload.success === true || payload.code === 200
+						if (ok) {
+							const data = payload.data || {}
+							const wechatNotify = Number(data.wechat_notify || 0) === 1
+							const emailNotify = Number(data.email_notify || 0) === 1
+							this.showSubscribeEntry = !(wechatNotify || emailNotify)
+							uni.setStorageSync('teaching_notify_any_enabled', (wechatNotify || emailNotify) ? 1 : 0)
+						} else {
+							this.showSubscribeEntry = !cached
+						}
+					},
+					fail: () => {
+						this.showSubscribeEntry = !cached
+					}
+				})
+			} catch (e) {
+				this.showSubscribeEntry = true
+			}
+		},
 		// 加载Banner横幅列表
 		async loadBannerList() {
 			try {
@@ -1656,6 +1727,76 @@ this.isTeacherRegistered = false
 .filter-btn-text {
 	font-size: 26rpx;
 	color: #606266;
+}
+
+/* 订阅消息入口（搜索栏下方） */
+.subscribe-entry {
+	margin: 0 24rpx 12rpx;
+	padding: 16rpx 18rpx;
+	border-radius: 14rpx;
+	background: linear-gradient(135deg, rgba(82, 201, 166, 0.16) 0%, rgba(59, 168, 136, 0.10) 100%);
+	border: 1rpx solid rgba(82, 201, 166, 0.35);
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 16rpx;
+}
+
+.subscribe-entry-left {
+	flex: 1;
+	min-width: 0;
+	display: flex;
+	align-items: center;
+	flex-wrap: nowrap;
+	gap: 10rpx;
+}
+
+.subscribe-dot {
+	width: 12rpx;
+	height: 12rpx;
+	border-radius: 999rpx;
+	background: #52C9A6;
+	box-shadow: 0 0 0 6rpx rgba(82, 201, 166, 0.18);
+}
+
+.subscribe-title {
+	font-size: 28rpx;
+	font-weight: 700;
+	color: #1f2d3d;
+}
+
+.subscribe-desc {
+	font-size: 24rpx;
+	color: #4b5563;
+	opacity: 0.95;
+	line-height: 1.4;
+	flex: 1;
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+.subscribe-entry-right {
+	display: flex;
+	align-items: center;
+	gap: 10rpx;
+	flex-shrink: 0;
+}
+
+.subscribe-btn {
+	font-size: 24rpx;
+	font-weight: 700;
+	color: #ffffff;
+	padding: 8rpx 14rpx;
+	border-radius: 999rpx;
+	background: linear-gradient(135deg, #52C9A6 0%, #3BA888 100%);
+}
+
+.subscribe-arrow {
+	font-size: 34rpx;
+	color: #3BA888;
+	font-weight: 600;
+	line-height: 1;
 }
 
 /* 类型 Tab 栏 */

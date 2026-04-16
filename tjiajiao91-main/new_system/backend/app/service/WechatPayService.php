@@ -1,6 +1,7 @@
 <?php
 namespace app\service;
 
+use app\model\Payment;
 use app\model\PaymentConfig;
 use think\facade\Log;
 
@@ -20,17 +21,38 @@ class WechatPayService
     private $apiUrl = 'https://api.mch.weixin.qq.com';
     
     /**
-     * 构造函数
+     * @param PaymentConfig|string|null $configOrScene 具体配置行，或场景名 default/h5，null 则 default
      */
-    public function __construct()
+    public function __construct($configOrScene = null)
     {
         try {
-            $this->config = PaymentConfig::getConfig('wechat');
+            if ($configOrScene instanceof PaymentConfig) {
+                $this->config = $configOrScene;
+            } elseif ($configOrScene === null || $configOrScene === '') {
+                $this->config = PaymentConfig::getConfigRow('wechat', 'default');
+            } else {
+                $this->config = PaymentConfig::getConfigRow('wechat', (string) $configOrScene);
+            }
         } catch (\Exception $e) {
-            // 如果配置表不存在，设置为null
             $this->config = null;
             trace('获取微信支付配置失败: ' . $e->getMessage(), 'warning');
         }
+    }
+
+    /**
+     * 按支付记录选用下单时的商户配置（查单、退款、验签）
+     */
+    public static function forPayment(Payment $payment): self
+    {
+        $id = (int) ($payment->wechat_payment_config_id ?? 0);
+        if ($id > 0) {
+            $cfg = PaymentConfig::find($id);
+            if ($cfg) {
+                return new self($cfg);
+            }
+        }
+
+        return new self('default');
     }
 
     /**

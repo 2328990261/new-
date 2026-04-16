@@ -21,7 +21,7 @@
         >
           <el-menu-item index="/dashboard">
             <el-icon><DataLine /></el-icon>
-            <template #title>仪表板</template>
+            <template #title>工作台</template>
           </el-menu-item>
           <el-menu-item index="/orders">
             <el-icon><Tickets /></el-icon>
@@ -106,7 +106,7 @@
       >
         <el-menu-item index="/dashboard">
           <el-icon><DataLine /></el-icon>
-          <template #title>仪表板</template>
+          <template #title>工作台</template>
         </el-menu-item>
         <el-menu-item index="/orders">
           <el-icon><Tickets /></el-icon>

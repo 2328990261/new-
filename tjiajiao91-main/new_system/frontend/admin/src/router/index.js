@@ -46,7 +46,7 @@ const routes = [
         path: 'dashboard',
         name: 'Dashboard',
         component: Dashboard,
-        meta: { title: '仪表板', keepAlive: true }
+        meta: { title: '工作台', keepAlive: true }
       },
       {
         path: 'tutor',

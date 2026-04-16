@@ -8,6 +8,7 @@ use app\model\ServiceAgreement;
 use app\model\TutorOrder;
 use app\service\WechatPayService;
 use think\facade\Db;
+use think\facade\Env;
 use think\facade\Log;
 use think\facade\Validate;
 
@@ -164,6 +165,12 @@ class Payment extends BaseController
             if (!isset($data['pay_remark']) && isset($data['payRemark'])) {
                 $data['pay_remark'] = $data['payRemark'];
             }
+            if (!isset($data['wechat_scene']) && isset($data['wechatScene'])) {
+                $data['wechat_scene'] = $data['wechatScene'];
+            }
+            if (!isset($data['wechat_payment_scene']) && isset($data['wechatPaymentScene'])) {
+                $data['wechat_payment_scene'] = $data['wechatPaymentScene'];
+            }
 
             // 手机号可选：仅认 payer_contact / mobile / phone（用户端 H5 已不再传手机）
             // 规范化后若非完整 11 位大陆号则置空，避免误带字段、半截数字等触发「请填写正确的11位手机号」
@@ -235,6 +242,27 @@ class Payment extends BaseController
                 }
             }
             
+            // 微信：先解析场景与配置行，与 fa_payment_config.scene 对齐，并写入 wechat_payment_config_id
+            $wechatConfig = null;
+            $tradeTypeForWechat = null;
+            if (($data['payment_method'] ?? '') === 'wechat') {
+                $tradeTypeForWechat = $this->detectPaymentType();
+                // 可选：与 trade_type 解耦，强制选用 fa_payment_config.scene（专用 H5 页传 h5）
+                $sceneParam = trim((string)($data['wechat_scene'] ?? $data['wechat_payment_scene'] ?? ''));
+                if ($sceneParam === 'h5' || $sceneParam === 'default') {
+                    $wxScene = $sceneParam;
+                } else {
+                    $wxScene = ($tradeTypeForWechat === 'h5') ? 'h5' : 'default';
+                }
+                $wechatConfig = PaymentConfig::getConfigRow('wechat', $wxScene);
+                if (!$wechatConfig) {
+                    return json([
+                        'code' => 500,
+                        'message' => '微信支付未配置或不可用（场景：' . $wxScene . '）',
+                    ]);
+                }
+            }
+
             // 生成支付订单号
             $orderNo = PaymentModel::generateOrderNo();
             
@@ -258,6 +286,9 @@ class Payment extends BaseController
             ];
             if ($openidParam !== '') {
                 $paymentData['openid'] = $openidParam;
+            }
+            if ($wechatConfig) {
+                $paymentData['wechat_payment_config_id'] = $wechatConfig->id;
             }
             
             // 只有当dispatcher_id字段存在时才添加
@@ -353,11 +384,9 @@ class Payment extends BaseController
             
             // 调用微信支付接口
             if ($data['payment_method'] === 'wechat') {
-                $wechatService = new WechatPayService();
-                
-                // 自动检测支付类型
-                $tradeType = $this->detectPaymentType();
-                
+                $wechatService = new WechatPayService($wechatConfig);
+                $tradeType = $tradeTypeForWechat;
+
                 trace('检测到的支付类型: ' . $tradeType, 'info');
                 
                 // 使用真实微信支付
@@ -426,22 +455,32 @@ class Payment extends BaseController
                 }
                 
                 if ($payResult['success']) {
+                    $merged = array_merge([
+                        'payment_id' => $payment->id,
+                        'tutor_order_id' => $data['tutor_order_id'] ?? null,
+                        'pay_mode' => $tradeType === 'jsapi' ? 'jsapi' : ($tradeType === 'h5' ? 'h5_mweb' : 'native'),
+                    ], $payResult['data']);
+                    if ($this->isPaymentDebugEnabled()) {
+                        $merged['payment_debug'] = [
+                            'wechat_scene' => $wxScene ?? '',
+                            'wechat_payment_config_id' => (int) ($wechatConfig->id ?? 0),
+                            'trade_type' => $tradeTypeForWechat,
+                        ];
+                    }
                     return json([
                         'code' => 200,
                         'message' => '支付订单创建成功',
-                        'data' => array_merge([
-                            'payment_id' => $payment->id,
-                            'tutor_order_id' => $data['tutor_order_id'] ?? null,
-                        ], $payResult['data'])
+                        'data' => $merged,
                     ]);
                 } else {
                     // 真实支付失败，尝试使用二维码支付作为回退
                     trace('真实支付失败，回退到二维码支付: ' . $payResult['message'], 'warning');
                     
-                    // 使用Native二维码支付作为回退方案
+                    // 使用Native二维码支付作为回退方案（与当前下单同一套商户配置，避免 h5/多商户时下错单）
                     $fallbackResult = null;
                     if (method_exists($wechatService, 'createNativePayment')) {
-                        $fallbackResult = $wechatService->createNativePayment([
+                        $fallbackSvc = new WechatPayService($wechatConfig);
+                        $fallbackResult = $fallbackSvc->createNativePayment([
                             'order_no' => $orderNo,
                             'amount' => $data['amount'],
                             'body' => '家教信息服务费'
@@ -449,13 +488,26 @@ class Payment extends BaseController
                     }
                     
                     if ($fallbackResult && $fallbackResult['success']) {
+                        $primaryErr = (string) ($payResult['message'] ?? '未知错误');
+                        $mergedFb = array_merge([
+                            'payment_id' => $payment->id,
+                            'tutor_order_id' => $data['tutor_order_id'] ?? null,
+                            'pay_mode' => 'native_fallback',
+                            'jsapi_failed_reason' => $primaryErr,
+                        ], $fallbackResult['data']);
+                        if ($this->isPaymentDebugEnabled()) {
+                            $mergedFb['payment_debug'] = [
+                                'wechat_scene' => $wxScene ?? '',
+                                'wechat_payment_config_id' => (int) ($wechatConfig->id ?? 0),
+                                'trade_type' => $tradeTypeForWechat,
+                                'note' => 'JSAPI/H5 主通道失败，已回退 Native 扫码；请查看 jsapi_failed_reason',
+                            ];
+                        }
                         return json([
                             'code' => 200,
-                            'message' => '支付订单创建成功（二维码支付）',
-                            'data' => array_merge([
-                                'payment_id' => $payment->id,
-                                'tutor_order_id' => $data['tutor_order_id'] ?? null,
-                            ], $fallbackResult['data'])
+                            'message' => '支付订单创建成功（主通道失败，已改用扫码支付）',
+                            'data' => $mergedFb,
+                            'error_detail' => 'JSAPI/主通道失败：' . $primaryErr,
                         ]);
                     } else {
                         // 二维码支付也失败了，删除支付记录并返回详细错误
@@ -538,7 +590,7 @@ class Payment extends BaseController
             // 待支付时向微信查单并同步（补偿异步 notify 未到达的情况）
             if ($payment->status === 'pending' && $payment->payment_method === 'wechat') {
                 try {
-                    $wx = new WechatPayService();
+                    $wx = WechatPayService::forPayment($payment);
                     $wx->syncPaymentIfWechatPaid($payment);
                     $payment = PaymentModel::where('order_no', $orderNo)->find();
                 } catch (\Throwable $e) {
@@ -642,8 +694,16 @@ class Payment extends BaseController
                 return response($this->wechatNotifyReply('FAIL', 'RETURN_FAIL'), 200, ['Content-Type' => 'application/xml; charset=utf-8']);
             }
 
-            // 验签（配置正确时必须通过）
-            $wechatService = new WechatPayService();
+            // 验签：按回调里的 appid 匹配对应配置行（多商户/多场景）
+            $appId = isset($data['appid']) ? trim((string) $data['appid']) : '';
+            $cfg = null;
+            if ($appId !== '') {
+                $cfg = PaymentConfig::where('payment_method', 'wechat')->where('app_id', $appId)->find();
+            }
+            if (!$cfg) {
+                $cfg = PaymentConfig::getConfigRow('wechat', 'default');
+            }
+            $wechatService = new WechatPayService($cfg);
             if (!$wechatService->verifySign($data)) {
                 Log::error('微信支付回调验签失败: ' . json_encode($data, JSON_UNESCAPED_UNICODE));
                 return response($this->wechatNotifyReply('FAIL', 'SIGN_ERROR'), 200, ['Content-Type' => 'application/xml; charset=utf-8']);
@@ -1061,6 +1121,19 @@ class Payment extends BaseController
         
         // 如果标题为空，使用订单ID
         return $title ?: '订单 #' . $order->id;
+    }
+
+    /**
+     * 是否在支付创建接口中附带 payment_debug（避免生产长期暴露：仅 APP_DEBUG 或 .env PAYMENT_RETURN_DEBUG=1）
+     */
+    private function isPaymentDebugEnabled(): bool
+    {
+        if ((string) Env::get('PAYMENT_RETURN_DEBUG', '') === '1') {
+            return true;
+        }
+        $d = Env::get('APP_DEBUG', false);
+
+        return $d === true || $d === 1 || $d === '1' || strtolower((string) $d) === 'true';
     }
 }
 

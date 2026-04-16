@@ -11,6 +11,21 @@
 		</view>
 		
 		<view class="content" :style="{ marginTop: (statusBarHeight + 44) + 'px' }">
+			<!-- 订阅家教订单（移到授课城市上方） -->
+			<view class="form-section">
+				<view class="section-title">订阅家教订单</view>
+				
+				<view class="form-item">
+					<text class="item-label">服务号通知</text>
+					<switch :checked="formData.wechat_notify === 1" @change="onWechatNotifyChange" color="#52C9A6" />
+				</view>
+
+				<view class="form-item">
+					<text class="item-label">邮箱通知</text>
+					<switch :checked="formData.email_notify === 1" @change="onEmailNotifyChange" color="#52C9A6" />
+				</view>
+			</view>
+
 			<!-- 授课城市 -->
 			<view class="form-section">
 				<view class="section-title">授课城市</view>
@@ -80,21 +95,6 @@
 						{{ subject.name }}
 						<text class="tag-close" @click.stop="removeSubject(index)">×</text>
 					</view>
-				</view>
-			</view>
-			
-			<!-- 订阅家教订单 -->
-			<view class="form-section">
-				<view class="section-title">订阅家教订单</view>
-				
-				<view class="form-item">
-					<text class="item-label">服务号通知</text>
-					<switch :checked="formData.wechat_notify === 1" @change="onWechatNotifyChange" color="#52C9A6" />
-				</view>
-				
-				<view class="form-item">
-					<text class="item-label">邮箱通知</text>
-					<switch :checked="formData.email_notify === 1" @change="onEmailNotifyChange" color="#52C9A6" />
 				</view>
 			</view>
 			
@@ -232,11 +232,13 @@
 <script>
 import envConfig from '@/config/env.js'
 import auth from '@/utils/auth.js'
+import { requestSubscribeMessage } from '@/utils/subscribe.js'
 
 export default {
 	data() {
 		return {
 			statusBarHeight: 0,
+			isAuthorizingSubscribe: false,
 			formData: {
 				city_id: null,
 				city_name: '',
@@ -411,15 +413,19 @@ export default {
 					
 					if (res.data.success && res.data.data) {
 						const data = res.data.data
+						const toInt01 = (v) => {
+							const n = Number(v)
+							return n === 1 ? 1 : 0
+						}
 						this.formData = {
 							city_id: data.city_id,
 							city_name: data.city_name || '',
 							districts: data.districts || [],
 							grades: data.grades || [],
 							subjects: data.subjects || [],
-							subscribe_push: data.subscribe_push || 0,
-							wechat_notify: data.wechat_notify || 0,
-							email_notify: data.email_notify || 0,
+							subscribe_push: toInt01(data.subscribe_push),
+							wechat_notify: toInt01(data.wechat_notify),
+							email_notify: toInt01(data.email_notify),
 							email: data.email || ''
 						}
 					} else if (!res.data.success) {
@@ -567,11 +573,57 @@ export default {
 		},
 		
 		onSubscribeChange(e) {
-			this.formData.subscribe_push = e.detail.value ? 1 : 0
+			const enable = !!e.detail.value
+			if (!enable) {
+				this.formData.subscribe_push = 0
+				return
+			}
+			// 开启“订阅推送”时，引导用户完成订阅消息授权
+			this.isAuthorizingSubscribe = true
+			requestSubscribeMessage()
+				.then(() => {
+					this.formData.subscribe_push = 1
+					// 若老师希望订阅推送，默认也打开微信通知开关（可手动关闭）
+					if (this.formData.wechat_notify !== 1) {
+						this.formData.wechat_notify = 1
+					}
+				})
+				.catch(() => {
+					// 用户拒绝/取消，则不启用
+					this.formData.subscribe_push = 0
+				})
+				.finally(() => {
+					this.isAuthorizingSubscribe = false
+				})
 		},
 		
 		onWechatNotifyChange(e) {
-			this.formData.wechat_notify = e.detail.value ? 1 : 0
+			const enable = !!e.detail.value
+			if (!enable) {
+				this.formData.wechat_notify = 0
+				// 关闭通知时同步关闭 subscribe_push，避免“关了开关还继续收到”
+				this.formData.subscribe_push = 0
+				uni.setStorageSync('teaching_notify_any_enabled', (this.formData.wechat_notify === 1 || this.formData.email_notify === 1) ? 1 : 0)
+				return
+			}
+			// 开启“微信通知”时，引导用户完成订阅消息授权
+			this.isAuthorizingSubscribe = true
+			requestSubscribeMessage()
+				.then(() => {
+					this.formData.wechat_notify = 1
+					// 开启微信通知时，默认也开启订阅推送（可手动关闭）
+					if (this.formData.subscribe_push !== 1) {
+						this.formData.subscribe_push = 1
+					}
+					uni.setStorageSync('teaching_notify_any_enabled', 1)
+				})
+				.catch(() => {
+					this.formData.wechat_notify = 0
+					uni.setStorageSync('teaching_notify_any_enabled', (this.formData.wechat_notify === 1 || this.formData.email_notify === 1) ? 1 : 0)
+				})
+				.finally(() => {
+					this.isAuthorizingSubscribe = false
+				})
 		},
 		
 		onEmailNotifyChange(e) {
@@ -584,6 +636,7 @@ export default {
 				// 关闭邮箱通知
 				this.formData.email_notify = 0
 				this.formData.email = ''
+				uni.setStorageSync('teaching_notify_any_enabled', (this.formData.wechat_notify === 1 || this.formData.email_notify === 1) ? 1 : 0)
 			}
 		},
 		
@@ -609,15 +662,24 @@ export default {
 			this.formData.email = this.tempEmail
 			this.formData.email_notify = 1
 			this.showEmailModal = false
+			uni.setStorageSync('teaching_notify_any_enabled', 1)
 		},
 		
 		cancelEmail() {
 			// 取消输入，关闭通知
 			this.formData.email_notify = 0
 			this.showEmailModal = false
+			uni.setStorageSync('teaching_notify_any_enabled', (this.formData.wechat_notify === 1 || this.formData.email_notify === 1) ? 1 : 0)
 		},
 		
 		saveInfo() {
+			if (this.isAuthorizingSubscribe) {
+				uni.showToast({
+					title: '请先完成订阅授权',
+					icon: 'none'
+				})
+				return
+			}
 			// 验证
 			if (!this.formData.city_id) {
 				uni.showToast({
@@ -689,6 +751,7 @@ export default {
 					console.log('保存授课信息响应:', res)
 					
 					if (res.data.success) {
+						uni.setStorageSync('teaching_notify_any_enabled', (this.formData.wechat_notify === 1 || this.formData.email_notify === 1) ? 1 : 0)
 						uni.showToast({
 							title: '保存成功',
 							icon: 'success'
@@ -805,7 +868,8 @@ export default {
 
 .content {
 	padding: 32rpx;
-	padding-bottom: 0;
+	/* 底部有固定「保存」栏，避免最后一项被遮挡 */
+	padding-bottom: calc(200rpx + env(safe-area-inset-bottom));
 }
 
 .form-section {

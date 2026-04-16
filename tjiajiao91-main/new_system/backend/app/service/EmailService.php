@@ -32,7 +32,12 @@ class EmailService
         } else {
             $mail->SMTPSecure = PHPMailer::ENCRYPTION_STARTTLS; // TLS
         }
-        $mail->Port = $config['smtp_port'] ?: 465;
+        // 端口默认值需要与加密方式匹配：SMTPS(SSL)=465，STARTTLS(TLS)=587
+        $port = (int)($config['smtp_port'] ?? 0);
+        if ($port <= 0) {
+            $port = $config['smtp_secure'] ? 465 : 587;
+        }
+        $mail->Port = $port;
         
         // 性能优化配置
         $mail->Timeout = 10; // 减少超时时间
@@ -751,7 +756,12 @@ class EmailService
             } else {
                 $mail->SMTPSecure = PHPMailer::ENCRYPTION_STARTTLS; // TLS
             }
-            $mail->Port = $config['smtp_port'] ?: 465;
+            // 端口默认值需要与加密方式匹配：SMTPS(SSL)=465，STARTTLS(TLS)=587
+            $port = (int)($config['smtp_port'] ?? 0);
+            if ($port <= 0) {
+                $port = $config['smtp_secure'] ? 465 : 587;
+            }
+            $mail->Port = $port;
             
             // 超时和SSL设置 - 关键：禁用SSL证书验证
             $mail->Timeout = 30;

@@ -19,7 +19,15 @@ class SubscribeMessage extends BaseController
         try {
             $userId = $this->request->post('user_id');
             $openid = $this->request->post('openid');
-            $templateId = $this->request->post('template_id', SubscribeMessageService::TEMPLATE_ID);
+            $type = trim((string)$this->request->post('type', ''));
+            $templateId = trim((string)$this->request->post('template_id', ''));
+            if ($templateId === '' && $type !== '') {
+                $code = in_array($type, ['resume_review', 'teacher_review'], true) ? 'resume_review' : 'tutor_recommend';
+                $templateId = SubscribeMessageService::getTemplateIdByCode($code);
+            }
+            if ($templateId === '') {
+                $templateId = SubscribeMessageService::getTemplateIdByCode('tutor_recommend');
+            }
             
             if (!$openid) {
                 return json(['code' => 400, 'message' => '参数错误']);
@@ -51,11 +59,42 @@ class SubscribeMessage extends BaseController
      */
     public function getTemplateId()
     {
+        $type = trim((string)$this->request->get('type', 'tutor_recommend'));
+        $code = 'tutor_recommend';
+        if ($type === 'resume_review' || $type === 'teacher_review') {
+            $code = 'resume_review';
+        } elseif ($type !== '' && $type !== 'tutor_recommend') {
+            $code = $type;
+        }
+        $tid = SubscribeMessageService::getTemplateIdByCode($code);
+
         return json([
             'code' => 200,
             'data' => [
-                'template_id' => SubscribeMessageService::TEMPLATE_ID
-            ]
+                'template_id' => $tid,
+                'template_code' => $code,
+            ],
         ]);
+    }
+
+    /**
+     * 小程序拉取已启用的订阅模板映射（code => template_id）
+     * GET /api/subscribe-message/templates
+     */
+    public function templates()
+    {
+        try {
+            $map = SubscribeMessageService::getEnabledTemplatesMap();
+
+            return json([
+                'code' => 200,
+                'message' => 'ok',
+                'data' => [
+                    'templates' => $map,
+                ],
+            ]);
+        } catch (\Throwable $e) {
+            return json(['code' => 500, 'message' => $e->getMessage()]);
+        }
     }
 }

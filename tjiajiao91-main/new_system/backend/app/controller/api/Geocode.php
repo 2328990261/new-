@@ -2,6 +2,7 @@
 namespace app\controller\api;
 
 use app\BaseController;
+use think\facade\Env;
 
 /**
  * 地理编码服务
@@ -27,7 +28,8 @@ class Geocode extends BaseController
             }
             
             // 腾讯地图API密钥（需要在腾讯地图开放平台申请）
-            $key = env('TENCENT_MAP_KEY', '');
+            // 统一用 Env facade，避免部分环境 env() helper 未加载导致 500
+            $key = Env::get('TENCENT_MAP_KEY', '');
             
             if (empty($key)) {
                 // 如果没有配置密钥，返回简单的提示
@@ -69,13 +71,20 @@ class Geocode extends BaseController
             
             $addressComponent = $result['result']['address_component'] ?? [];
             $formattedAddress = $result['result']['formatted_addresses']['recommend'] ?? $result['result']['address'] ?? '';
+
+            // 直辖市/部分地区 city 可能为空：用 province 兜底，前端再做“去市”处理
+            $province = $addressComponent['province'] ?? '';
+            $city = $addressComponent['city'] ?? '';
+            if (empty($city) && !empty($province)) {
+                $city = $province;
+            }
             
             return json([
                 'code' => 200,
                 'msg' => '获取成功',
                 'data' => [
-                    'province' => $addressComponent['province'] ?? '',
-                    'city' => $addressComponent['city'] ?? '',
+                    'province' => $province,
+                    'city' => $city,
                     'district' => $addressComponent['district'] ?? '',
                     'address' => $formattedAddress,
                     'formatted_address' => $formattedAddress,
@@ -84,7 +93,7 @@ class Geocode extends BaseController
                 ]
             ]);
             
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
             return json([
                 'code' => 500,
                 'msg' => '逆地理编码失败：' . $e->getMessage(),

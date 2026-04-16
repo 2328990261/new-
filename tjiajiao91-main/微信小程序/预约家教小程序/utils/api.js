@@ -454,6 +454,14 @@ export const subscribeMessageApi = {
 			url: '/api/subscribe-message/template-id',
 			method: 'GET'
 		})
+	},
+
+	// 拉取已启用的小程序订阅模板映射（code => template_id）
+	getTemplates() {
+		return request({
+			url: '/api/subscribe-message/templates',
+			method: 'GET'
+		})
 	}
 }
 

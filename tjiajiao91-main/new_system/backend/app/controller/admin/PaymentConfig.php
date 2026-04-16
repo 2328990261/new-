@@ -12,6 +12,12 @@ use think\facade\Validate;
  */
 class PaymentConfig extends BaseController
 {
+    /** @var string[] */
+    private static $persistFields = [
+        'payment_method', 'scene', 'name', 'app_id', 'mch_id', 'api_key', 'app_secret',
+        'cert_path', 'key_path', 'notify_url', 'refund_follow_qrcode', 'is_enabled', 'is_default',
+    ];
+
     /**
      * 获取支付配置
      * GET /admin/payment-config/get 或 /admin/payments/config
@@ -19,46 +25,43 @@ class PaymentConfig extends BaseController
     public function getConfig()
     {
         try {
-            // 获取微信支付配置
-            $wechatConfig = PaymentConfigModel::where('payment_method', 'wechat')->find();
-            $wechatData = $wechatConfig ? $wechatConfig->toArray() : [
-                'payment_method' => 'wechat',
-                'app_id' => '',
-                'mch_id' => '',
-                'api_key' => '',
-                'app_secret' => '',
-                'cert_path' => '',
-                'key_path' => '',
-                'notify_url' => '',
-                'refund_follow_qrcode' => '',
-                'is_enabled' => 0
-            ];
-            
-            // 获取支付宝配置
-            $alipayConfig = PaymentConfigModel::where('payment_method', 'alipay')->find();
-            $alipayData = $alipayConfig ? $alipayConfig->toArray() : [
-                'payment_method' => 'alipay',
-                'app_id' => '',
-                'mch_id' => '',
-                'api_key' => '',
-                'app_secret' => '',
-                'cert_path' => '',
-                'key_path' => '',
-                'notify_url' => '',
-                'is_enabled' => 0
-            ];
-            
-            // 转换字段名以匹配前端
-            $wechatData['enabled'] = (bool)$wechatData['is_enabled'];
-            $alipayData['enabled'] = (bool)$alipayData['is_enabled'];
-            
+            $wechatList = PaymentConfigModel::where('payment_method', 'wechat')
+                ->order('scene', 'asc')
+                ->order('is_default', 'desc')
+                ->order('id', 'asc')
+                ->select();
+
+            $alipayList = PaymentConfigModel::where('payment_method', 'alipay')
+                ->order('scene', 'asc')
+                ->order('is_default', 'desc')
+                ->order('id', 'asc')
+                ->select();
+
+            $wechatListArr = [];
+            foreach ($wechatList as $row) {
+                $a = $row->toArray();
+                $a['enabled'] = (bool) ($a['is_enabled'] ?? 0);
+                $wechatListArr[] = $a;
+            }
+
+            $alipayListArr = [];
+            foreach ($alipayList as $row) {
+                $alipayListArr[] = $this->expandAlipayRow($row->toArray());
+            }
+
+            // 列表可为空；兼容旧字段 wechat / alipay 仍给一条占位结构
+            $wechatData = $wechatListArr !== [] ? $wechatListArr[0] : $this->emptyWechatTemplate();
+            $alipayData = $alipayListArr !== [] ? $alipayListArr[0] : $this->emptyAlipayTemplate();
+
             return json([
                 'success' => true,
                 'code' => 200,
                 'message' => '获取成功',
                 'data' => [
+                    'wechat_list' => $wechatListArr,
+                    'alipay_list' => $alipayListArr,
                     'wechat' => $wechatData,
-                    'alipay' => $alipayData
+                    'alipay' => $alipayData,
                 ]
             ]);
         } catch (\Exception $e) {
@@ -67,6 +70,239 @@ class PaymentConfig extends BaseController
                 'code' => 500,
                 'message' => '获取失败：' . $e->getMessage(),
                 'error' => $e->getMessage()
+            ]);
+        }
+    }
+
+    private function emptyWechatTemplate(): array
+    {
+        return [
+            'id' => null,
+            'payment_method' => 'wechat',
+            'scene' => 'default',
+            'name' => '默认微信支付',
+            'app_id' => '',
+            'mch_id' => '',
+            'api_key' => '',
+            'app_secret' => '',
+            'cert_path' => '',
+            'key_path' => '',
+            'notify_url' => '',
+            'refund_follow_qrcode' => '',
+            'is_enabled' => 0,
+            'is_default' => 1,
+            'enabled' => false,
+        ];
+    }
+
+    private function emptyAlipayTemplate(): array
+    {
+        return [
+            'id' => null,
+            'payment_method' => 'alipay',
+            'scene' => 'default',
+            'name' => '',
+            'app_id' => '',
+            'mch_id' => '',
+            'api_key' => '',
+            'app_secret' => '',
+            'cert_path' => '',
+            'key_path' => '',
+            'notify_url' => '',
+            'is_enabled' => 0,
+            'is_default' => 0,
+            'enabled' => false,
+            'alipay_public_key' => '',
+            'private_key' => '',
+            'sandbox' => false,
+        ];
+    }
+
+    /**
+     * @param array<string,mixed> $row
+     * @return array<string,mixed>
+     */
+    private function expandAlipayRow(array $row): array
+    {
+        $row['enabled'] = (bool) ($row['is_enabled'] ?? 0);
+        $row['alipay_public_key'] = '';
+        $row['private_key'] = '';
+        $row['sandbox'] = false;
+        $secret = $row['app_secret'] ?? '';
+        if ($secret !== '' && isset($secret[0]) && $secret[0] === '{') {
+            $j = json_decode($secret, true);
+            if (is_array($j)) {
+                $row['alipay_public_key'] = (string) ($j['alipay_public_key'] ?? '');
+                $row['private_key'] = (string) ($j['private_key'] ?? '');
+                $row['sandbox'] = !empty($j['sandbox']);
+            }
+        }
+
+        return $row;
+    }
+
+    /**
+     * @param array<string,mixed> $item
+     */
+    private function mergeAlipayExtrasIntoAppSecret(array &$item): void
+    {
+        $extra = [];
+        foreach (['alipay_public_key', 'private_key', 'sandbox'] as $k) {
+            if (array_key_exists($k, $item)) {
+                $extra[$k] = $item[$k];
+                unset($item[$k]);
+            }
+        }
+        if ($extra === []) {
+            return;
+        }
+        $existing = [];
+        $as = $item['app_secret'] ?? '';
+        if ($as !== '' && isset($as[0]) && $as[0] === '{') {
+            $decoded = json_decode($as, true);
+            if (is_array($decoded)) {
+                $existing = $decoded;
+            }
+        }
+        $item['app_secret'] = json_encode(array_merge($existing, $extra), JSON_UNESCAPED_UNICODE);
+    }
+
+    /**
+     * @param array<string,mixed> $item
+     * @return array<string,mixed>
+     */
+    private function filterPersistPayload(array $item): array
+    {
+        $out = [];
+        foreach (self::$persistFields as $f) {
+            if (array_key_exists($f, $item)) {
+                $out[$f] = $item[$f];
+            }
+        }
+
+        return $out;
+    }
+
+    /**
+     * @param array<string,mixed> $item
+     */
+    private function saveOnePaymentConfigRow(array $item, string $method): void
+    {
+        $item['payment_method'] = $method;
+        $scene = isset($item['scene']) ? (string) $item['scene'] : 'default';
+        if ($scene === '') {
+            $scene = 'default';
+        }
+        $item['scene'] = $scene;
+
+        if (array_key_exists('enabled', $item)) {
+            $item['is_enabled'] = !empty($item['enabled']) ? 1 : 0;
+            unset($item['enabled']);
+        }
+
+        if ($method === 'alipay') {
+            $this->mergeAlipayExtrasIntoAppSecret($item);
+        }
+
+        if ($method === 'wechat' && (($item['name'] ?? '') === '')) {
+            $item['name'] = '微信支付-' . date('YmdHis');
+        }
+        if ($method === 'alipay' && (($item['name'] ?? '') === '')) {
+            $item['name'] = '支付宝-' . date('YmdHis');
+        }
+
+        $id = isset($item['id']) ? (int) $item['id'] : 0;
+        $name = (string) ($item['name'] ?? '');
+        if ($id <= 0 && $name !== '') {
+            $exist = PaymentConfigModel::where('payment_method', $method)
+                ->where('scene', $scene)
+                ->where('name', $name)
+                ->find();
+            if ($exist) {
+                $id = (int) $exist->id;
+            }
+        }
+
+        $isDefault = !empty($item['is_default']);
+        if ($isDefault) {
+            PaymentConfigModel::where('payment_method', $method)
+                ->where('scene', $scene)
+                ->update(['is_default' => 0]);
+        }
+        $item['is_default'] = $isDefault ? 1 : 0;
+
+        $payload = $this->filterPersistPayload($item);
+        unset($payload['id']);
+
+        if ($id > 0) {
+            $row = PaymentConfigModel::find($id);
+            if ($row && $row->payment_method === $method) {
+                $row->save($payload);
+            }
+        } else {
+            PaymentConfigModel::create($payload);
+        }
+    }
+
+    private function normalizeDefaultFlagsPerScene(string $method): void
+    {
+        $scenes = PaymentConfigModel::where('payment_method', $method)->column('scene');
+        $scenes = array_unique($scenes);
+        foreach ($scenes as $scene) {
+            $rows = PaymentConfigModel::where('payment_method', $method)
+                ->where('scene', $scene)
+                ->where('is_default', 1)
+                ->order('id', 'asc')
+                ->select();
+            if (count($rows) > 1) {
+                $first = true;
+                foreach ($rows as $r) {
+                    if ($first) {
+                        $first = false;
+                        continue;
+                    }
+                    $r->is_default = 0;
+                    $r->save();
+                }
+            }
+        }
+    }
+
+    /**
+     * POST body: { id }
+     */
+    public function deleteItem()
+    {
+        try {
+            $id = (int) $this->request->post('id', 0);
+            if ($id <= 0) {
+                return json([
+                    'success' => false,
+                    'code' => 400,
+                    'message' => '参数错误',
+                ]);
+            }
+            $row = PaymentConfigModel::find($id);
+            if (!$row) {
+                return json([
+                    'success' => false,
+                    'code' => 404,
+                    'message' => '配置不存在',
+                ]);
+            }
+            $row->delete();
+
+            return json([
+                'success' => true,
+                'code' => 200,
+                'message' => '已删除',
+            ]);
+        } catch (\Exception $e) {
+            return json([
+                'success' => false,
+                'code' => 500,
+                'message' => '删除失败：' . $e->getMessage(),
+                'error' => $e->getMessage(),
             ]);
         }
     }
@@ -79,46 +315,49 @@ class PaymentConfig extends BaseController
     {
         try {
             $data = $this->request->post();
-            
-            // 前端发送的数据格式: { wechat: {...}, alipay: {...} }
-            $saved = [];
-            
-            // 保存微信支付配置
+
+            if (isset($data['wechat_list']) || isset($data['alipay_list'])) {
+                foreach ($data['wechat_list'] ?? [] as $item) {
+                    if (is_array($item)) {
+                        $this->saveOnePaymentConfigRow($item, 'wechat');
+                    }
+                }
+                foreach ($data['alipay_list'] ?? [] as $item) {
+                    if (is_array($item)) {
+                        $this->saveOnePaymentConfigRow($item, 'alipay');
+                    }
+                }
+                $this->normalizeDefaultFlagsPerScene('wechat');
+                $this->normalizeDefaultFlagsPerScene('alipay');
+
+                return json([
+                    'success' => true,
+                    'code' => 200,
+                    'message' => '保存成功',
+                ]);
+            }
+
             if (isset($data['wechat'])) {
-                $wechatData = $data['wechat'];
-                $wechatData['payment_method'] = 'wechat';
-                $wechatData['is_enabled'] = $wechatData['enabled'] ?? 0;
-                unset($wechatData['enabled']);
-                
-                $config = PaymentConfigModel::where('payment_method', 'wechat')->find();
-                if ($config) {
-                    $config->save($wechatData);
-                } else {
-                    PaymentConfigModel::create($wechatData);
+                $w = $data['wechat'];
+                if (empty($w['id'])) {
+                    $this->ensureLegacyRowId($w, 'wechat');
                 }
-                $saved[] = 'wechat';
+                $this->saveOnePaymentConfigRow($w, 'wechat');
             }
-            
-            // 保存支付宝配置
             if (isset($data['alipay'])) {
-                $alipayData = $data['alipay'];
-                $alipayData['payment_method'] = 'alipay';
-                $alipayData['is_enabled'] = $alipayData['enabled'] ?? 0;
-                unset($alipayData['enabled']);
-                
-                $config = PaymentConfigModel::where('payment_method', 'alipay')->find();
-                if ($config) {
-                    $config->save($alipayData);
-                } else {
-                    PaymentConfigModel::create($alipayData);
+                $a = $data['alipay'];
+                if (empty($a['id'])) {
+                    $this->ensureLegacyRowId($a, 'alipay');
                 }
-                $saved[] = 'alipay';
+                $this->saveOnePaymentConfigRow($a, 'alipay');
             }
-            
+            $this->normalizeDefaultFlagsPerScene('wechat');
+            $this->normalizeDefaultFlagsPerScene('alipay');
+
             return json([
                 'success' => true,
                 'code' => 200,
-                'message' => '保存成功'
+                'message' => '保存成功',
             ]);
         } catch (\Exception $e) {
             return json([
@@ -127,6 +366,25 @@ class PaymentConfig extends BaseController
                 'message' => '保存失败：' . $e->getMessage(),
                 'error' => $e->getMessage()
             ]);
+        }
+    }
+
+    /**
+     * @param array<string,mixed> $item
+     */
+    private function ensureLegacyRowId(array &$item, string $method): void
+    {
+        if (!empty($item['id'])) {
+            return;
+        }
+        $scene = isset($item['scene']) ? (string) $item['scene'] : 'default';
+        $exist = PaymentConfigModel::where('payment_method', $method)
+            ->where('scene', $scene)
+            ->order('is_default', 'desc')
+            ->order('id', 'asc')
+            ->find();
+        if ($exist) {
+            $item['id'] = $exist->id;
         }
     }
     
@@ -138,10 +396,19 @@ class PaymentConfig extends BaseController
     {
         try {
             $paymentMethod = $this->request->post('payment_method', 'wechat');
+            $configId = (int) $this->request->post('config_id', 0);
             
             if ($paymentMethod === 'wechat') {
-                // 获取微信支付配置
-                $config = PaymentConfigModel::where('payment_method', 'wechat')->find();
+                $config = null;
+                if ($configId > 0) {
+                    $config = PaymentConfigModel::find($configId);
+                    if ($config && $config->payment_method !== 'wechat') {
+                        $config = null;
+                    }
+                }
+                if (!$config) {
+                    $config = PaymentConfigModel::getConfigRow('wechat', 'default');
+                }
                 
                 if (!$config) {
                     return json([

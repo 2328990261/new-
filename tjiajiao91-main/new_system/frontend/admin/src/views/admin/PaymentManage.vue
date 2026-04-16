@@ -25,6 +25,11 @@
 
     <!-- 桌面端视图 -->
     <div v-else class="desktop-view">
+    <el-alert type="info" :closable="false" class="payment-config-hint">
+      多套微信支付 / 支付宝商户参数请在
+      <router-link class="payment-config-link" to="/fields?tab=payment">基础配置 → 支付配置 · 多套</router-link>
+      中维护（支持「新增微信支付配置」等）。
+    </el-alert>
     <el-card class="filter-card">
       <!-- 标签组 -->
       <div class="tabs-header">
@@ -1297,6 +1302,14 @@ const loadMore = () => {
 <style scoped>
 .payment-manage {
   padding: 0;
+}
+
+.payment-config-hint {
+  margin: 0 0 12px;
+}
+
+.payment-config-link {
+  font-weight: 600;
 }
 
 .batch-actions-bar {

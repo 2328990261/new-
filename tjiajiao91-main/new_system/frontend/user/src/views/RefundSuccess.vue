@@ -1,84 +1,111 @@
 <template>
-  <div class="refund-success-page">
-    <div class="success-header">
-      <div class="success-icon">
-        <!-- 白底圆内仅保留时钟（处理中），避免表盘与对勾叠在一起导致显示异常 -->
-        <svg class="success-icon-svg" viewBox="0 0 24 24" width="40" height="40" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-          <circle cx="12" cy="12" r="9" fill="none" stroke="#52C9A6" stroke-width="1.75" stroke-linecap="round" />
-          <path d="M12 7v5l3.5 2" fill="none" stroke="#52C9A6" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" />
+  <div class="refund-voucher-page">
+    <header class="app-bar">
+      <h1 class="app-bar-title">退费凭证</h1>
+    </header>
+
+    <section class="hero">
+      <div class="hero-icon">
+        <svg class="hero-icon-svg" viewBox="0 0 24 24" width="36" height="36" aria-hidden="true">
+          <circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" />
+          <path
+            d="M12 7v5l3.5 2"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="1.6"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          />
         </svg>
       </div>
-      <h1 class="success-title">退费处理中</h1>
-      <p class="success-subtitle">请点击下方按钮复制文字凭证</p>
+      <h2 class="hero-title">退费处理中</h2>
+      <p class="hero-sub">请点击下方按钮复制文字凭证</p>
+    </section>
+
+    <div class="sheet">
+      <div class="voucher-card">
+        <div class="watermark" aria-hidden="true" />
+        <div class="card-head">{{ cardHeadline }}</div>
+
+        <div class="kv-row">
+          <span class="kv-label">姓名</span>
+          <span class="kv-value">{{ orderInfo.teacherName || '—' }}</span>
+        </div>
+        <div class="kv-row">
+          <span class="kv-label">对接同学</span>
+          <span class="kv-value">{{ orderInfo.staffName || '—' }}</span>
+        </div>
+        <div class="kv-row">
+          <span class="kv-label">申请时间</span>
+          <span class="kv-value">{{ orderInfo.applyTime }}</span>
+        </div>
+
+        <div class="divider" />
+
+        <div class="kv-row">
+          <span class="kv-label">信息费金额</span>
+          <span class="kv-value">¥ {{ orderInfo.amount }}</span>
+        </div>
+        <div class="kv-row">
+          <span class="kv-label">共收到报酬</span>
+          <span class="kv-value">¥ {{ orderInfo.receivedAmount }}</span>
+        </div>
+        <div class="kv-row kv-highlight">
+          <span class="kv-label">申请应退</span>
+          <span class="kv-value strong">¥ {{ orderInfo.refundAmount }}</span>
+        </div>
+        <div v-if="orderInfo.payTime && orderInfo.payTime !== '—'" class="kv-row">
+          <span class="kv-label">支付时间</span>
+          <span class="kv-value">{{ orderInfo.payTime }}</span>
+        </div>
+        <div class="kv-row kv-reason">
+          <span class="kv-label">退费诉求</span>
+          <span class="kv-value">{{ orderInfo.reason || '—' }}</span>
+        </div>
+
+        <div class="card-footer">
+          <img v-if="qrUrl" :src="qrUrl" alt="公众号二维码" class="qr-img" />
+          <div v-else class="qr-placeholder" />
+        </div>
+      </div>
+
+      <button class="primary-btn" type="button" @click="copyToClipboard">点击复制并发送给对接客服</button>
     </div>
 
-    <div class="order-details-card">
-      <div class="order-title">{{ orderInfo.tutorInfo }}</div>
-      
-      <div class="detail-item">
-        <span class="detail-label">老师姓名</span>
-        <span class="detail-value">{{ orderInfo.teacherName }}</span>
-      </div>
-      
-      <div class="detail-item">
-        <span class="detail-label">对接同学</span>
-        <span class="detail-value">{{ orderInfo.staffName }}</span>
-      </div>
-      
-      <div class="detail-item">
-        <span class="detail-label">申请时间</span>
-        <span class="detail-value">{{ orderInfo.applyTime }}</span>
-      </div>
-      
-      <div class="divider"></div>
-      
-      <div class="detail-item">
-        <span class="detail-label">信息费金额</span>
-        <span class="detail-value">¥ {{ orderInfo.amount }}</span>
-      </div>
-      
-      <div class="detail-item">
-        <span class="detail-label">共收到报酬</span>
-        <span class="detail-value">¥ {{ orderInfo.receivedAmount }}</span>
-      </div>
-      
-      <div class="detail-item highlight">
-        <span class="detail-label">申请应退</span>
-        <span class="detail-value amount">¥ {{ orderInfo.refundAmount }}</span>
-      </div>
-
-      <div class="detail-item">
-        <span class="detail-label">支付时间</span>
-        <span class="detail-value">{{ orderInfo.payTime }}</span>
-      </div>
-      
-      <div class="detail-item">
-        <span class="detail-label">退费原因</span>
-        <span class="detail-value">{{ orderInfo.reason }}</span>
+    <div v-if="toastVisible" class="toast-mask" aria-live="polite">
+      <div class="toast-box">
+        <span class="toast-check">✓</span>
+        <span>复制成功</span>
       </div>
     </div>
-
-    <button class="save-btn" type="button" @click="copyToClipboard">
-      点击复制并粘贴发送给对接客服
-    </button>
   </div>
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
+import { ElMessage } from 'element-plus'
 import request from '@/utils/request'
-import { initWechatShare, setWechatShare } from '@/utils/wechatShare'
+import { initWechatShare, setWechatShare, resolveUserH5Url } from '@/utils/wechatShare'
 
 const orderInfo = ref({
-  tutorInfo: '福田区翠海花园小二全科',
-  teacherName: '许晓娜',
-  staffName: '潘通老师',
-  payTime: '2025-12-25 13:24:49',
-  applyTime: '2025-12-25 13:24:49',
-  amount: '1600.00',
+  tutorInfo: '',
+  teacherName: '',
+  staffName: '',
+  payTime: '',
+  applyTime: '',
+  amount: '0.00',
   receivedAmount: '0.00',
-  refundAmount: '1600.00',
-  reason: '家长临时反馈不需要了'
+  refundAmount: '0.00',
+  reason: ''
+})
+
+const qrUrl = ref('')
+const toastVisible = ref(false)
+
+const cardHeadline = computed(() => {
+  const t = String(orderInfo.value.tutorInfo || '').trim()
+  if (t) return t.startsWith('【') ? t : `【${t}】`
+  return '【退费申请】'
 })
 
 const formatDateTime = (date) => {
@@ -91,23 +118,41 @@ const formatDateTime = (date) => {
   return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`
 }
 
+const showCopyToast = () => {
+  toastVisible.value = true
+  setTimeout(() => {
+    toastVisible.value = false
+  }, 2000)
+}
+
 onMounted(async () => {
-  document.title = '退费处理中'
-  initWechatShare().then(() => {
+  document.title = '退费凭证'
+
+  try {
+    await initWechatShare()
     setWechatShare({
       title: '退费处理中',
       desc: '退费申请已提交，请复制凭证发送给对接客服。',
-      link: window.location.href,
-      imgUrl: window.location.origin + '/logo.png'
+      link: window.location.href.split('#')[0],
+      imgUrl: resolveUserH5Url('static/images/share-logo.png')
     })
-  }).catch(() => {
+  } catch {
     setWechatShare({
       title: '退费处理中',
       desc: '退费申请已提交，请复制凭证发送给对接客服。',
-      link: window.location.href,
-      imgUrl: window.location.origin + '/logo.png'
+      link: window.location.href.split('#')[0],
+      imgUrl: resolveUserH5Url('static/images/share-logo.png')
     })
-  })
+  }
+
+  try {
+    const gc = await request.get('/refund/gate-config')
+    if (gc?.success && gc.data?.qrcode_url) {
+      qrUrl.value = gc.data.qrcode_url
+    }
+  } catch {
+    qrUrl.value = ''
+  }
 
   try {
     const savedRefund = localStorage.getItem('refundOrder')
@@ -125,7 +170,6 @@ onMounted(async () => {
         reason: refund.reason || ''
       }
 
-      // 若本地未写入支付时间，则用订单号回查后端 paid_time（与管理端列表一致）
       const orderNo = String(refund.order_no || '').trim()
       const hasPayTime = String(orderInfo.value.payTime || '').trim() !== '' && orderInfo.value.payTime !== '—'
       if (!hasPayTime && orderNo) {
@@ -137,8 +181,8 @@ onMounted(async () => {
               orderInfo.value.payTime = t
             }
           }
-        } catch (e) {
-          // ignore：保持 —
+        } catch {
+          /* ignore */
         }
       }
     }
@@ -147,11 +191,11 @@ onMounted(async () => {
   }
 })
 
-const copyToClipboard = () => {
-  const text = `退费申请
+const buildCopyText = () =>
+  `退费申请
 
 家教订单：${orderInfo.value.tutorInfo}
-老师姓名：${orderInfo.value.teacherName}
+姓名：${orderInfo.value.teacherName}
 对接同学：${orderInfo.value.staffName}
 申请时间：${orderInfo.value.applyTime}
 
@@ -160,14 +204,20 @@ const copyToClipboard = () => {
 申请应退：¥ ${orderInfo.value.refundAmount}
 支付时间：${orderInfo.value.payTime}
 
-退费原因：${orderInfo.value.reason}`
-  
+退费诉求：${orderInfo.value.reason}`
+
+const copyToClipboard = () => {
+  const text = buildCopyText()
+
   if (navigator.clipboard && navigator.clipboard.writeText) {
-    navigator.clipboard.writeText(text).then(() => {
-      alert('已复制到剪贴板，请发送给对接客服')
-    }).catch(() => {
-      fallbackCopy(text)
-    })
+    navigator.clipboard
+      .writeText(text)
+      .then(() => {
+        showCopyToast()
+      })
+      .catch(() => {
+        fallbackCopy(text)
+      })
   } else {
     fallbackCopy(text)
   }
@@ -182,219 +232,229 @@ const fallbackCopy = (text) => {
   textarea.select()
   try {
     document.execCommand('copy')
-    alert('已复制到剪贴板，请发送给对接客服')
-  } catch (err) {
-    alert('复制失败，请手动复制')
+    showCopyToast()
+  } catch {
+    ElMessage.error('复制失败，请手动长按选择复制')
   }
   document.body.removeChild(textarea)
 }
 </script>
 
 <style scoped>
-.refund-success-page {
+* {
+  box-sizing: border-box;
+}
+.refund-voucher-page {
+  --wx-green: #07c160;
+  --wx-bg: #f5f5f5;
   min-height: 100vh;
   min-height: 100dvh;
-  height: 100dvh;
-  background: linear-gradient(180deg, #f8fafb 0%, #f0f2f5 100%);
+  background: var(--wx-bg);
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-  display: flex;
-  flex-direction: column;
-  box-sizing: border-box;
+  padding-bottom: calc(24px + env(safe-area-inset-bottom));
   overflow-x: hidden;
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
-  overscroll-behavior: contain;
 }
 
-.success-header {
-  background: linear-gradient(135deg, #52C9A6 0%, #3BA888 100%);
-  padding: 20px 16px 26px;
-  text-align: center;
-  color: white;
-  position: relative;
-}
-
-.success-icon {
-  width: 70px;
-  height: 70px;
-  background: white;
-  border-radius: 50%;
-  margin: 0 auto 12px;
+.app-bar {
   display: flex;
   align-items: center;
   justify-content: center;
-  box-shadow: 0 8px 24px rgba(0,0,0,0.15);
-  overflow: visible;
+  min-height: 48px;
+  padding: 12px 16px;
+  background: #fff;
+  border-bottom: 1px solid #eee;
+  position: sticky;
+  top: 0;
+  z-index: 10;
+}
+.app-bar-title {
+  margin: 0;
+  font-size: 17px;
+  font-weight: 600;
+  color: #111;
 }
 
-.success-icon-svg {
+.hero {
+  background: var(--wx-green);
+  padding: 22px 20px 44px;
+  text-align: center;
+  color: #fff;
+}
+.hero-icon {
+  width: 72px;
+  height: 72px;
+  margin: 0 auto 14px;
+  border-radius: 50%;
+  background: #fff;
+  color: var(--wx-green);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.hero-icon-svg {
   display: block;
-  flex-shrink: 0;
-  overflow: visible;
+}
+.hero-title {
+  margin: 0 0 8px;
+  font-size: 20px;
+  font-weight: 700;
+}
+.hero-sub {
+  margin: 0;
+  font-size: 13px;
+  opacity: 0.95;
+  line-height: 1.45;
 }
 
-.success-title {
-  font-size: 21px;
-  font-weight: 600;
-  margin-bottom: 6px;
-}
-
-.success-subtitle {
-  font-size: 14px;
-  opacity: 0.9;
-}
-
-.order-details-card {
-  background: white;
-  margin: -16px 16px 12px;
-  border-radius: 16px;
-  padding: 16px 14px;
-  box-shadow: 0 4px 20px rgba(0,0,0,0.1);
+.sheet {
+  max-width: 600px;
+  margin: -32px auto 0;
+  padding: 0 16px;
   position: relative;
+  z-index: 2;
 }
 
-.order-title {
-  font-size: 18px;
-  font-weight: 600;
-  color: #333;
-  margin-bottom: 14px;
-  padding-bottom: 12px;
-  border-bottom: 2px solid #f0f2f5;
+.voucher-card {
+  position: relative;
+  background: #fff;
+  border-radius: 12px;
+  padding: 18px 16px 14px;
+  border: 1px solid #ebebeb;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08);
+  overflow: hidden;
 }
 
-.detail-item {
+.watermark {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0.1;
+  background: repeating-linear-gradient(
+    -32deg,
+    transparent,
+    transparent 36px,
+    rgba(200, 60, 60, 0.4) 36px,
+    rgba(200, 60, 60, 0.4) 37px
+  );
+}
+.watermark::after {
+  content: '退费凭证';
+  position: absolute;
+  left: 50%;
+  top: 40%;
+  transform: translate(-50%, -50%) rotate(-18deg);
+  font-size: 32px;
+  font-weight: 700;
+  color: #e53935;
+  letter-spacing: 0.15em;
+  white-space: nowrap;
+}
+
+.card-head {
+  position: relative;
+  font-size: 17px;
+  font-weight: 700;
+  color: #111;
+  margin-bottom: 12px;
+  line-height: 1.35;
+}
+
+.kv-row {
+  position: relative;
   display: flex;
   justify-content: space-between;
-  padding: 12px 10px;
-  font-size: 15px;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 9px 0;
+  border-bottom: 1px solid #f0f0f0;
+  font-size: 14px;
+}
+.kv-reason .kv-value {
+  max-width: 68%;
+  text-align: right;
+}
+.kv-label {
+  color: #888;
+  flex-shrink: 0;
+}
+.kv-value {
+  color: #111;
+  text-align: right;
+  word-break: break-all;
+}
+.kv-highlight {
+  background: rgba(7, 193, 96, 0.06);
+  margin: 4px -8px;
+  padding: 10px 8px;
   border-radius: 8px;
+  border-bottom: none;
 }
-
-.detail-item.highlight {
-  background: linear-gradient(90deg, rgba(82, 201, 166, 0.1) 0%, rgba(82, 201, 166, 0.05) 100%);
-  margin: 6px 0;
-}
-
-.detail-label {
-  color: #666;
-  font-weight: 500;
-}
-
-.detail-value {
-  color: #333;
-  font-weight: 600;
-}
-
-.detail-value.amount {
-  color: #52C9A6;
-  font-size: 19px;
+.kv-value.strong {
+  color: var(--wx-green);
   font-weight: 700;
+  font-size: 16px;
 }
 
 .divider {
   height: 1px;
-  background: #e8ecef;
-  margin: 10px 0;
+  background: #eee;
+  margin: 10px 0 6px;
 }
 
-.save-btn {
-  width: calc(100% - 40px);
-  margin: 0 20px 16px;
-  height: 46px;
-  background: linear-gradient(135deg, #52C9A6 0%, #3BA888 100%);
-  color: white;
-  border: none;
-  border-radius: 24px;
-  font-size: 16px;
-  font-weight: 600;
-  cursor: pointer;
-  box-shadow: 0 6px 20px rgba(82, 201, 166, 0.3);
+.card-footer {
+  position: relative;
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid #f0f0f0;
 }
-
-.save-btn:hover {
-  background: linear-gradient(135deg, #3BA888 0%, #2D8B6F 100%);
-}
-
-/* 小屏高度适配：压缩垂直间距，避免出现页面滚动条 */
-@media (max-height: 700px) {
-  .success-header {
-    padding: 16px 14px 20px;
-  }
-
-  .success-icon {
-    width: 62px;
-    height: 62px;
-    margin: 0 auto 10px;
-  }
-
-  .success-title {
-    font-size: 20px;
-  }
-
-  .order-details-card {
-    margin: -14px 14px 10px;
-    padding: 14px 12px;
-  }
-
-  .order-title {
-    margin-bottom: 12px;
-    padding-bottom: 10px;
-  }
-
-  .detail-item {
-    padding: 10px 8px;
-    font-size: 14px;
-  }
-
-  .detail-value.amount {
-    font-size: 18px;
-  }
-
-  .save-btn {
-    width: calc(100% - 32px);
-    margin: 0 16px 12px;
-    height: 44px;
-    font-size: 15px;
-  }
-}
-
-.qrcode-section {
-  text-align: center;
-  padding: 24px 20px 40px;
-  background: #f0f2f5;
-}
-
-.qrcode-box {
-  width: 220px;
-  height: 220px;
-  margin: 0 auto 16px;
-  background: white;
-  border: 2px solid #e8ecef;
-  border-radius: 16px;
-  box-shadow: 0 4px 16px rgba(0,0,0,0.08);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  overflow: hidden;
-}
-
-.qrcode-img {
-  width: 100%;
-  height: 100%;
+.qr-img {
+  width: 88px;
+  height: 88px;
   object-fit: contain;
   display: block;
 }
-
-.qrcode-warn {
-  font-size: 13px;
-  color: #e6a23c;
-  margin: 0 16px 12px;
-  line-height: 1.5;
+.qr-placeholder {
+  width: 88px;
+  height: 88px;
 }
 
-.qrcode-text {
-  font-size: 15px;
-  color: #52C9A6;
+.primary-btn {
+  width: 100%;
+  margin-top: 18px;
+  height: 48px;
+  border: none;
+  border-radius: 8px;
+  background: var(--wx-green);
+  color: #fff;
+  font-size: 16px;
   font-weight: 600;
+  cursor: pointer;
+}
+
+.toast-mask {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+}
+.toast-box {
+  background: rgba(0, 0, 0, 0.78);
+  color: #fff;
+  padding: 16px 28px;
+  border-radius: 10px;
+  font-size: 15px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.toast-check {
+  font-size: 18px;
+  font-weight: 700;
+  color: #7bed9f;
 }
 </style>

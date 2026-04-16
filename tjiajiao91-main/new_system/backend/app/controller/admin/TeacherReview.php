@@ -4,6 +4,8 @@ namespace app\controller\admin;
 use app\BaseController;
 use app\model\Teacher;
 use app\service\WechatNotificationService;
+use app\service\SubscribeMessageService;
+use app\service\TeacherMiniOpenidResolver;
 use think\facade\Db;
 use think\facade\Log;
 
@@ -106,15 +108,16 @@ class TeacherReview extends BaseController
                 \app\service\InvitationService::grantCouponsForApprovedInvitee($teacher->openid);
             }
 
-            // 发送公众号模板消息（按 unionid 匹配已关注公众号账号；不影响审核主流程）
-            $this->notifyReviewByOfficialAccount($teacher);
+            // 发送小程序订阅消息（不影响审核主流程）
+            $notifyRes = $this->notifyReviewByMiniSubscribe($teacher);
             
             return json([
                 'success' => true,
                 'message' => '审核完成',
                 'data' => [
                     'review_status' => $teacher->review_status,
-                    'certification_status' => $teacher->getCertificationStatus()
+                    'certification_status' => $teacher->getCertificationStatus(),
+                    'mini_subscribe_notify' => $notifyRes
                 ]
             ]);
         } catch (\Exception $e) {
@@ -162,10 +165,10 @@ class TeacherReview extends BaseController
                 }
             }
 
-            // 批量审核也发送公众号审核结果通知（不影响审核主流程）
+            // 批量审核也发送小程序订阅消息（不影响审核主流程）
             $teachers = Teacher::whereIn('id', $ids)->select();
             foreach ($teachers as $teacher) {
-                $this->notifyReviewByOfficialAccount($teacher);
+                $this->notifyReviewByMiniSubscribe($teacher);
             }
             
             return json([
@@ -253,6 +256,62 @@ class TeacherReview extends BaseController
             }
         } catch (\Throwable $e) {
             Log::error('教师审核公众号通知异常: ' . $e->getMessage());
+        }
+    }
+
+    /**
+     * 审核结果通知：小程序订阅消息
+     * 仅作为通知，失败不影响审核主流程
+     */
+    private function notifyReviewByMiniSubscribe($teacher): array
+    {
+        try {
+            $miniOpenid = TeacherMiniOpenidResolver::resolve($teacher);
+            if ($miniOpenid === '') {
+                Log::warning('教师审核订阅消息跳过: 无法解析小程序 openid（教师表无 openid，且未通过 account_id/手机号匹配到 users）');
+                return ['success' => false, 'message' => 'teacher_openid为空（教师表无 openid，且未通过 account_id/手机号匹配到 users）'];
+            }
+
+            $resultText = ((string)($teacher->review_status ?? '') === 'approved') ? '审核通过' : '审核驳回';
+            $remark = trim((string)($teacher->review_note ?? ''));
+            if ($remark === '') {
+                $remark = $resultText === '审核通过'
+                    ? '您的简历已通过审核，请尽快完善资料并接单。'
+                    : '您的简历未通过审核，请根据提示修改后重新提交。';
+            }
+
+            $reviewTime = (string)($teacher->review_time ?? '') ?: date('Y-m-d H:i:s');
+            $tid = (int)($teacher->id ?? 0);
+            $rv = (string)($teacher->review_status ?? '');
+            $page = 'pages/teacher-resume-preview/index?readonly=true'
+                . ($tid > 0 ? '&teacher_id=' . $tid : '')
+                . ($rv !== '' ? '&status=' . rawurlencode($rv) : '');
+
+            $sendRes = SubscribeMessageService::sendResumeReviewMessage($miniOpenid, [
+                'result' => $resultText,
+                'remark' => $remark,
+                'review_time' => $reviewTime,
+                'page' => $page,
+            ]);
+
+            if (empty($sendRes['success'])) {
+                Log::warning('教师审核订阅消息发送失败: ' . ($sendRes['message'] ?? 'unknown') . ', mini_openid=' . $miniOpenid);
+                return [
+                    'success' => false,
+                    'message' => (string)($sendRes['message'] ?? 'unknown'),
+                    'mini_openid' => $miniOpenid,
+                ];
+            } else {
+                Log::info('教师审核订阅消息发送成功, mini_openid=' . $miniOpenid);
+                return [
+                    'success' => true,
+                    'message' => '发送成功',
+                    'mini_openid' => $miniOpenid,
+                ];
+            }
+        } catch (\Throwable $e) {
+            Log::error('教师审核订阅消息异常: ' . $e->getMessage());
+            return ['success' => false, 'message' => $e->getMessage()];
         }
     }
 

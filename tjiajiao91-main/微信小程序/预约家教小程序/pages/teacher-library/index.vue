@@ -244,7 +244,7 @@ export default {
   data() {
     return {
       statusBarHeight: 20, // 默认状态栏高度
-      navTitle: '优师精选',
+      navTitle: '家教老师',
       cityName: '',
       searchKeyword: '',
       icons: ICONS,

@@ -21,7 +21,12 @@ class RefundApi extends BaseController
     public function gateConfig()
     {
         try {
-            $row = Db::name('payment_config')->where('payment_method', 'wechat')->find();
+            $row = Db::name('payment_config')
+                ->where('payment_method', 'wechat')
+                ->where('scene', 'default')
+                ->order('is_default', 'desc')
+                ->order('id', 'asc')
+                ->find();
             $raw = $row['refund_follow_qrcode'] ?? '';
             $qrcodeUrl = '';
             if ($raw !== null && $raw !== '') {
@@ -579,6 +584,7 @@ class RefundApi extends BaseController
             'id' => $payment->id,
             'order_no' => $payment->order_no,
             'tutor_name' => $payment->tutor_name,
+            'pay_remark' => $payment->pay_remark ?? '',
             'amount' => $payment->amount,
             'refunded_amount' => $payment->refunded_amount,
             'can_refund_amount' => $canRefundAmount,

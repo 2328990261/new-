@@ -442,7 +442,7 @@ class Payment extends BaseController
             // 微信支付必须先调用微信退款接口，成功后再落库
             $refundExtraRemark = '';
             if (($payment->payment_method ?? '') === 'wechat') {
-                $wechatService = new WechatPayService();
+                $wechatService = WechatPayService::forPayment($payment);
                 $refundNo = 'REF' . date('YmdHis') . str_pad((string)$payment->id, 6, '0', STR_PAD_LEFT);
                 $refundRes = $wechatService->refund([
                     'order_no' => $payment->order_no,
@@ -635,8 +635,8 @@ class Payment extends BaseController
     public function getConfig()
     {
         try {
-            $wechat = PaymentConfig::where('payment_method', 'wechat')->find();
-            $alipay = PaymentConfig::where('payment_method', 'alipay')->find();
+            $wechat = PaymentConfig::getConfigRow('wechat', 'default');
+            $alipay = PaymentConfig::getConfigRow('alipay', 'default');
             
             return json([
                 'success' => true,
@@ -659,22 +659,40 @@ class Payment extends BaseController
             $data = $this->request->post();
             
             if (isset($data['wechat'])) {
-                $wechat = PaymentConfig::where('payment_method', 'wechat')->find();
+                $w = $data['wechat'];
+                $w['payment_method'] = 'wechat';
+                $w['scene'] = $w['scene'] ?? 'default';
+                if (empty($w['name'])) {
+                    $w['name'] = '默认微信支付';
+                }
+                $wechat = PaymentConfig::where('payment_method', 'wechat')
+                    ->where('scene', $w['scene'])
+                    ->order('is_default', 'desc')
+                    ->order('id', 'asc')
+                    ->find();
                 if ($wechat) {
-                    $wechat->save($data['wechat']);
+                    $wechat->save($w);
                 } else {
-                    $data['wechat']['payment_method'] = 'wechat';
-                    PaymentConfig::create($data['wechat']);
+                    PaymentConfig::create($w);
                 }
             }
             
             if (isset($data['alipay'])) {
-                $alipay = PaymentConfig::where('payment_method', 'alipay')->find();
+                $a = $data['alipay'];
+                $a['payment_method'] = 'alipay';
+                $a['scene'] = $a['scene'] ?? 'default';
+                if (!array_key_exists('name', $a)) {
+                    $a['name'] = '';
+                }
+                $alipay = PaymentConfig::where('payment_method', 'alipay')
+                    ->where('scene', $a['scene'])
+                    ->order('is_default', 'desc')
+                    ->order('id', 'asc')
+                    ->find();
                 if ($alipay) {
-                    $alipay->save($data['alipay']);
+                    $alipay->save($a);
                 } else {
-                    $data['alipay']['payment_method'] = 'alipay';
-                    PaymentConfig::create($data['alipay']);
+                    PaymentConfig::create($a);
                 }
             }
             

@@ -23,6 +23,7 @@ class Payment extends Model
         'refunded_amount'       => 'float',
         'actual_amount'         => 'float',
         'payment_method'        => 'string',
+        'wechat_payment_config_id' => 'int',
         'payer_name'            => 'string',
         'payer_contact'         => 'string',
         'openid'                => 'string',

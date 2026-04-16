@@ -4,6 +4,8 @@ namespace app\controller\admin;
 use app\BaseController;
 use app\model\Teacher as TeacherModel;
 use app\service\WechatNotificationService;
+use app\service\SubscribeMessageService;
+use app\service\TeacherMiniOpenidResolver;
 use think\facade\Db;
 use think\facade\Log;
 use think\facade\Session;
@@ -517,8 +519,8 @@ class Teacher extends BaseController
             if ($status === 'approved' && !empty($teacher->openid)) {
                 \app\service\InvitationService::grantCouponsForApprovedInvitee($teacher->openid);
             }
-            // 教师管理页审核也发送公众号通知，避免仅 TeacherReview 入口会触发
-            $this->notifyReviewByOfficialAccount($teacher);
+            // 教师管理页审核：改为小程序订阅消息通知（失败不影响审核主流程）
+            $miniNotify = $this->notifyReviewByMiniSubscribe($teacher);
             
             $statusText = [
                 'pending' => '待审核',
@@ -528,7 +530,10 @@ class Teacher extends BaseController
             
             return json([
                 'success' => true,
-                'message' => '审核状态已更新为：' . $statusText[$status]
+                'message' => '审核状态已更新为：' . $statusText[$status],
+                'data' => [
+                    'mini_subscribe_notify' => $miniNotify
+                ]
             ]);
             
         } catch (\Exception $e) {
@@ -1001,6 +1006,50 @@ class Teacher extends BaseController
             }
         } catch (\Throwable $e) {
             Log::error('教师管理审核公众号通知异常: ' . $e->getMessage());
+        }
+    }
+
+    /**
+     * 审核结果通知：小程序订阅消息
+     * 仅作为通知，失败不影响审核主流程
+     */
+    private function notifyReviewByMiniSubscribe($teacher): array
+    {
+        try {
+            $miniOpenid = TeacherMiniOpenidResolver::resolve($teacher);
+            if ($miniOpenid === '') {
+                return ['success' => false, 'message' => 'teacher_openid为空（教师表无 openid，且未通过 account_id/手机号匹配到 users）'];
+            }
+
+            $resultText = ((string)($teacher->review_status ?? '') === 'approved') ? '审核通过' : '审核驳回';
+            $remark = trim((string)($teacher->review_note ?? ''));
+            if ($remark === '') {
+                $remark = $resultText === '审核通过'
+                    ? '您的简历已通过审核，请尽快完善资料并接单。'
+                    : '您的简历未通过审核，请根据提示修改后重新提交。';
+            }
+            $reviewTime = (string)($teacher->review_time ?? '') ?: date('Y-m-d H:i:s');
+            // 必须带 teacher_id，否则小程序预览页 onLoad 不会拉取后端数据（从订阅消息直达时空白）
+            $tid = (int)($teacher->id ?? 0);
+            $rv = (string)($teacher->review_status ?? '');
+            $page = 'pages/teacher-resume-preview/index?readonly=true'
+                . ($tid > 0 ? '&teacher_id=' . $tid : '')
+                . ($rv !== '' ? '&status=' . rawurlencode($rv) : '');
+
+            $sendRes = SubscribeMessageService::sendResumeReviewMessage($miniOpenid, [
+                'result' => $resultText,
+                'remark' => $remark,
+                'review_time' => $reviewTime,
+                'page' => $page,
+            ]);
+
+            return [
+                'success' => !empty($sendRes['success']),
+                'message' => (string)($sendRes['message'] ?? ''),
+                'mini_openid' => $miniOpenid,
+            ];
+        } catch (\Throwable $e) {
+            return ['success' => false, 'message' => $e->getMessage()];
         }
     }
 

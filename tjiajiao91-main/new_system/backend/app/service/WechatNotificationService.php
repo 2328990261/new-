@@ -4,6 +4,7 @@ namespace app\service;
 use think\facade\Db;
 use think\facade\Cache;
 use think\facade\Log;
+use app\service\OfficialTokenService;
 
 /**
  * 微信服务号通知服务
@@ -16,44 +17,7 @@ class WechatNotificationService
     public static function getAccessToken($forceRefresh = false)
     {
         try {
-            // 获取配置
-            $config = Db::name('notification_config')->find(1);
-            
-            if (!$config || !$config['wechat_app_id'] || !$config['wechat_app_secret']) {
-                throw new \Exception('微信服务号配置未完成');
-            }
-            
-            // 检查缓存的AccessToken是否有效
-            if (!$forceRefresh && 
-                !empty($config['wechat_access_token']) && 
-                $config['wechat_access_token_expire'] > time()) {
-                return $config['wechat_access_token'];
-            }
-            
-            // 请求新的AccessToken
-            $url = "https://api.weixin.qq.com/cgi-bin/token?grant_type=client_credential&appid={$config['wechat_app_id']}&secret={$config['wechat_app_secret']}";
-            
-            $result = self::httpGet($url);
-            $data = json_decode($result, true);
-            
-            if (isset($data['errcode'])) {
-                throw new \Exception('获取AccessToken失败：' . ($data['errmsg'] ?? '未知错误'));
-            }
-            
-            $accessToken = $data['access_token'];
-            $expiresIn = $data['expires_in'] ?? 7200;
-            
-            // 缓存AccessToken（提前5分钟过期）
-            $expireTime = time() + $expiresIn - 300;
-            Db::name('notification_config')
-                ->where('id', 1)
-                ->update([
-                    'wechat_access_token' => $accessToken,
-                    'wechat_access_token_expire' => $expireTime
-                ]);
-            
-            return $accessToken;
-            
+            return OfficialTokenService::getAccessToken((bool)$forceRefresh);
         } catch (\Exception $e) {
             trace('获取AccessToken失败: ' . $e->getMessage(), 'error');
             throw $e;
@@ -369,28 +333,7 @@ class WechatNotificationService
      */
     public static function getUserInfo($openid)
     {
-        try {
-            $accessToken = self::getAccessToken();
-            $url = "https://api.weixin.qq.com/cgi-bin/user/info?access_token={$accessToken}&openid={$openid}&lang=zh_CN";
-            
-            $result = self::httpGet($url);
-            $data = json_decode($result, true);
-            
-            if (isset($data['errcode']) && $data['errcode'] != 0) {
-                throw new \Exception($data['errmsg'] ?? '获取用户信息失败');
-            }
-            
-            return [
-                'success' => true,
-                'data' => $data
-            ];
-            
-        } catch (\Exception $e) {
-            return [
-                'success' => false,
-                'message' => $e->getMessage()
-            ];
-        }
+        return OfficialTokenService::getUserInfo((string)$openid);
     }
     
     /**

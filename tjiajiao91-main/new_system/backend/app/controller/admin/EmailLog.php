@@ -159,7 +159,12 @@ class EmailLog extends BaseController
             $mail->Username = $config['smtp_username'];
             $mail->Password = $config['smtp_password'];
             $mail->SMTPSecure = $config['smtp_secure'] ? \PHPMailer\PHPMailer\PHPMailer::ENCRYPTION_SMTPS : \PHPMailer\PHPMailer\PHPMailer::ENCRYPTION_STARTTLS;
-            $mail->Port = $config['smtp_port'] ?: 465;
+            // 端口默认值需要与加密方式匹配：SMTPS(SSL)=465，STARTTLS(TLS)=587
+            $port = (int)($config['smtp_port'] ?? 0);
+            if ($port <= 0) {
+                $port = $config['smtp_secure'] ? 465 : 587;
+            }
+            $mail->Port = $port;
             $mail->Timeout = 10;
             $mail->SMTPOptions = [
                 'ssl' => [

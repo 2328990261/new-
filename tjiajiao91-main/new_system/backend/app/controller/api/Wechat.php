@@ -3,8 +3,7 @@
 namespace app\controller\api;
 
 use app\BaseController;
-use app\service\WechatNotificationService;
-use think\facade\Cache;
+use app\service\OfficialTokenService;
 use think\facade\Db;
 use think\facade\Log;
 
@@ -109,39 +108,7 @@ class Wechat extends BaseController
      */
     private function getJsApiTicket(bool $forceRefresh = false): string
     {
-        $cacheKey = 'wechat:official:jsapi_ticket';
-        if (!$forceRefresh) {
-            $cached = Cache::get($cacheKey);
-            if (is_string($cached) && trim($cached) !== '') {
-                return trim($cached);
-            }
-        }
-
-        $accessToken = WechatNotificationService::getAccessToken($forceRefresh);
-        $url = "https://api.weixin.qq.com/cgi-bin/ticket/getticket?access_token={$accessToken}&type=jsapi";
-        $resp = $this->httpGet($url);
-        $data = json_decode($resp, true);
-        if (!is_array($data)) {
-            throw new \Exception('微信返回 ticket 数据解析失败');
-        }
-        if (isset($data['errcode']) && (int)$data['errcode'] !== 0) {
-            // access_token 可能过期：强刷一次重试
-            if (in_array((int)$data['errcode'], [40001, 42001], true) && !$forceRefresh) {
-                return $this->getJsApiTicket(true);
-            }
-            throw new \Exception('获取 JSAPI ticket 失败：' . ((string)($data['errmsg'] ?? '未知错误')));
-        }
-
-        $ticket = trim((string)($data['ticket'] ?? ''));
-        if ($ticket === '') {
-            throw new \Exception('微信返回缺少 jsapi_ticket');
-        }
-
-        $expiresIn = (int)($data['expires_in'] ?? 7200);
-        $ttl = max(60, $expiresIn - 300); // 提前 5 分钟过期
-        Cache::set($cacheKey, $ticket, $ttl);
-
-        return $ticket;
+        return OfficialTokenService::getJsapiTicket($forceRefresh);
     }
 
     /**
@@ -151,27 +118,6 @@ class Wechat extends BaseController
     {
         $plain = "jsapi_ticket={$ticket}&noncestr={$nonceStr}&timestamp={$timestamp}&url={$url}";
         return sha1($plain);
-    }
-
-    /**
-     * HTTP GET（curl）
-     */
-    private function httpGet(string $url): string
-    {
-        $ch = curl_init();
-        curl_setopt($ch, CURLOPT_URL, $url);
-        curl_setopt($ch, CURLOPT_RETURNTRANSFER, 1);
-        curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
-        curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, false);
-        curl_setopt($ch, CURLOPT_TIMEOUT, 20);
-        $result = curl_exec($ch);
-        if (curl_errno($ch)) {
-            $error = curl_error($ch);
-            curl_close($ch);
-            throw new \Exception('HTTP请求失败: ' . $error);
-        }
-        curl_close($ch);
-        return (string)$result;
     }
 
     /**

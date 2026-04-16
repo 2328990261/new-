@@ -111,6 +111,10 @@ Route::group('api', function () {
     Route::post('refund/apply', 'api.RefundApi/applyRefund');
     Route::get('refund/status', 'api.RefundApi/queryRefundStatus');
     Route::post('refund/upload-voucher', 'api.RefundApi/uploadVoucher');
+
+    // 统一 token 服务（内部接口：IP 白名单 + 签名）
+    Route::get('official/token', 'api.OfficialToken/token');
+    Route::get('official/jsapi-ticket', 'api.OfficialToken/jsapiTicket');
     
     // 微信授权
     Route::get('wechat/authorize', 'api.WechatAuth/authorize');
@@ -206,8 +210,11 @@ Route::group('api', function () {
     
 })->middleware(\app\middleware\Cors::class);
 
-return [];
-
-    // 订阅消息
+// 订阅消息（之前误放在 return[] 后导致路由永远不生效）
+Route::group('api', function () {
     Route::post('subscribe-message/record', 'api.SubscribeMessage/record');
     Route::get('subscribe-message/template-id', 'api.SubscribeMessage/getTemplateId');
+    Route::get('subscribe-message/templates', 'api.SubscribeMessage/templates');
+})->middleware(\app\middleware\Cors::class);
+
+return [];

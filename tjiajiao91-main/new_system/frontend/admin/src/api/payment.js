@@ -60,7 +60,7 @@ export function getPaymentConfig() {
   })
 }
 
-// 更新支付配置
+// 更新支付配置（支持 wechat_list / alipay_list 多配置，或旧版 wechat / alipay 单对象）
 export function updatePaymentConfig(data) {
   return request({
     url: '/payments/config',
@@ -69,7 +69,16 @@ export function updatePaymentConfig(data) {
   })
 }
 
-// 测试支付配置
+// 删除一条支付配置
+export function deletePaymentConfigItem(id) {
+  return request({
+    url: '/payments/config/item/delete',
+    method: 'post',
+    data: { id }
+  })
+}
+
+// 测试支付配置（微信可传 config_id 指定测哪一条）
 export function testPaymentConfig(data) {
   return request({
     url: '/payment-config/test',

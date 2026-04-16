@@ -7,6 +7,10 @@ use app\model\Admin;
 use app\service\RecognitionService;
 use app\service\EmailService;
 use app\service\DispatcherAutoAssignService;
+use app\service\OrderEmailRecipientGate;
+use app\service\SubscribeMessageService;
+use app\service\TeacherMiniOpenidResolver;
+use app\service\TutorOrderMailRenderer;
 use think\facade\Session;
 use think\facade\Db;
 
@@ -939,6 +943,13 @@ class Tutor extends BaseController
                 // 自动派单失败不影响订单创建
                 trace("自动派单失败: " . $e->getMessage(), 'warning');
             }
+
+            // 发布家教单后：按老师授课信息匹配并通知（小程序订阅消息 + 邮箱），不影响主流程
+            try {
+                $this->sendOrderNotificationToTeachers($order);
+            } catch (\Throwable $e) {
+                trace('管理端家教单创建后通知老师失败（不影响主流程）: ' . $e->getMessage(), 'info');
+            }
             
             return json(['success' => true, 'message' => '创建成功', 'data' => $order]);
             
@@ -1246,6 +1257,13 @@ class Tutor extends BaseController
                         // 自动派单失败不影响订单创建
                         trace("自动派单失败: " . $e->getMessage(), 'warning');
                     }
+
+                    // 批量创建后也通知老师（失败不影响）
+                    try {
+                        $this->sendOrderNotificationToTeachers($order);
+                    } catch (\Throwable $e) {
+                        trace('管理端批量创建家教单通知老师失败（不影响主流程）: ' . $e->getMessage(), 'info');
+                    }
                     
                     $successCount++;
                     
@@ -1292,6 +1310,165 @@ class Tutor extends BaseController
             Db::rollback();
             return json(['success' => false, 'error' => '批量创建失败：' . $e->getMessage()]);
         }
+    }
+
+    /**
+     * 给匹配的老师发送通知：
+     * - 小程序订阅消息：SubscribeMessageService::sendTutorRecommendMessage
+     * - 邮箱：加入 EmailQueue
+     */
+    private function sendOrderNotificationToTeachers($tutorOrder)
+    {
+        try {
+            // 补全关联（city/district/subject）方便取展示名称
+            $tutor = TutorOrder::with(['city', 'district', 'subject'])->find($tutorOrder->id);
+            if (!$tutor) {
+                return;
+            }
+
+            $matchedTeachers = $this->getMatchedTeachersByTeachingInfo($tutor);
+            if (empty($matchedTeachers)) {
+                return;
+            }
+
+            $cityName = $tutor->city ? (string)$tutor->city->name : '';
+            $districtName = $tutor->district ? (string)$tutor->district->name : '';
+            $subjectName = $tutor->subject ? (string)$tutor->subject->name : '';
+
+            $payload = [
+                'tutor_id' => $tutor->id,
+                'order_no' => (string)$tutor->id,
+                'grade' => (string)($tutor->grade ?? ''),
+                'subject' => $subjectName !== '' ? $subjectName : (string)($tutor->subject_id ?? ''),
+                'city' => $cityName !== '' ? $cityName : (string)($tutor->city_id ?? ''),
+                'district' => $districtName !== '' ? $districtName : (string)($tutor->district_id ?? ''),
+                // content 用于订阅消息侧提取【时间】频率、上门/线上等关键词
+                'content' => (string)($tutor->content ?? ''),
+                // 若表中无该字段，则订阅消息服务会从 content 自动识别
+                'teaching_method' => (string)($tutor->teaching_method ?? ''),
+                'salary' => (string)($tutor->salary ?? ''),
+            ];
+
+            foreach ($matchedTeachers as $teacherRow) {
+                $wechatNotify = (int)($teacherRow['wechat_notify'] ?? 0) === 1;
+                $miniOpenid = TeacherMiniOpenidResolver::resolve($teacherRow);
+                // 只在老师明确开启“服务号/订阅消息通知”时才发小程序订阅消息
+                if ($wechatNotify && $miniOpenid !== '') {
+                    SubscribeMessageService::sendTutorRecommendMessage($miniOpenid, $payload);
+                }
+
+                // 邮箱通知：老师开启 email_notify 且填写邮箱时入队
+                $emailNotify = (int)($teacherRow['email_notify'] ?? 0) === 1;
+                $email = trim((string)($teacherRow['email'] ?? ''));
+                if ($emailNotify && $email !== '') {
+                    try {
+                        $email = OrderEmailRecipientGate::filter($email, $tutor->id ?? null);
+                        if ($email === null) {
+                            continue;
+                        }
+
+                        $config = Db::name('notification_config')->find(1);
+                        if ($config && !empty($config['smtp_host']) && !empty($config['email_enabled'])) {
+                            $subject = '【91 家教中心】新家教单通知';
+                            $body = TutorOrderMailRenderer::renderHtml($tutor, $config);
+
+                            \app\model\EmailQueue::create([
+                                'email_type' => \app\model\EmailQueue::TYPE_ORDER,
+                                'recipient_email' => $email,
+                                'subject' => $subject,
+                                'body' => $body,
+                                'related_id' => $tutor->id,
+                                'status' => \app\model\EmailQueue::STATUS_PENDING,
+                                'created_at' => date('Y-m-d H:i:s')
+                            ]);
+                        }
+                    } catch (\Throwable $e) {
+                        // ignore
+                    }
+                }
+            }
+        } catch (\Throwable $e) {
+            // ignore
+        }
+    }
+
+    /**
+     * 按老师授课信息匹配：城市/区域/科目/年级，并要求 subscribe_push=1
+     */
+    private function getMatchedTeachersByTeachingInfo($tutor): array
+    {
+        $cityId = (int)($tutor->city_id ?? 0);
+        $districtId = $tutor->district_id !== null ? (int)$tutor->district_id : 0;
+        $subjectId = $tutor->subject_id !== null ? (int)$tutor->subject_id : 0;
+        $gradeText = trim((string)($tutor->grade ?? ''));
+
+        $rows = [];
+        try {
+            // 邮箱/小程序通知：匹配开启任意一种通知的老师
+            $q = Db::name('teacher_teaching_info');
+            if ($cityId > 0) {
+                $q->where('city_id', $cityId);
+            }
+            $q->where(function ($qq) {
+                $qq->where('wechat_notify', 1)->whereOr('email_notify', 1);
+            });
+            $rows = $q->select()->toArray();
+        } catch (\Throwable $e) {
+            return [];
+        }
+
+        $matched = [];
+        foreach ($rows as $r) {
+            if ($districtId > 0) {
+                $districts = $r['districts'] ?? [];
+                if (is_string($districts)) $districts = json_decode($districts, true);
+                $districtIds = [];
+                if (is_array($districts)) {
+                    foreach ($districts as $d) {
+                        if (is_array($d) && isset($d['id'])) $districtIds[] = (int)$d['id'];
+                        elseif (is_numeric($d)) $districtIds[] = (int)$d;
+                    }
+                }
+                if (!in_array($districtId, $districtIds, true)) continue;
+            }
+
+            if ($subjectId > 0) {
+                $subjects = $r['subjects'] ?? [];
+                if (is_string($subjects)) $subjects = json_decode($subjects, true);
+                $subjectIds = [];
+                if (is_array($subjects)) {
+                    foreach ($subjects as $s) {
+                        if (is_array($s) && isset($s['id'])) $subjectIds[] = (int)$s['id'];
+                        elseif (is_numeric($s)) $subjectIds[] = (int)$s;
+                    }
+                }
+                if (!in_array($subjectId, $subjectIds, true)) continue;
+            }
+
+            if ($gradeText !== '') {
+                $grades = $r['grades'] ?? [];
+                if (is_string($grades)) $grades = json_decode($grades, true);
+                $okGrade = false;
+                if (is_array($grades) && !empty($grades)) {
+                    foreach ($grades as $g) {
+                        $name = '';
+                        if (is_array($g) && isset($g['name'])) $name = trim((string)$g['name']);
+                        elseif (is_string($g)) $name = trim($g);
+                        if ($name !== '' && mb_strpos($gradeText, $name) !== false) {
+                            $okGrade = true;
+                            break;
+                        }
+                    }
+                } else {
+                    $okGrade = true;
+                }
+                if (!$okGrade) continue;
+            }
+
+            $matched[] = $r;
+        }
+
+        return $matched;
     }
     
     /**

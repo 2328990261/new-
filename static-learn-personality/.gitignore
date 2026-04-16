@@ -1,0 +1,5 @@
+# 含 AppSecret，勿入库
+wechat_jssdk_sign.php
+wechat_miniprogram_urllink.php
+.wechat_cache/
+.wechat_cache_mini/

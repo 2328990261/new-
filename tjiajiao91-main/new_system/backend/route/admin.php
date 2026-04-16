@@ -21,6 +21,14 @@ Route::group('admin/api', function () {
             'message' => '此地址仅支持 POST 上传（multipart/form-data，字段名 file）。请勿在浏览器地址栏直接访问；请用管理后台上传或 Postman 发 POST。',
         ]);
     });
+
+    // 测试邮件仅注册为 POST；用 GET 直接打开链接时会误解析为 Admin 控制器（不存在）而 404
+    Route::get('notification/test-email', function () {
+        return json([
+            'success' => false,
+            'error' => '此接口仅支持 POST。请在「通知配置」中填写测试邮箱后点击「发送」，勿在浏览器地址栏直接访问本地址。',
+        ]);
+    });
     
     // 需要认证的路由
     Route::group(function () {
@@ -29,7 +37,7 @@ Route::group('admin/api', function () {
         
         // 文件上传
         Route::post('upload/image', 'admin.Upload/image');
-        
+
         // 仪表盘统计
         Route::get('dashboard/stats', 'admin.Dashboard/stats');
         Route::get('dashboard/hot-cities', 'admin.Dashboard/hotCities');
@@ -110,6 +118,9 @@ Route::group('admin/api', function () {
         Route::post('notification/wechat-templates', 'admin.Notification/saveWechatTemplate');
         Route::delete('notification/wechat-templates/:id', 'admin.Notification/deleteWechatTemplate');
         Route::post('notification/sync-wechat-templates', 'admin.Notification/syncWechatTemplates');
+        Route::get('notification/mini-subscribe-templates', 'admin.Notification/getMiniSubscribeTemplates');
+        Route::post('notification/mini-subscribe-templates', 'admin.Notification/saveMiniSubscribeTemplate');
+        Route::delete('notification/mini-subscribe-templates/:id', 'admin.Notification/deleteMiniSubscribeTemplate');
         Route::get('notification/subscriptions', 'admin.Notification/subscriptions');
         Route::get('notification/logs', 'admin.Notification/logs');
         Route::delete('notification/subscriptions/:id', 'admin.Notification/deleteSubscription');
@@ -163,7 +174,10 @@ Route::group('admin/api', function () {
         // 注意：具体路由必须放在通用路由之前
         Route::get('payments/today-amount', 'admin.Payment/todayAmount');  // 今日交易额
         Route::get('payments/data-panel', 'admin.Payment/dataPanel');  // 数据面板
-        Route::get('payments/config', 'admin.Payment/getConfig');
+        // 必须在 payments/:id 之前：否则「config」会被当成 id 命中 Payment::read
+        Route::get('payments/config', 'admin.PaymentConfig/getConfig');
+        Route::post('payments/config', 'admin.PaymentConfig/saveConfig');
+        Route::post('payments/config/item/delete', 'admin.PaymentConfig/deleteItem');
         Route::post('payments/config/:id', 'admin.Payment/updateConfig');
         Route::get('payments/agreement', 'admin.Payment/getAgreement');
         Route::post('payments/agreement/:id', 'admin.Payment/updateAgreement');
@@ -292,11 +306,9 @@ Route::group('admin/api', function () {
         Route::rule('payment-config/test', 'admin.PaymentConfig/testPaymentConfig', 'POST');
         Route::rule('payments/config/test', 'admin.PaymentConfig/testPaymentConfig', 'POST');
         
-        // 其他配置接口
+        // 其他配置接口（payments/config 已在上方支付管理段注册，避免被 payments/:id 抢占）
         Route::get('payment-config/get', 'admin.PaymentConfig/getConfig');
         Route::post('payment-config/save', 'admin.PaymentConfig/saveConfig');
-        Route::get('payments/config', 'admin.PaymentConfig/getConfig');
-        Route::post('payments/config', 'admin.PaymentConfig/saveConfig');
         
         // 邀请管理（邀请记录、优惠券管理、邀请排行榜）
         Route::get('invitation/overview', 'admin.InvitationManage/overview');
@@ -307,13 +319,6 @@ Route::group('admin/api', function () {
         Route::post('invitation/redeem-coupon', 'admin.InvitationManage/redeemCoupon');
         Route::post('invitation/batch-redeem', 'admin.InvitationManage/batchRedeem');
         Route::get('invitation/search-user-coupons', 'admin.InvitationManage/searchUserCoupons');
-        
-    })->middleware(\app\middleware\Auth::class);
-    
-})->middleware(\app\middleware\Cors::class);
-
-return [];
-
 
         // 订阅消息日志管理
         Route::get('subscribe-message-log/list', 'admin.SubscribeMessageLog/list');
@@ -321,3 +326,7 @@ return [];
         Route::get('subscribe-message-log/detail/:id', 'admin.SubscribeMessageLog/detail');
         Route::delete('subscribe-message-log/delete/:id', 'admin.SubscribeMessageLog/delete');
         Route::post('subscribe-message-log/batch-delete', 'admin.SubscribeMessageLog/batchDelete');
+        
+    })->middleware(\app\middleware\Auth::class);
+    
+})->middleware(\app\middleware\Cors::class);
