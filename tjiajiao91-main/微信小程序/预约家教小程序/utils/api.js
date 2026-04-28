@@ -278,10 +278,11 @@ export const teacherApi = {
 	},
 	
 	// 获取教师详情
-	getDetail(id) {
+	getDetail(id, params = {}) {
 		return request({
 			url: `/api/teacher/detail/${id}`,
-			method: 'GET'
+			method: 'GET',
+			params
 		})
 	},
 	
@@ -332,6 +333,18 @@ export const regionApi = {
 			url: '/api/geocode/reverse',
 			method: 'GET',
 			params: { latitude, longitude }  // GET请求应该用params而不是data
+		})
+	}
+}
+
+// 企业微信同城家教群
+export const wecomApi = {
+	// 城市入口：优先入群二维码，失败回退联系我二维码
+	getCityEntry(cityId) {
+		return request({
+			url: '/api/wecom/city-entry',
+			method: 'GET',
+			params: { city_id: cityId }
 		})
 	}
 }
@@ -485,5 +498,41 @@ export const successCaseApi = {
 			method: 'GET',
 			params
 		})
+	}
+}
+
+// 问题反馈（小程序端）
+export const feedbackApi = {
+	// 上传图片
+	uploadImage(filePath) {
+		return new Promise((resolve, reject) => {
+			const token = uni.getStorageSync('token')
+			const header = { 'Content-Type': 'multipart/form-data' }
+			if (token) { header['Authorization'] = `Bearer ${token}`; header['token'] = token }
+			uni.uploadFile({
+				url: envConfig.API_BASE_URL + '/api/feedback/upload-image',
+				filePath,
+				name: 'file',
+				header,
+				success: (res) => { try { resolve(JSON.parse(res.data)) } catch (e) { reject(e) } },
+				fail: (err) => reject(err)
+			})
+		})
+	},
+	// 提交反馈
+	submit(data) {
+		return request({ url: '/api/feedback/submit', method: 'POST', data })
+	},
+	// 获取我的反馈列表
+	getMyList(params) {
+		return request({ url: '/api/feedback/my-list', method: 'GET', params })
+	},
+	// 获取对话消息列表
+	getMessages(params) {
+		return request({ url: '/api/feedback/messages', method: 'GET', params })
+	},
+	// 用户追加消息
+	addMessage(data) {
+		return request({ url: '/api/feedback/add-message', method: 'POST', data })
 	}
 }

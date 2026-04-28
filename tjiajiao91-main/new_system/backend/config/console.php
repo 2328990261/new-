@@ -7,5 +7,6 @@ return [
     'commands' => [
         'email:send-lead-assign' => 'app\command\SendLeadAssignEmail',
         'email:process-queue' => 'app\command\ProcessEmailQueue',
+        'debug:which-class' => 'app\command\WhichClass',
     ],
 ];

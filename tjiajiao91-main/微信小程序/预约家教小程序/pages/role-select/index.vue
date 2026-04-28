@@ -11,7 +11,7 @@
 		<view class="main-content">
 			<!-- Logo和标题 -->
 			<view class="header-section">
-				<image src="/static/ai-avatar.png" mode="aspectFit" class="logo-img"></image>
+				<image src="https://t.jiajiao91.com/public/miniprogram/images/ai-avatar.png" mode="aspectFit" class="logo-img"></image>
 				<text class="title">选择您的身份</text>
 				<text class="subtitle">请选择您使用小程序的身份</text>
 			</view>
@@ -53,6 +53,12 @@
 				</view>
 			</view>
 
+			<!-- 提示：身份绑定说明 -->
+			<view class="role-warning-box">
+				<text class="role-warning-title">重要提示</text>
+				<text class="role-warning-desc">身份确认后将绑定当前账号，无法再切换身份。</text>
+			</view>
+
 			<!-- 确认按钮 -->
 			<button 
 				:class="!selectedRole ? 'confirm-btn disabled' : 'confirm-btn'"
@@ -62,9 +68,9 @@
 				<text class="btn-text">确认身份</text>
 			</button>
 
-			<!-- 提示文字 -->
+			<!-- 补充说明 -->
 			<view class="tips-text">
-				<text>提示：身份选择后可在个人中心切换</text>
+				<text>请根据实际使用情况谨慎选择</text>
 			</view>
 		</view>
 	</view>
@@ -114,7 +120,6 @@ export default {
 		
 		// 根据角色跳转到对应首页（家长端首页=教员库，老师端首页=生源信息；AI 机器人页从「请家教」等入口进入）
 		navigateToHome(role) {
-			console.log('准备跳转，角色:', role)
 			try {
 				const pending = (uni.getStorageSync('post_role_redirect_url') || '').trim()
 				if (pending) {
@@ -127,12 +132,8 @@ export default {
 			
 			if (role === 'parent') {
 				// 家长端首页：教员库
-				console.log('跳转到家长首页: /pages/parent-home/index')
 				uni.reLaunch({
 					url: '/pages/parent-home/index',
-					success: () => {
-						console.log('跳转成功')
-					},
 					fail: (err) => {
 						console.error('跳转失败:', err)
 						uni.showToast({
@@ -143,12 +144,8 @@ export default {
 				})
 			} else if (role === 'teacher') {
 				// 老师跳转到生源信息页面（使用 reLaunch 而不是 switchTab，因为使用的是自定义 tabBar）
-				console.log('跳转到老师首页: /pages/tutor-list/index')
 				uni.reLaunch({
 					url: '/pages/tutor-list/index',
-					success: () => {
-						console.log('跳转成功')
-					},
 					fail: (err) => {
 						console.error('跳转失败:', err)
 						uni.showToast({
@@ -419,6 +416,29 @@ export default {
 	font-size: 32rpx;
 	font-weight: 500;
 	color: #fff;
+}
+
+.role-warning-box {
+	margin: 24rpx 0 32rpx;
+	padding: 24rpx 28rpx;
+	background: rgba(255, 243, 224, 0.95);
+	border-radius: 16rpx;
+	border: 1rpx solid rgba(230, 162, 60, 0.35);
+}
+
+.role-warning-title {
+	display: block;
+	font-size: 26rpx;
+	font-weight: 600;
+	color: #c77e14;
+	margin-bottom: 12rpx;
+}
+
+.role-warning-desc {
+	display: block;
+	font-size: 24rpx;
+	line-height: 1.55;
+	color: #856404;
 }
 
 .tips-text {

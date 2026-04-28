@@ -35,7 +35,11 @@ class Teacher extends BaseController
     }
 
     /**
-     * 教师图片：优先水印版；若水印文件不存在则回退原图（避免历史数据全 404）
+     * 教师图片：优先水印版；若水印资源不存在则回退原图（由客户端/静态资源层兜底）
+     *
+     * 注意：线上常见开启 open_basedir，PHP 进程可能无法 file_exists() 访问
+     * `new_system/public/uploads/...`（即使 Nginx 已正确映射静态文件）。
+     * 因此这里不再做本地文件系统探测，避免接口直接报错导致列表空白。
      */
     private function resolveTeacherImageUrl(string $path): string
     {
@@ -54,12 +58,8 @@ class Teacher extends BaseController
 
         $wmRel = str_replace('/uploads/teacher/', '/uploads/teacher_wm/', $rel);
 
-        // 本地存储：检查水印文件是否存在，不存在就回退原图
-        $wmFsPath = app()->getRootPath() . 'public' . $wmRel;
-        if (file_exists($wmFsPath)) {
-            return $domain . $wmRel;
-        }
-        return $domain . $rel;
+        // 优先返回水印图 URL；若线上水印文件缺失，小程序端会 404，此时可再考虑前端回退策略
+        return $domain . $wmRel;
     }
 
     /**
@@ -369,9 +369,67 @@ class Teacher extends BaseController
             
             // 处理科目名称
             if (!empty($teacher['subject_names'])) {
-                $teacher['subjects'] = explode(',', $teacher['subject_names']);
+                $teacher['subjects'] = array_values(array_filter(array_map('trim', explode(',', (string)$teacher['subject_names']))));
             } else {
                 $teacher['subjects'] = [];
+            }
+
+            // 追加授课信息（teacher_teaching_info）：用于详情页展示「授课城市/区域/年级/科目」
+            // 说明：teacher_teaching_info 的 districts/grades/subjects 为 JSON（数组，元素通常含 id/name）
+            // 返回字段：
+            // - teaching_city_id / teaching_city_name
+            // - teaching_districts / teaching_grades / teaching_subjects（均为字符串数组，前端可直接展示）
+            try {
+                $teachingInfo = Db::name('teacher_teaching_info')->where('teacher_id', (int)$teacher['id'])->find();
+                if ($teachingInfo) {
+                    $teacher['teaching_city_id'] = (int)($teachingInfo['city_id'] ?? 0);
+                    $teacher['teaching_city_name'] = trim((string)($teachingInfo['city_name'] ?? ''));
+
+                    $decodeList = function ($raw): array {
+                        if ($raw === null || $raw === '') return [];
+                        if (is_array($raw)) return $raw;
+                        if (is_string($raw)) {
+                            $d = json_decode($raw, true);
+                            return is_array($d) ? $d : [];
+                        }
+                        return [];
+                    };
+                    $toNameList = function (array $items): array {
+                        $out = [];
+                        foreach ($items as $it) {
+                            if (is_array($it)) {
+                                $name = trim((string)($it['name'] ?? ''));
+                                if ($name !== '') $out[] = $name;
+                            } elseif (is_string($it)) {
+                                $t = trim($it);
+                                if ($t !== '') $out[] = $t;
+                            }
+                        }
+                        return array_values(array_unique($out));
+                    };
+
+                    $teacher['teaching_districts'] = $toNameList($decodeList($teachingInfo['districts'] ?? []));
+                    $teacher['teaching_grades'] = $toNameList($decodeList($teachingInfo['grades'] ?? []));
+                    $teacher['teaching_subjects'] = $toNameList($decodeList($teachingInfo['subjects'] ?? []));
+
+                    // 详情页的 subjects：与列表一致，优先 teaching_info.subjects（若存在）
+                    if (!empty($teacher['teaching_subjects'])) {
+                        $teacher['subjects'] = $teacher['teaching_subjects'];
+                    }
+                } else {
+                    $teacher['teaching_city_id'] = 0;
+                    $teacher['teaching_city_name'] = '';
+                    $teacher['teaching_districts'] = [];
+                    $teacher['teaching_grades'] = [];
+                    $teacher['teaching_subjects'] = [];
+                }
+            } catch (\Throwable $e) {
+                // 忽略授课信息异常，不影响详情主体
+                $teacher['teaching_city_id'] = 0;
+                $teacher['teaching_city_name'] = '';
+                $teacher['teaching_districts'] = [];
+                $teacher['teaching_grades'] = [];
+                $teacher['teaching_subjects'] = [];
             }
             
             // 处理优势标签

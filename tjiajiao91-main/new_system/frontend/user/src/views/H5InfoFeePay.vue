@@ -1,15 +1,10 @@
 <template>
   <div class="h5-pay-page">
-    <header class="app-bar">
-      <h1 class="app-bar-title">信息费支付</h1>
-    </header>
-
     <!-- 绿色头图 -->
     <section class="hero">
       <div class="hero-check">
         <svg viewBox="0 0 24 24" width="36" height="36"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z" fill="currentColor" /></svg>
       </div>
-      <p class="hero-title">请填写信息并支付费用</p>
       <p class="hero-sub">
         <span class="bulb" aria-hidden="true">💡</span>
         支付完成后记得保存支付凭证并发送给相应的对接同学
@@ -186,24 +181,6 @@
         >
           发送到手机微信支付
         </button>
-        <button type="button" class="wx-pay-sheet-link" :disabled="loading" @click="chooseWechatNativePay">二维码支付</button>
-      </div>
-    </div>
-
-    <!-- 微信内：已下单，提示调起收银台 -->
-    <div v-if="wechatPaySentVisible" class="wx-pay-sent-overlay" @click.self="closeWechatPaySent">
-      <div class="wx-pay-sent-card" @click.stop>
-        <button type="button" class="wx-pay-sheet-close wx-pay-sent-close" aria-label="关闭" @click="closeWechatPaySent">×</button>
-        <div class="wx-pay-sent-illu" aria-hidden="true">
-          <svg viewBox="0 0 64 72" width="56" height="64">
-            <rect x="12" y="4" width="40" height="58" rx="6" fill="none" stroke="#c8c8c8" stroke-width="2" />
-            <rect x="22" y="10" width="20" height="14" rx="2" fill="#e8e8e8" />
-            <circle cx="44" cy="52" r="12" fill="#fff" stroke="#07c160" stroke-width="1.5" />
-            <path d="M39 52l3 3 6-7" fill="none" stroke="#07c160" stroke-width="2" stroke-linecap="round" />
-          </svg>
-        </div>
-        <p class="wx-pay-sent-text">订单支付请求已发送到手机，需在手机上完成支付。</p>
-        <button type="button" class="wx-pay-sent-cancel" @click="closeWechatPaySent">取消</button>
       </div>
     </div>
 
@@ -225,6 +202,19 @@
         </div>
       </div>
     </div>
+
+    <!-- 支付成功海报（弹层展示，长按保存） -->
+    <div v-if="posterVisible" class="poster-overlay" @click.self="closePoster">
+      <div class="poster-panel" @click.stop>
+        <div class="poster-image-wrap" :class="{ 'poster-image-wrap--hint': mobileHintPulse }">
+          <img ref="posterImgRef" class="poster-image" :src="posterUrl" alt="支付凭证海报" />
+        </div>
+        <div class="poster-actions">
+          <div class="poster-hint">长按图片保存</div>
+          <button type="button" class="poster-close-btn" @click="closePoster">关闭</button>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -234,6 +224,17 @@ import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import request from '@/utils/request'
 import { initWechatShare, setWechatShare, resolveUserH5Url } from '@/utils/wechatShare'
+import {
+  syncWxSceneInUrl,
+  currentWxPayScene,
+  readStoredOpenid,
+  writeStoredOpenid,
+  clearStoredOpenid,
+  normalizeWxPayScene
+} from '@/utils/wechatJsapiOpenid'
+
+/** 与本页 buildPaymentPayload.wechat_scene 一致，openid 须对应该套支付配置的公众号 */
+const WX_PAY_SCENE = 'h5'
 
 /** 接口失败时的兜底，与 Payment.vue 一致，避免弹窗长期停在「加载中…」 */
 const DEFAULT_PAYMENT_AGREEMENT_HTML = `
@@ -287,10 +288,22 @@ const qrCodeVisible = ref(false)
 const qrCodeData = ref(null)
 /** 微信内点击「立即支付」后：选 JSAPI / 扫码 */
 const wechatOrderPayVisible = ref(false)
-/** 已创建 JSAPI 单，调起 WeixinJSBridge 前的提示层 */
-const wechatPaySentVisible = ref(false)
 const manualStatusChecking = ref(false)
-const wechatOpenid = ref(localStorage.getItem('wechat_jsapi_openid') || '')
+// 支付成功海报：在支付页内弹层展示，用户长按保存
+const posterVisible = ref(false)
+const posterUrl = ref('')
+const posterImgRef = ref(null)
+const mobileHintPulse = ref(false)
+const isMobile = computed(() => typeof window !== 'undefined' && window.innerWidth <= 768)
+const poster = ref({
+  realName: '',
+  staffName: '',
+  amount: '0.00',
+  tutorInfo: '',
+  orderNo: '',
+  paymentTime: ''
+})
+const wechatOpenid = ref(readStoredOpenid(WX_PAY_SCENE))
 const wechatAuthStatus = ref('idle')
 const wechatAuthError = ref('')
 const pendingPaymentAfterAgree = ref(false)
@@ -302,6 +315,18 @@ const agreementScrollRef = ref(null)
 const hasReachedBottomOnce = ref(false)
 const hasUserScrolled = ref(false)
 const canAgree = ref(false)
+
+const posterDisplayAmount = computed(() => {
+  const a = String(poster.value.amount || '0').trim()
+  return a || '0.00'
+})
+
+const posterHeadline = computed(() => {
+  const t = String(poster.value.tutorInfo || '').trim()
+  if (t) return t.startsWith('【') ? t : `【${t}】`
+  const no = String(poster.value.orderNo || '').trim()
+  return no ? `【${no}】` : '【支付凭证】'
+})
 
 const staffList = ref([
   { id: 1, name: '小妍', username: '' },
@@ -360,6 +385,12 @@ const openFollowDialog = () => {
 
 const ensureWechatOpenid = async () => {
   if (!isWechatBrowser.value) return
+  syncWxSceneInUrl(WX_PAY_SCENE)
+  const scene = currentWxPayScene(WX_PAY_SCENE)
+  if (!wechatOpenid.value) {
+    const cached = readStoredOpenid(scene)
+    if (cached) wechatOpenid.value = cached
+  }
   if (wechatOpenid.value) {
     wechatAuthStatus.value = 'ready'
     return
@@ -371,10 +402,10 @@ const ensureWechatOpenid = async () => {
   if (code) {
     wechatAuthStatus.value = 'authorizing'
     try {
-      const response = await request.get('/payment/wechat-openid', { params: { code } })
+      const response = await request.get('/payment/wechat-openid', { params: { code, wx_scene: scene } })
       if (response.code === 200 && response.data?.openid) {
         wechatOpenid.value = response.data.openid
-        localStorage.setItem('wechat_jsapi_openid', response.data.openid)
+        writeStoredOpenid(scene, response.data.openid)
         wechatAuthStatus.value = 'ready'
         wechatAuthError.value = ''
         url.searchParams.delete('code')
@@ -397,7 +428,7 @@ const ensureWechatOpenid = async () => {
   try {
     const currentUrl = window.location.origin + window.location.pathname + window.location.search
     const response = await request.get('/payment/wechat-oauth-url', {
-      params: { redirect_uri: currentUrl }
+      params: { redirect_uri: currentUrl, wx_scene: scene }
     })
     if (response.code === 200 && response.data?.auth_url) {
       window.location.href = response.data.auth_url
@@ -414,23 +445,263 @@ const ensureWechatOpenid = async () => {
 }
 
 const retryWechatAuth = async () => {
-  localStorage.removeItem('wechat_jsapi_openid')
+  clearStoredOpenid(normalizeWxPayScene(WX_PAY_SCENE))
   wechatOpenid.value = ''
   wechatAuthStatus.value = 'idle'
   wechatAuthError.value = ''
   await ensureWechatOpenid()
 }
 
-const invokeWechatPay = (jsapiParams) => {
-  const clearSentOverlay = () => {
-    wechatPaySentVisible.value = false
+const onPosterSaveHint = () => {
+  ElMessage.info('请长按上方海报图片，选择“保存图片”，并发送给对接同学留存。')
+}
+
+const clearPaymentPendingOrderNo = () => {
+  try {
+    localStorage.removeItem('payment_pending_order_no')
+  } catch {
+    /* ignore */
   }
+}
+
+const closePoster = () => {
+  posterVisible.value = false
+  posterUrl.value = ''
+  // 关闭海报即清理上一单缓存，避免用户再次打开页面重复弹出
+  try {
+    localStorage.removeItem('paymentOrder')
+  } catch {
+    /* ignore */
+  }
+  clearPaymentPendingOrderNo()
+}
+
+const roundRectPath = (ctx, x, y, w, h, r) => {
+  const rr = Math.min(r, w / 2, h / 2)
+  ctx.beginPath()
+  ctx.moveTo(x + rr, y)
+  ctx.arcTo(x + w, y, x + w, y + h, rr)
+  ctx.arcTo(x + w, y + h, x, y + h, rr)
+  ctx.arcTo(x, y + h, x, y, rr)
+  ctx.arcTo(x, y, x + w, y, rr)
+  ctx.closePath()
+}
+
+const drawPoster = () => {
+  const info = poster.value
+  const canvas = document.createElement('canvas')
+  const ratio = Math.max(2, Math.min(3, Math.ceil(window.devicePixelRatio || 2)))
+  const width = 840
+  const height = 1220
+  canvas.width = Math.floor(width * ratio)
+  canvas.height = Math.floor(height * ratio)
+  canvas.style.width = `${width}px`
+  canvas.style.height = `${height}px`
+  const ctx = canvas.getContext('2d')
+  if (!ctx) return ''
+  ctx.scale(ratio, ratio)
+
+  // 背景
+  ctx.fillStyle = '#f1f5f9'
+  ctx.fillRect(0, 0, width, height)
+
+  // 顶部绿底
+  const heroH = 340
+  ctx.fillStyle = '#07c160'
+  ctx.fillRect(0, 0, width, heroH)
+
+  // 对勾圆
+  const cX = width / 2
+  const cY = 130
+  const cR = 60
+  ctx.fillStyle = '#ffffff'
+  ctx.beginPath()
+  ctx.arc(cX, cY, cR, 0, Math.PI * 2)
+  ctx.fill()
+  ctx.strokeStyle = '#ffffff'
+  ctx.lineWidth = 2
+  ctx.stroke()
+  // 对勾
+  ctx.strokeStyle = '#07c160'
+  ctx.lineWidth = 10
+  ctx.lineCap = 'round'
+  ctx.lineJoin = 'round'
+  ctx.beginPath()
+  ctx.moveTo(cX - 22, cY + 2)
+  ctx.lineTo(cX - 6, cY + 18)
+  ctx.lineTo(cX + 26, cY - 18)
+  ctx.stroke()
+
+  // 标题/金额
+  ctx.fillStyle = '#ffffff'
+  ctx.textAlign = 'center'
+  ctx.font = '800 46px system-ui, "PingFang SC", sans-serif'
+  ctx.fillText('支付成功', width / 2, 240)
+  ctx.font = '900 64px system-ui, "PingFang SC", sans-serif'
+  ctx.fillText(`¥ ${String(info.amount || '0.00')}`, width / 2, 305)
+  ctx.textAlign = 'left'
+
+  // 白卡片
+  const cardX = 56
+  // 适当下移内容，减少海报底部空白
+  const cardY = 380
+  const cardW = width - cardX * 2
+  const cardH = 640
+  const cardR = 26
+  ctx.fillStyle = '#ffffff'
+  ctx.shadowColor = 'rgba(15, 23, 42, 0.14)'
+  ctx.shadowBlur = 22
+  ctx.shadowOffsetY = 10
+  roundRectPath(ctx, cardX, cardY, cardW, cardH, cardR)
+  ctx.fill()
+  ctx.shadowColor = 'transparent'
+
+  // 卡片标题
+  const headline = posterHeadline.value || '【支付凭证】'
+  ctx.fillStyle = '#0f172a'
+  ctx.font = '800 36px system-ui, "PingFang SC", sans-serif'
+  ctx.fillText(headline, cardX + 40, cardY + 74)
+
+  // 分割线
+  ctx.strokeStyle = '#e2e8f0'
+  ctx.lineWidth = 2
+  ctx.beginPath()
+  ctx.moveTo(cardX + 40, cardY + 104)
+  ctx.lineTo(cardX + cardW - 40, cardY + 104)
+  ctx.stroke()
+
+  const rows = [
+    ['姓名', info.realName || '—'],
+    ['支付金额', `¥ ${String(info.amount || '0.00')}`],
+    ['对接同学', info.staffName || '—'],
+    ['支付时间', info.paymentTime || '—'],
+  ]
+  let rowY = cardY + 170
+  rows.forEach(([label, value], i) => {
+    const ry = rowY + i * 96
+    ctx.fillStyle = '#64748b'
+    ctx.font = '600 28px system-ui, "PingFang SC", sans-serif'
+    ctx.fillText(label, cardX + 40, ry)
+    ctx.fillStyle = '#0f172a'
+    ctx.font = '800 30px system-ui, "PingFang SC", sans-serif'
+    ctx.textAlign = 'right'
+    ctx.fillText(String(value), cardX + cardW - 40, ry)
+    ctx.textAlign = 'left'
+  })
+
+  // 水印
+  ctx.save()
+  roundRectPath(ctx, cardX, cardY, cardW, cardH, cardR)
+  ctx.clip()
+  ctx.translate(cardX + cardW / 2, cardY + cardH / 2)
+  ctx.rotate(-0.35)
+  ctx.globalAlpha = 0.22
+  ctx.fillStyle = '#2a9d7a'
+  ctx.font = '900 46px system-ui, "PingFang SC", sans-serif'
+  const wmStepY = 76
+  const wmStepX = 178
+  for (let y = -cardH * 1.35; y < cardH * 1.35; y += wmStepY) {
+    for (let x = -cardW * 1.35; x < cardW * 1.35; x += wmStepX) {
+      ctx.fillText('已支付', x, y)
+    }
+  }
+  ctx.restore()
+
+  // 不在海报图片里绘制“长按保存”文案（由弹层按钮区承载）
+
+  return canvas.toDataURL('image/png', 1)
+}
+
+const downloadPoster = () => {
+  if (!posterUrl.value) {
+    ElMessage.warning('海报生成中，请稍候')
+    return
+  }
+
+  if (isMobile.value) {
+    onPosterSaveHint()
+    try {
+      mobileHintPulse.value = true
+      posterImgRef.value?.scrollIntoView?.({ block: 'center', behavior: 'smooth' })
+      setTimeout(() => {
+        mobileHintPulse.value = false
+      }, 900)
+    } catch {
+      mobileHintPulse.value = false
+    }
+    return
+  }
+
+  const link = document.createElement('a')
+  link.href = posterUrl.value
+  link.download = `支付凭证-${Date.now()}.png`
+  document.body.appendChild(link)
+  link.click()
+  document.body.removeChild(link)
+  ElMessage.success('已开始下载海报')
+}
+
+const resolveFallbackPayTime = () => {
+  const d = new Date()
+  const pad = (n) => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(
+    d.getSeconds()
+  )}`
+}
+
+const openPosterForOrderNo = async (orderNo) => {
+  const no = String(orderNo || '').trim()
+  if (!no) return
+
+  let raw = null
+  try {
+    const s = localStorage.getItem('paymentOrder')
+    if (s) raw = JSON.parse(s)
+  } catch {
+    raw = null
+  }
+
+  poster.value = {
+    realName: raw?.real_name || '',
+    staffName: raw?.staff_name || '',
+    amount: raw?.amount != null ? String(raw.amount) : String(formData.amount || '0.00'),
+    tutorInfo: raw?.tutor_info || '',
+    orderNo: no,
+    paymentTime: ''
+  }
+
+  try {
+    const res = await request.get('/payment/status', { params: { order_no: no } })
+    if (res?.code === 200 && res.data?.paid_time) {
+      poster.value.paymentTime = res.data.paid_time
+    }
+  } catch {
+    /* ignore */
+  }
+
+  if (!poster.value.paymentTime) {
+    poster.value.paymentTime = resolveFallbackPayTime()
+  }
+
+  // 生成图片海报（参考 PaymentSuccess.vue 的 canvas 绘制方式），用户长按 <img> 保存
+  posterUrl.value = ''
+  try {
+    posterUrl.value = drawPoster()
+  } catch {
+    posterUrl.value = ''
+  }
+
+  posterVisible.value = true
+  // 海报已展示：立即清理“进行中”标记，避免页面 visibilitychange / pageshow 再次触发重复弹层
+  clearPaymentPendingOrderNo()
+}
+
+const invokeWechatPay = (jsapiParams, orderNo) => {
   const onBridgeReady = () => {
     window.WeixinJSBridge.invoke('getBrandWCPayRequest', jsapiParams, (res) => {
-      clearSentOverlay()
       if (res.err_msg === 'get_brand_wcpay_request:ok') {
         ElMessage.success('支付成功')
-        router.push('/h5/payment-success')
+        openPosterForOrderNo(orderNo)
       } else if (res.err_msg === 'get_brand_wcpay_request:cancel') {
         ElMessage.warning('已取消支付')
       } else {
@@ -462,7 +733,7 @@ const checkPaymentStatus = async (orderNo) => {
     const response = await request.get('/payment/status', { params: { order_no: orderNo } })
     if (response.code === 200 && response.data.status === 'success') {
       closeQRCodePayment()
-      router.push('/h5/payment-success')
+      openPosterForOrderNo(orderNo)
       return
     }
   } catch {
@@ -482,7 +753,7 @@ const manualConfirmPayment = async () => {
     if (response.code === 200 && response.data?.status === 'success') {
       ElMessage.success('支付成功')
       closeQRCodePayment()
-      router.push('/h5/payment-success')
+      openPosterForOrderNo(orderNo)
     } else {
       ElMessage.warning('暂未查到支付成功，请确认已完成付款')
     }
@@ -490,6 +761,28 @@ const manualConfirmPayment = async () => {
     ElMessage.error('查询失败')
   } finally {
     manualStatusChecking.value = false
+  }
+}
+
+/**
+ * 微信 JSAPI 支付成功后，用户可能会离开页面完成付款再返回；
+ * 此时 WeixinJSBridge 的回调不一定能触发，需在页面恢复可见时补偿查单并跳转成功页。
+ */
+const checkLastPaymentAndRedirectIfSuccess = async () => {
+  try {
+    const raw = localStorage.getItem('paymentOrder')
+    if (!raw) return
+    const obj = JSON.parse(raw)
+    const orderNo = obj?.order_no
+    if (!orderNo) return
+    const pendingNo = getPaymentPendingOrderNo()
+    if (!pendingNo || String(pendingNo) !== String(orderNo)) return
+    const response = await request.get('/payment/status', { params: { order_no: orderNo } })
+    if (response.code === 200 && response.data?.status === 'success') {
+      openPosterForOrderNo(orderNo)
+    }
+  } catch {
+    /* ignore */
   }
 }
 
@@ -629,6 +922,22 @@ const persistPaymentOrder = (orderNo, staffName) => {
   )
 }
 
+const setPaymentPendingOrderNo = (orderNo) => {
+  try {
+    localStorage.setItem('payment_pending_order_no', String(orderNo || ''))
+  } catch {
+    /* ignore */
+  }
+}
+
+const getPaymentPendingOrderNo = () => {
+  try {
+    return String(localStorage.getItem('payment_pending_order_no') || '')
+  } catch {
+    return ''
+  }
+}
+
 const buildPaymentPayload = (tradeType) => {
   const sid = formData.staffId
   const staffName = resolveStaffNameForPay()
@@ -648,7 +957,8 @@ const buildPaymentPayload = (tradeType) => {
     payment_method: 'wechat',
     trade_type: tradeType,
     wechat_scene: 'h5',
-    redirect_url: resolveUserH5Url('h5/payment-success')
+    // H5 MWEB 支付完成后跳回支付页，再由本页补偿查单弹出海报（避免跳转到独立成功页）
+    redirect_url: resolveUserH5Url('h5/payment')
   }
   if (isWechatBrowser.value && wechatOpenid.value) {
     payload.openid = wechatOpenid.value
@@ -658,10 +968,6 @@ const buildPaymentPayload = (tradeType) => {
 
 const closeWechatOrderPay = () => {
   wechatOrderPayVisible.value = false
-}
-
-const closeWechatPaySent = () => {
-  wechatPaySentVisible.value = false
 }
 
 const chooseWechatJsapiPay = async () => {
@@ -676,6 +982,7 @@ const chooseWechatJsapiPay = async () => {
       return
     }
     persistPaymentOrder(response.data.order_no, resolveStaffNameForPay())
+    setPaymentPendingOrderNo(response.data.order_no)
     const jsapi = response.data.jsapi_params
     if (!jsapi) {
       const d = response.data
@@ -695,10 +1002,7 @@ const chooseWechatJsapiPay = async () => {
       )
       return
     }
-    wechatPaySentVisible.value = true
-    nextTick(() => {
-      setTimeout(() => invokeWechatPay(jsapi), 100)
-    })
+    nextTick(() => setTimeout(() => invokeWechatPay(jsapi, response.data.order_no), 100))
   } catch (error) {
     console.error(error)
     ElMessage.error('支付请求失败')
@@ -772,12 +1076,11 @@ const handleSubmit = async () => {
         }
         return
       }
-      wechatOrderPayVisible.value = true
+      // 微信内：直接走 JSAPI（不再弹出选择层；二维码支付在该场景不可用）
+      await chooseWechatJsapiPay()
     } catch (error) {
       console.error(error)
       ElMessage.error('支付请求失败')
-    } finally {
-      loading.value = false
     }
     return
   }
@@ -788,6 +1091,8 @@ const handleSubmit = async () => {
 
     if (response.code === 200 && response.data) {
       persistPaymentOrder(response.data.order_no, resolveStaffNameForPay())
+      // H5 下单也标记“本次支付进行中”，便于回跳时自动查单弹海报
+      setPaymentPendingOrderNo(response.data.order_no)
 
       if (response.data.mweb_url) {
         window.location.href = response.data.mweb_url
@@ -796,7 +1101,9 @@ const handleSubmit = async () => {
       } else if (response.data.code_url || response.data.qrcode_url) {
         showQRCodePayment(response.data)
       } else {
-        router.push('/h5/payment-success')
+        // 测试/兜底：若未返回跳转地址，则直接展示海报（仍会在海报内补偿拉取支付时间）
+        ElMessage.success('支付成功')
+        openPosterForOrderNo(response.data.order_no)
       }
     } else {
       ElMessage.error(response.error_detail ? `${response.message}（${response.error_detail}）` : response.message || '支付失败')
@@ -817,8 +1124,16 @@ const onDocClick = (e) => {
   staffSearchKeyword.value = ''
 }
 
+const onPageResume = () => {
+  if (document.visibilityState === 'visible') {
+    checkLastPaymentAndRedirectIfSuccess()
+  }
+}
+
 onMounted(async () => {
   document.addEventListener('click', onDocClick)
+  window.addEventListener('pageshow', onPageResume)
+  document.addEventListener('visibilitychange', onPageResume)
   await loadStaffList()
   await loadGateQrcode()
   await ensureWechatOpenid()
@@ -831,10 +1146,13 @@ onMounted(async () => {
     imgUrl: resolveUserH5Url('static/images/payment-share-logo.png')
   })
   document.title = '信息费支付'
+  await checkLastPaymentAndRedirectIfSuccess()
 })
 
 onUnmounted(() => {
   document.removeEventListener('click', onDocClick)
+  window.removeEventListener('pageshow', onPageResume)
+  document.removeEventListener('visibilitychange', onPageResume)
 })
 </script>
 
@@ -857,25 +1175,6 @@ onUnmounted(() => {
   padding-bottom: calc(200px + env(safe-area-inset-bottom));
 }
 
-.app-bar {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  min-height: 48px;
-  padding: 12px 16px;
-  background: #fff;
-  border-bottom: 1px solid #eee;
-  position: sticky;
-  top: 0;
-  z-index: 50;
-}
-.app-bar-title {
-  margin: 0;
-  font-size: 17px;
-  font-weight: 600;
-  color: var(--wx-text);
-}
-
 .hero {
   background: var(--wx-green);
   padding: 28px 20px 36px;
@@ -885,19 +1184,13 @@ onUnmounted(() => {
 .hero-check {
   width: 72px;
   height: 72px;
-  margin: 0 auto 16px;
+  margin: 0 auto 14px;
   border-radius: 50%;
   background: #fff;
   color: var(--wx-green);
   display: flex;
   align-items: center;
   justify-content: center;
-}
-.hero-title {
-  font-size: 20px;
-  font-weight: 700;
-  margin: 0 0 12px;
-  line-height: 1.4;
 }
 .hero-sub {
   margin: 0;
@@ -1388,49 +1681,100 @@ onUnmounted(() => {
   cursor: not-allowed;
 }
 
-.wx-pay-sent-overlay {
+/* 支付成功海报弹层（生成图片，长按保存） */
+.poster-overlay {
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.45);
-  z-index: 350;
+  background: rgba(15, 23, 42, 0.55);
+  backdrop-filter: blur(4px);
   display: flex;
+  justify-content: center;
   align-items: center;
-  justify-content: center;
-  padding: 24px;
+  z-index: 360;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  padding: max(12px, env(safe-area-inset-top)) max(12px, env(safe-area-inset-right))
+    max(12px, env(safe-area-inset-bottom)) max(12px, env(safe-area-inset-left));
+  box-sizing: border-box;
 }
-.wx-pay-sent-card {
-  position: relative;
-  width: 100%;
-  max-width: 300px;
-  background: #fff;
-  border-radius: 12px;
-  padding: 28px 20px 20px;
-  text-align: center;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.12);
-}
-.wx-pay-sent-close {
-  top: 8px;
-  right: 8px;
-}
-.wx-pay-sent-illu {
-  margin: 8px auto 16px;
+.poster-panel {
+  width: min(calc(100vw - 24px), 420px);
+  max-width: 100%;
+  max-height: min(96dvh, 96vh);
+  background: linear-gradient(180deg, #ffffff 0%, #fafcfd 100%);
+  border-radius: 20px;
+  padding: 12px 12px 14px;
   display: flex;
-  justify-content: center;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 10px;
+  overflow: hidden;
+  box-sizing: border-box;
+  box-shadow: 0 24px 48px rgba(15, 23, 42, 0.18), 0 0 0 1px rgba(82, 201, 166, 0.12);
 }
-.wx-pay-sent-text {
-  margin: 0 0 20px;
-  font-size: 15px;
-  line-height: 1.55;
-  color: #333;
-  text-align: left;
+.poster-image-wrap {
+  flex: 1 1 auto;
+  min-height: 0;
+  max-height: calc(96dvh - 120px);
+  display: flex;
+  align-items: flex-end;
+  justify-content: flex-end;
+  border-radius: 14px;
+  background: #fff;
+  overflow: hidden;
+  padding: 0;
+  box-sizing: border-box;
 }
-.wx-pay-sent-cancel {
+.poster-image-wrap--hint {
+  outline: 3px solid rgba(82, 201, 166, 0.55);
+  animation: posterHintPulse 0.9s ease-in-out 1;
+}
+@keyframes posterHintPulse {
+  0% {
+    outline-color: rgba(82, 201, 166, 0);
+  }
+  40% {
+    outline-color: rgba(82, 201, 166, 0.55);
+  }
+  100% {
+    outline-color: rgba(82, 201, 166, 0);
+  }
+}
+.poster-image {
   width: 100%;
-  border: none;
-  background: none;
-  font-size: 16px;
-  color: #576b95;
-  cursor: pointer;
-  padding: 10px;
+  height: auto;
+  display: block;
+  border-radius: 14px;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: default;
 }
+.poster-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.poster-hint {
+  text-align: center;
+  color: #94a3b8;
+  font-size: 12px;
+  font-weight: 400;
+  padding: 2px 8px 0;
+  letter-spacing: 0.04em;
+}
+.poster-close-btn {
+  flex: 0 0 auto;
+  width: 95%;
+  margin: 0 auto;
+  height: 44px;
+  border-radius: 14px;
+  font-size: 15px;
+  font-weight: 700;
+  border: 2px solid rgba(82, 201, 166, 0.65);
+  background: #fff;
+  color: #3ba888;
+  cursor: pointer;
+  align-self: center;
+}
+
 </style>

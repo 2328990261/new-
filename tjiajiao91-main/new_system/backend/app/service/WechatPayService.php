@@ -19,6 +19,35 @@ class WechatPayService
      * 微信支付API地址
      */
     private $apiUrl = 'https://api.mch.weixin.qq.com';
+
+    /**
+     * 解析证书/密钥在本机的实际文件路径
+     * 兼容：/uploads/...、uploads/...、以及绝对路径
+     */
+    private function resolveLocalFilePath(string $path): string
+    {
+        $p = trim($path);
+        if ($p === '') {
+            return '';
+        }
+
+        // 绝对路径直接返回
+        if (preg_match('/^[a-zA-Z]:[\\\\\\/]/', $p) || strpos($p, '/') === 0 || strpos($p, '\\\\') === 0) {
+            // 若是以 /uploads 开头的“站点相对路径”，应映射到 new_system/public
+            if (strpos($p, '/uploads/') === 0) {
+                return new_system_public_path(ltrim($p, '/'));
+            }
+            return $p;
+        }
+
+        // 站点相对路径（不带前导 /）的 uploads/
+        if (strpos($p, 'uploads/') === 0) {
+            return new_system_public_path($p);
+        }
+
+        // 其他相对路径：保持旧行为（相对 backend 根目录）
+        return root_path() . ltrim($p, "/\\");
+    }
     
     /**
      * @param PaymentConfig|string|null $configOrScene 具体配置行，或场景名 default/h5，null 则 default
@@ -172,10 +201,10 @@ class WechatPayService
         
         // 6. 检查证书文件
         if (!empty($this->config->cert_path)) {
-            $certPath = root_path() . ltrim($this->config->cert_path, '/');
-            if (!file_exists($certPath)) {
+            $certPath = $this->resolveLocalFilePath((string) $this->config->cert_path);
+            if (!@file_exists($certPath)) {
                 $warnings[] = '证书文件不存在：' . $certPath;
-            } elseif (!is_readable($certPath)) {
+            } elseif (!@is_readable($certPath)) {
                 $warnings[] = '证书文件无法读取：' . $certPath;
             }
         } else {
@@ -383,6 +412,22 @@ class WechatPayService
     }
 
     /**
+     * 将微信支付返回的 time_end（yyyyMMddHHmmss）转为 MySQL datetime
+     */
+    public static function parseWechatTradeFinishTime($wechatTime): ?string
+    {
+        if ($wechatTime === null || $wechatTime === '') {
+            return null;
+        }
+        $digits = preg_replace('/\D/', '', (string) $wechatTime);
+        if (strlen($digits) !== 14) {
+            return null;
+        }
+        return substr($digits, 0, 4) . '-' . substr($digits, 4, 2) . '-' . substr($digits, 6, 2) . ' '
+            . substr($digits, 8, 2) . ':' . substr($digits, 10, 2) . ':' . substr($digits, 12, 2);
+    }
+
+    /**
      * 微信「查询订单」接口（按商户订单号 out_trade_no）
      * @return array{success:bool,trade_state?:string,transaction_id?:string,message?:string}
      */
@@ -428,6 +473,7 @@ class WechatPayService
                 'success' => true,
                 'trade_state' => $result['trade_state'] ?? '',
                 'transaction_id' => $result['transaction_id'] ?? '',
+                'time_end' => $result['time_end'] ?? '',
             ];
         } catch (\Throwable $e) {
             Log::warning('微信查单异常: ' . $e->getMessage());
@@ -452,7 +498,8 @@ class WechatPayService
         if ($state === 'SUCCESS') {
             $payment->status = 'success';
             $payment->transaction_id = $q['transaction_id'] ?: ($payment->transaction_id ?? '');
-            $payment->paid_time = date('Y-m-d H:i:s');
+            $wxPaid = self::parseWechatTradeFinishTime($q['time_end'] ?? '');
+            $payment->paid_time = $wxPaid ?? date('Y-m-d H:i:s');
             $payment->save();
             Log::info('微信查单同步支付成功: ' . $payment->order_no);
             return ['updated' => true, 'trade_state' => $state];
@@ -863,22 +910,22 @@ class WechatPayService
                 throw new \Exception('退款需要配置密钥路径');
             }
 
-            $certPath = root_path() . ltrim((string)$this->config->cert_path, '/');
-            $keyPath = root_path() . ltrim((string)$this->config->key_path, '/');
+            $certPath = $this->resolveLocalFilePath((string) $this->config->cert_path);
+            $keyPath = $this->resolveLocalFilePath((string) $this->config->key_path);
 
-            if (!file_exists($certPath)) {
+            if (!@file_exists($certPath)) {
                 throw new \Exception('证书文件不存在: ' . $certPath);
             }
 
-            if (!file_exists($keyPath)) {
+            if (!@file_exists($keyPath)) {
                 throw new \Exception('密钥文件不存在: ' . $keyPath);
             }
 
-            if (!is_readable($certPath)) {
+            if (!@is_readable($certPath)) {
                 throw new \Exception('证书文件不可读: ' . $certPath);
             }
 
-            if (!is_readable($keyPath)) {
+            if (!@is_readable($keyPath)) {
                 throw new \Exception('密钥文件不可读: ' . $keyPath);
             }
             

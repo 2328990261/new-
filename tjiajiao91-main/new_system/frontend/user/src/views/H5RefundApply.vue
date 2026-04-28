@@ -25,9 +25,6 @@
       </div>
 
       <div v-else-if="showFollowGate" class="follow-wrap">
-        <header class="app-bar">
-          <h1 class="app-bar-title">退费申请</h1>
-        </header>
         <div class="main">
           <div class="card follow-card">
             <h3 class="follow-title">请先关注公众号</h3>
@@ -47,13 +44,8 @@
       </div>
 
       <template v-else-if="showMainContent">
-        <header class="app-bar">
-          <h1 class="app-bar-title">退费申请</h1>
-        </header>
-
         <div class="main">
           <section class="card intro-card">
-            <h2 class="section-title">退款说明</h2>
             <ul class="intro-list">
               <li>若出现退费的诉求需先与对接的发单同学反馈，再按要求填写</li>
               <li>提交退费申请后，需粘贴退费申请发送给对接的发单同学</li>
@@ -62,8 +54,6 @@
           </section>
 
           <section class="card form-card">
-            <h2 class="section-title">退费信息</h2>
-
             <div class="row select-row" @click="openOrderSheet">
               <span class="row-label">家教订单</span>
               <span class="row-value" :class="{ placeholder: !orderDisplay }">
@@ -117,7 +107,6 @@
           </section>
 
           <section v-if="paymentInfo" class="card desc-card">
-            <h2 class="section-title">退费描述和凭证</h2>
             <div class="desc-panel">
               <textarea
                 v-model="formData.refundReason"
@@ -225,7 +214,7 @@ const {
   closeOrderSheet,
   selectOrderSheetItem,
   confirmOrderSheet
-} = useWechatRefundFlow({ route, router, successPath: '/refund-success' })
+} = useWechatRefundFlow({ route, router, successPath: '/refund-success', wxPayScene: 'h5' })
 
 onMounted(async () => {
   document.title = '退费申请'
@@ -373,25 +362,6 @@ onUnmounted(() => {
   opacity: 0.65;
 }
 
-.app-bar {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  min-height: 48px;
-  padding: 12px 16px;
-  background: #fff;
-  border-bottom: 1px solid #eee;
-  position: sticky;
-  top: 0;
-  z-index: 20;
-}
-.app-bar-title {
-  margin: 0;
-  font-size: 17px;
-  font-weight: 600;
-  color: var(--wx-text);
-}
-
 .main {
   padding: 12px 14px;
   max-width: 600px;
@@ -405,13 +375,6 @@ onUnmounted(() => {
   margin-bottom: 12px;
   border: 1px solid var(--wx-card-border);
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.04);
-}
-
-.section-title {
-  font-size: 16px;
-  font-weight: 700;
-  color: var(--wx-text);
-  margin: 0 0 12px;
 }
 
 .intro-list {

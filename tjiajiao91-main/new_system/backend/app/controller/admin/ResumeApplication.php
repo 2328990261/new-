@@ -302,7 +302,7 @@ class ResumeApplication extends BaseController
     }
     
     /**
-     * 删除投递记录
+     * 删除投递记录（改为标记为"未通过"，不真删除）
      */
     public function delete($id)
     {
@@ -315,7 +315,17 @@ class ResumeApplication extends BaseController
                 ]);
             }
             
-            $application->delete();
+            // 改为标记为"未通过"，而不是真删除
+            $application->status = 'rejected';
+            $application->admin_remark = '管理员已删除此投递';
+            $application->review_time = date('Y-m-d H:i:s');
+            // 获取当前登录管理员ID
+            if (session_status() === PHP_SESSION_NONE) {
+                session_start();
+            }
+            $adminId = $_SESSION['admin_id'] ?? null;
+            $application->reviewer_id = $adminId;
+            $application->save();
             
             return json([
                 'code' => 200,

@@ -232,14 +232,12 @@ const ICONS = {
 				}
 			},
 			handleSearch() {
-				console.log('搜索:', this.searchKeyword);
 				this.page = 1;
 				this.teacherList = [];
 				this.loadTeacherList();
 			},
 			selectFilter(value) {
 				this.activeFilter = value;
-				console.log('筛选:', value);
 				this.page = 1;
 				this.teacherList = [];
 				this.loadTeacherList();

@@ -55,9 +55,17 @@
             <el-icon><Setting /></el-icon>
             <template #title>小程序管理</template>
           </el-menu-item>
+          <el-menu-item index="/mini-feedback">
+            <el-icon><Warning /></el-icon>
+            <template #title>问题反馈</template>
+          </el-menu-item>
           <el-menu-item index="/invitation">
             <el-icon><Tickets /></el-icon>
             <template #title>邀请管理</template>
+          </el-menu-item>
+          <el-menu-item index="/enterprise" v-if="canAccessEnterprise">
+            <el-icon><OfficeBuilding /></el-icon>
+            <template #title>企业管理</template>
           </el-menu-item>
           <el-menu-item index="/fields">
             <el-icon><Operation /></el-icon>
@@ -86,6 +94,10 @@
           <el-menu-item index="/data-import">
             <el-icon><UploadFilled /></el-icon>
             <template #title>数据导入</template>
+          </el-menu-item>
+          <el-menu-item index="/wecom">
+            <el-icon><Notification /></el-icon>
+            <template #title>企业微信</template>
           </el-menu-item>
         </el-menu>
       </div>
@@ -140,9 +152,17 @@
           <el-icon><Setting /></el-icon>
           <template #title>小程序管理</template>
         </el-menu-item>
+        <el-menu-item index="/mini-feedback">
+          <el-icon><Warning /></el-icon>
+          <template #title>问题反馈</template>
+        </el-menu-item>
         <el-menu-item index="/invitation">
           <el-icon><Tickets /></el-icon>
           <template #title>邀请管理</template>
+        </el-menu-item>
+        <el-menu-item index="/enterprise" v-if="canAccessEnterprise">
+          <el-icon><OfficeBuilding /></el-icon>
+          <template #title>企业管理</template>
         </el-menu-item>
         <el-menu-item index="/fields">
           <el-icon><Operation /></el-icon>
@@ -171,6 +191,10 @@
         <el-menu-item index="/data-import">
           <el-icon><UploadFilled /></el-icon>
           <template #title>数据导入</template>
+        </el-menu-item>
+        <el-menu-item index="/wecom">
+          <el-icon><Notification /></el-icon>
+          <template #title>企业微信</template>
         </el-menu-item>
       </el-menu>
     </el-aside>
@@ -365,9 +389,11 @@ import {
   Setting,
   Message,
   Notification,
+  Warning,
   Close,
   Lock,
-  Unlock
+  Unlock,
+  OfficeBuilding
 } from '@element-plus/icons-vue'
 import { useTabsStore } from '@/store/modules/tabs'
 import Sortable from 'sortablejs'
@@ -380,6 +406,9 @@ const tabsStore = useTabsStore()
 
 const collapsed = computed(() => appStore.collapsed)
 const activeMenu = computed(() => route.path)
+
+// 从 userStore 获取企业管理权限
+const canAccessEnterprise = computed(() => userStore.canAccessEnterprise)
 
 // 标签页相关
 const visibleTabs = computed(() => tabsStore.tabs)

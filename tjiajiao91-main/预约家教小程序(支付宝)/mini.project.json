@@ -1,3 +1,6 @@
 {
-  "format": 2
+  "format": 2,
+  "appid": "2021006139670306",
+  "miniprogramRoot": "./",
+  "compileType": "mini"
 }

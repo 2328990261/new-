@@ -35,6 +35,15 @@ export function processRefund(data) {
   })
 }
 
+// 管理员手动退款（无需用户申请，跳过 pending 状态校验）
+export function manualRefund(data) {
+  return request({
+    url: '/payments/refund/manual',
+    method: 'post',
+    data
+  })
+}
+
 // 驳回退款
 export function rejectRefund(data) {
   return request({

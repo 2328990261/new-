@@ -153,10 +153,7 @@ const loadData = async () => {
     }
     
     const res = await getMyApplications(params)
-    console.log('API返回的完整响应:', res)
-    console.log('res.success:', res.success)
-    console.log('res.data:', res.data)
-    
+
     if (res.success) {
       list.value = res.data.list || []
       statistics.value = res.data.statistics || {
@@ -165,8 +162,6 @@ const loadData = async () => {
         approved: 0,
         rejected: 0
       }
-      console.log('设置后的list:', list.value)
-      console.log('设置后的statistics:', statistics.value)
     } else {
       console.error('API返回失败:', res.error)
       uni.showToast({
@@ -194,7 +189,7 @@ const getStatusText = (status) => {
   const map = {
     pending: '待审核',
     approved: '已通过',
-    rejected: '已拒绝'
+    rejected: '未通过'
   }
   return map[status] || status
 }

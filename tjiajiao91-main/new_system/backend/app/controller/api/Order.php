@@ -12,6 +12,7 @@ use app\service\OrderEmailRecipientGate;
 use app\service\SubscribeMessageService;
 use app\service\TeacherMiniOpenidResolver;
 use app\service\TutorOrderMailRenderer;
+use app\service\WecomGroupSendService;
 use think\facade\Db;
 use think\facade\Validate;
 
@@ -718,6 +719,13 @@ class Order extends BaseController
                     $this->sendOrderNotificationToTeachers($tutor);
                 } catch (\Throwable $e) {
                     trace('发送老师通知失败（不影响主流程）: ' . $e->getMessage(), 'info');
+                }
+
+                // 创建客户群群发任务（需要成员在企微客户端确认发送），不影响主流程
+                try {
+                    WecomGroupSendService::createCityGroupTutorOrderSend($tutor);
+                } catch (\Throwable $e) {
+                    trace('预约单审核通过转家教单后创建企微客户群群发任务失败（不影响主流程）: ' . $e->getMessage(), 'info');
                 }
                 
                 return json([

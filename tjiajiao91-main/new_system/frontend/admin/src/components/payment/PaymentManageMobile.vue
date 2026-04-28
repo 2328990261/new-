@@ -110,6 +110,7 @@
           end-placeholder="结束"
           format="YYYY-MM-DD"
           value-format="YYYY-MM-DD HH:mm:ss"
+          :default-time="rangePickerDefaultTime"
           size="default"
           class="filter-date-picker"
           @change="handleFilterChange"
@@ -227,6 +228,8 @@ const props = defineProps({
   }
 })
 
+const rangePickerDefaultTime = [new Date(2000, 0, 1, 0, 0, 0), new Date(2000, 0, 1, 23, 59, 59)]
+
 const emit = defineEmits([
   'tab-change',
   'filter-change',
@@ -316,12 +319,23 @@ const handleTimeRangeChange = (value) => {
 }
 
 const handleFilterChange = () => {
-  // 处理自定义日期范围
+  // 处理自定义日期范围（与桌面端一致：整日闭区间）
   if (localFilters.value.timeRange === 'custom' && localFilters.value.customDateRange) {
-    localFilters.value.payTimeStart = localFilters.value.customDateRange[0]
-    localFilters.value.payTimeEnd = localFilters.value.customDateRange[1]
+    const s = localFilters.value.customDateRange[0]
+    const e = localFilters.value.customDateRange[1]
+    if (s && e) {
+      const d1 = String(s).trim().slice(0, 10)
+      const d2 = String(e).trim().slice(0, 10)
+      if (/^\d{4}-\d{2}-\d{2}$/.test(d1) && /^\d{4}-\d{2}-\d{2}$/.test(d2)) {
+        localFilters.value.payTimeStart = `${d1} 00:00:00`
+        localFilters.value.payTimeEnd = `${d2} 23:59:59`
+      } else {
+        localFilters.value.payTimeStart = s
+        localFilters.value.payTimeEnd = e
+      }
+    }
   }
-  
+
   emit('filter-change', localFilters.value)
 }
 

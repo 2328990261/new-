@@ -24,7 +24,6 @@ export async function requestLocationAuth(options = {}) {
 			})
 		})
 		
-		console.log('位置选择成功:', location)
 		
 		// 提取位置信息
 		const locationData = {
@@ -42,7 +41,6 @@ export async function requestLocationAuth(options = {}) {
 		if (saveToUser) {
 			try {
 				await saveLocationToUser(locationData)
-				console.log('位置信息已保存到用户数据')
 			} catch (err) {
 				console.error('保存位置信息失败:', err)
 				// 保存失败不影响位置选择结果

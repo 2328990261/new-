@@ -354,6 +354,68 @@ class SubscribeMessageService
      * @param array $data 消息数据 { result, review_time, remark, page? }
      * @return array
      */
+    /**
+     * 发送问题反馈通知
+     *
+     * @param string $openid 用户OpenID
+     * @param string $templateId 模板ID
+     * @param string $replyContent 回复内容
+     * @return bool
+     */
+    public function sendFeedbackNotify($openid, $templateId, $replyContent)
+    {
+        try {
+            // 统一从运行配置读取小程序 appId/appSecret
+            $runtimeConfig = (new MiniProgramConfigService())->getRuntimeConfig('wechat');
+            $appId     = (string)($runtimeConfig['app_id']     ?? '');
+            $appSecret = (string)($runtimeConfig['app_secret'] ?? '');
+            $miniState = self::resolveMiniProgramState((string)($runtimeConfig['env_version'] ?? 'release'));
+
+            if (!$appId || !$appSecret) {
+                trace('反馈通知发送失败：小程序配置未完成', 'warning');
+                return false;
+            }
+
+            // 模板字段：
+            // 回复内容 {{thing1.DATA}}（thing类型最多80字）
+            // 反馈时间 {{time9.DATA}}
+            $replyContentShort = mb_substr(trim($replyContent), 0, 80, 'UTF-8');
+            $replyTime = date('Y-m-d H:i:s');
+
+            $postData = [
+                'touser'           => $openid,
+                'template_id'      => $templateId,
+                'page'             => 'pages/my-feedback/index',
+                'miniprogram_state'=> $miniState,
+                'data'             => [
+                    'thing1' => ['value' => $replyContentShort],
+                    'time9'  => ['value' => $replyTime],
+                ],
+            ];
+
+            trace('反馈通知发送请求: appId=' . $appId . ' openid=' . $openid . ' templateId=' . $templateId, 'info');
+
+            $response = self::postSubscribeMessageSend($appId, $appSecret, $postData);
+
+            $errcode = (int)($response['errcode'] ?? -1);
+            $errmsg  = (string)($response['errmsg'] ?? '');
+
+            // 记录日志
+            self::logMessage(null, $openid, $postData, $response);
+
+            if ($errcode === 0) {
+                trace('反馈通知发送成功: openid=' . $openid, 'info');
+                return true;
+            }
+
+            trace('反馈通知发送失败: errcode=' . $errcode . ' errmsg=' . $errmsg, 'warning');
+            return false;
+        } catch (\Throwable $e) {
+            trace('反馈通知发送异常: ' . $e->getMessage(), 'error');
+            return false;
+        }
+    }
+
     public static function sendResumeReviewMessage($openid, $data)
     {
         try {

@@ -1,10 +1,12 @@
 <?php
 namespace app\service;
 
-use think\facade\Config;
+use think\facade\Db;
 
 /**
- * 订单通知邮件收件人过滤（调试模式：只发给指定邮箱，其它邮箱不入队）
+ * 订单通知邮件收件人过滤
+ *
+ * 仅做邮箱合法性校验；不再提供“只发测试邮箱”的调试拦截，避免线上误配导致漏发。
  */
 class OrderEmailRecipientGate
 {
@@ -20,23 +22,26 @@ class OrderEmailRecipientGate
             return null;
         }
 
-        if (!Config::get('app.order_email_debug_only', false)) {
-            return $email;
-        }
-
-        $target = trim((string) Config::get('app.order_email_debug_target', ''));
-        if ($target === '' || !filter_var($target, FILTER_VALIDATE_EMAIL)) {
-            trace('OrderEmailRecipientGate: debug_only enabled but target invalid, skip all', 'warning');
-            return null;
-        }
-
-        if (strcasecmp($email, $target) !== 0) {
-            trace(
-                'OrderEmailRecipientGate: debug_only skip, from=' . $email . ', only=' . $target
-                . ($orderId ? (', order_id=' . $orderId) : ''),
-                'info'
-            );
-            return null;
+        // 每个邮箱每天最多 2 条通知（含 pending/sending/sent），超出则不再入队
+        try {
+            $start = date('Y-m-d 00:00:00');
+            $end = date('Y-m-d 23:59:59');
+            $count = (int) Db::name('email_queue')
+                ->where('recipient_email', $email)
+                ->whereIn('status', ['pending', 'sending', 'sent'])
+                ->whereBetween('created_at', [$start, $end])
+                ->count();
+            if ($count >= 2) {
+                trace(
+                    'OrderEmailRecipientGate: daily quota reached, email=' . $email . ', count=' . $count
+                    . ($orderId ? (', order_id=' . $orderId) : ''),
+                    'info'
+                );
+                return null;
+            }
+        } catch (\Throwable $e) {
+            // 限流查询失败时不阻断主流程（宁可多发，避免漏发）
+            trace('OrderEmailRecipientGate: quota check failed: ' . $e->getMessage(), 'warning');
         }
 
         return $email;

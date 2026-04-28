@@ -133,6 +133,16 @@ export function getTeacherStatistics() {
 }
 
 /**
+ * 获取各城市老师数量统计（所在城市 + 授课城市合并）
+ */
+export function getTeacherCityStats() {
+  return request({
+    url: '/teachers/stats/by-city',
+    method: 'get'
+  })
+}
+
+/**
  * 生成教师海报
  */
 export function generateTeacherPoster(id) {

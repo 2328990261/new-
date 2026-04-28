@@ -109,6 +109,16 @@
             show-password
           />
         </el-form-item>
+        <el-form-item v-if="form.platform === 'alipay'" label="手机号AES密钥" prop="phone_aes_key">
+          <el-input
+            v-model.trim="form.phone_aes_key"
+            placeholder="支付宝手机号解密密钥（编辑时留空表示不修改）"
+            show-password
+          />
+          <div style="color: #909399; font-size: 12px; margin-top: 4px;">
+            从支付宝开放平台「接口内容加密方式」获取
+          </div>
+        </el-form-item>
         <el-form-item label="环境" prop="env_version">
           <el-select v-model="form.env_version" style="width: 100%;">
             <el-option label="develop" value="develop" />
@@ -166,6 +176,7 @@ const emptyForm = () => ({
   app_id: '',
   mini_program_name: '',
   app_secret: '',
+  phone_aes_key: '',
   env_version: 'release',
   is_enabled: true,
   is_default: false,
@@ -247,6 +258,7 @@ const openEdit = (row) => {
     app_id: row.app_id,
     mini_program_name: row.mini_program_name || '',
     app_secret: '',
+    phone_aes_key: '',
     env_version: row.env_version || 'release',
     is_enabled: !!row.is_enabled,
     is_default: !!row.is_default,

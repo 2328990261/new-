@@ -283,7 +283,7 @@ const {
   handleFileChange,
   removeImage,
   submitRefund
-} = useWechatRefundFlow({ route, router, successPath: '/refund-success' })
+} = useWechatRefundFlow({ route, router, successPath: '/refund-success', wxPayScene: 'default' })
 
 onMounted(async () => {
   document.title = '退费申请'

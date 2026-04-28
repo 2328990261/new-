@@ -50,8 +50,15 @@ class EmailService
             )
         );
         
-        // 发件人
-        $mail->setFrom($config['from_email'], $config['from_name'] ?: '家教信息平台');
+        // 发件人：部分 SMTP 服务要求 From 与登录账号一致，否则会在 DATA 阶段拒收（data not accepted）
+        $fromEmail = trim((string)($config['from_email'] ?? ''));
+        if ($fromEmail === '') {
+            $fromEmail = trim((string)($config['smtp_username'] ?? ''));
+        }
+        $fromName = (string)($config['from_name'] ?? '');
+        $mail->setFrom($fromEmail, $fromName ?: '家教信息平台');
+        // 包络发件人（bounce address）尽量与 From 对齐，减少被拒收概率
+        $mail->Sender = $fromEmail;
     }
     
     /**
@@ -399,14 +406,14 @@ class EmailService
             $failCount = 0;
             
             foreach ($subscribers as $subscriber) {
-                $result = $this->sendEmail($subscriber['email'], $order);
-                if ($result) {
+                $sendRes = $this->sendEmail($subscriber['email'], $order);
+                if (!empty($sendRes['success'])) {
                     $successCount++;
                     // 记录发送日志
-                    $this->logEmailSend($subscriber['email'], $orderId, true);
+                    $this->logEmailSend($subscriber['email'], $orderId, true, '');
                 } else {
                     $failCount++;
-                    $this->logEmailSend($subscriber['email'], $orderId, false);
+                    $this->logEmailSend($subscriber['email'], $orderId, false, (string)($sendRes['error'] ?? ''));
                 }
             }
             
@@ -451,12 +458,16 @@ class EmailService
      */
     public function sendEmail($to, $order)
     {
+        $mail = null;
         try {
             // 获取邮件配置
             $config = Db::name('notification_config')->find(1);
             
             if (!$config || !$config['smtp_host']) {
                 throw new \Exception('邮件配置未设置');
+            }
+            if (empty($config['email_enabled'])) {
+                throw new \Exception('邮件通知未启用');
             }
             
             $mail = new PHPMailer(true);
@@ -476,12 +487,20 @@ class EmailService
             $mail->Body = $content;
             
             $mail->send();
-            return true;
+            return ['success' => true];
             
         } catch (Exception $e) {
             // 记录错误日志
-            trace('邮件发送失败: ' . $e->getMessage(), 'error');
-            return false;
+            $err = $e->getMessage();
+            // PHPMailer 的 ErrorInfo 往往比 Exception 更具体（例如 SMTP 阶段的失败原因）
+            if ($mail instanceof PHPMailer) {
+                $ei = trim((string)$mail->ErrorInfo);
+                if ($ei !== '' && strpos($err, $ei) === false) {
+                    $err = $err . ' | ' . $ei;
+                }
+            }
+            trace('邮件发送失败: ' . $err, 'error');
+            return ['success' => false, 'error' => $err];
         }
     }
     
@@ -741,40 +760,21 @@ class EmailService
             }
             
             $mail = new PHPMailer(true);
-            
-            // SMTP配置
-            $mail->CharSet = 'UTF-8';
-            $mail->isSMTP();
-            $mail->Host = $config['smtp_host'];
-            $mail->SMTPAuth = true;
-            $mail->Username = $config['smtp_username'];
-            $mail->Password = $config['smtp_password'];
-            
-            // SSL/TLS配置
-            if ($config['smtp_secure']) {
-                $mail->SMTPSecure = PHPMailer::ENCRYPTION_SMTPS; // SSL
-            } else {
-                $mail->SMTPSecure = PHPMailer::ENCRYPTION_STARTTLS; // TLS
-            }
-            // 端口默认值需要与加密方式匹配：SMTPS(SSL)=465，STARTTLS(TLS)=587
-            $port = (int)($config['smtp_port'] ?? 0);
-            if ($port <= 0) {
-                $port = $config['smtp_secure'] ? 465 : 587;
-            }
-            $mail->Port = $port;
-            
-            // 超时和SSL设置 - 关键：禁用SSL证书验证
-            $mail->Timeout = 30;
-            $mail->SMTPOptions = array(
-                'ssl' => array(
-                    'verify_peer' => false,
-                    'verify_peer_name' => false,
-                    'allow_self_signed' => true
-                )
-            );
-            
-            // 发件人
-            $mail->setFrom($config['from_email'], $config['from_name'] ?: '家教信息平台');
+            // 复用统一 SMTP 配置（含 from_email 兜底 + Sender）
+            self::configureSMTP($mail, $config);
+
+            // 捕获 SMTP 调试输出（不写日志，只在失败时带回后台，便于定位）
+            $smtpDebug = '';
+            $mail->SMTPDebug = 2;
+            $mail->Debugoutput = function ($str, $level) use (&$smtpDebug) {
+                $line = trim((string) $str);
+                if ($line === '') return;
+                $smtpDebug .= '[' . $level . '] ' . $line . "\n";
+                // 控制最大长度，避免返回过大
+                if (strlen($smtpDebug) > 8000) {
+                    $smtpDebug = substr($smtpDebug, -8000);
+                }
+            };
             
             // 收件人
             $mail->addAddress($email);
@@ -811,18 +811,22 @@ class EmailService
             return ['success' => true, 'message' => '测试邮件发送成功，请检查收件箱'];
             
         } catch (Exception $e) {
+            $extra = '';
+            if (isset($smtpDebug) && trim($smtpDebug) !== '') {
+                $extra = "\n\nSMTP调试信息（截断）：\n" . $smtpDebug;
+            }
             // 记录失败日志
             EmailLog::log([
                 'email_type' => EmailLog::TYPE_TEST,
                 'recipient_email' => $email,
                 'subject' => '测试邮件 - 邮件配置测试',
                 'status' => EmailLog::STATUS_FAILED,
-                'error_msg' => $e->getMessage(),
+                'error_msg' => mb_substr((string)($e->getMessage() . $extra), 0, 2000, 'UTF-8'),
                 'send_time' => date('Y-m-d H:i:s')
             ]);
             
             trace('测试邮件发送失败: ' . $e->getMessage(), 'error');
-            return ['success' => false, 'error' => '发送失败：' . $e->getMessage()];
+            return ['success' => false, 'error' => '发送失败：' . $e->getMessage() . $extra];
         }
     }
     

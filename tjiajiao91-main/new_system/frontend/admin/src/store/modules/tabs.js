@@ -178,6 +178,9 @@ export const useTabsStore = defineStore('tabs', {
       if (pathname === '/mini-program-config') {
         return 'MiniProgramConfigManage'
       }
+      if (pathname === '/mini-feedback') {
+        return 'MiniProgramFeedbackManage'
+      }
       return null
     },
     
@@ -238,17 +241,23 @@ export const useTabsStore = defineStore('tabs', {
         '/orders': '订单管理',
         '/applications': '投递管理',
         '/dashboard': '工作台',
-        '/admin': '管理员',
+        '/admin': '管理员管理',
         '/mini-users': '小程序用户',
         '/mini-program-config': '小程序管理',
+        '/mini-feedback': '问题反馈',
         '/fields': '基础配置',
         '/notification': '通知配置',
         '/email-logs': '邮箱日志',
         '/payment': '支付管理',
-        '/payment-data-panel': '交易分析',
+        '/payment-data-panel': '交易数据',
         '/payment-stats': '支付统计',
         '/city-lights': '城市点亮',
-        '/data-import': '数据导入'
+        '/data-import': '数据导入',
+        '/wecom': '企业微信',
+        '/invitation': '邀请管理',
+        '/enterprise': '企业管理',
+        '/salary-data-panel': '支出数据面板',
+        '/seo-guide': '站长平台',
       }
       return titleMap[pathname] || '未知页面'
     }

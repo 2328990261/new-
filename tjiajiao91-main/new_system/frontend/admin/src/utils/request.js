@@ -56,8 +56,17 @@ request.interceptors.response.use(
       }
     }
     
+    // 业务失败统一当作异常抛出，让调用方进入 catch
+    // 后端常见返回：{ success: true/false, data?, message?, error? }
+    if (res && res.success === false) {
+      const msg = res.error || res.message || '请求失败'
+      const err = new Error(msg)
+      // 附带原始响应，便于上层读取 error.response?.data
+      err.response = response
+      return Promise.reject(err)
+    }
+
     // 直接返回原始响应，不做格式转换
-    // 后端返回格式：{ code: 200, message: '...', data: {...} }
     return res
   },
   error => {

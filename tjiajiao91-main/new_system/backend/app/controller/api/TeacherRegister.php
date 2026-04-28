@@ -4,6 +4,7 @@ namespace app\controller\api;
 use app\BaseController;
 use app\model\Teacher;
 use app\model\TeacherRegistrationProgress;
+use app\service\UploadService;
 use think\facade\Db;
 use think\facade\Validate;
 
@@ -392,43 +393,29 @@ class TeacherRegister extends BaseController
         }
         
         try {
-            // 验证文件大小和类型
-            $fileSize = $file->getSize();
-            $extension = strtolower($file->extension());
-            $allowedExt = ['jpg', 'jpeg', 'png', 'gif'];
-            
-            // 检查文件大小 (10MB)
-            if ($fileSize > 10 * 1024 * 1024) {
-                return json(['success' => false, 'error' => '文件大小不能超过10MB']);
-            }
-            
-            // 检查文件类型
-            if (!in_array($extension, $allowedExt)) {
-                return json(['success' => false, 'error' => '只支持 jpg, jpeg, png, gif 格式的图片']);
-            }
-            
-            // 创建上传目录
-            $uploadPath = app()->getRootPath() . 'public/uploads/teacher/';
-            $uploadWmPath = app()->getRootPath() . 'public/uploads/teacher_wm/';
             $dateDir = date('Ymd');
-            $fullPath = $uploadPath . $dateDir . '/';
-            $fullWmPath = $uploadWmPath . $dateDir . '/';
-            
-            if (!is_dir($fullPath)) {
-                mkdir($fullPath, 0755, true);
+            $service = new UploadService();
+            $stored = $service->storeToPublicUploads(
+                $file,
+                'teacher',
+                ['jpg', 'jpeg', 'png', 'gif'],
+                10 * 1024 * 1024,
+                null,
+                'Ymd'
+            );
+            if (empty($stored['success'])) {
+                return json(['success' => false, 'error' => $stored['message'] ?? '上传失败']);
             }
+
+            $originImagePath = (string)($stored['data']['full_path'] ?? '');
+            $filename = basename($originImagePath);
+
+            $uploadWmPath = new_system_public_path('uploads/teacher_wm/');
+            $fullWmPath = $uploadWmPath . $dateDir . '/';
             if (!is_dir($fullWmPath)) {
                 mkdir($fullWmPath, 0755, true);
             }
-            
-            // 生成文件名
-            $filename = uniqid() . '.' . $extension;
-            
-            // 移动文件
-            $file->move($fullPath, $filename);
-            
-            // 生成水印版：复制原图到 teacher_wm 目录，再加水印
-            $originImagePath = $fullPath . $filename;
+
             $wmImagePath = $fullWmPath . $filename;
             if (@copy($originImagePath, $wmImagePath)) {
                 \app\service\WatermarkService::addWatermark($wmImagePath, '91家教中心', 'right-bottom');
@@ -443,7 +430,7 @@ class TeacherRegister extends BaseController
             $domain = $request->domain();
             
             // 原图（后台查看/保存）与水印图（用户端展示）
-            $originRelativePath = '/uploads/teacher/' . $dateDir . '/' . $filename;
+            $originRelativePath = (string)($stored['data']['url'] ?? '');
             $wmRelativePath = (strpos($wmImagePath, $uploadWmPath) !== false)
                 ? '/uploads/teacher_wm/' . $dateDir . '/' . $filename
                 : $originRelativePath;
@@ -1008,7 +995,7 @@ class TeacherRegister extends BaseController
             if ($file->getSize() > 15 * 1024 * 1024) {
                 return json(['success' => false, 'error' => '文件大小不能超过 15MB']);
             }
-            $uploadPath = app()->getRootPath() . 'public/uploads/resume/';
+            $uploadPath = new_system_public_path('uploads/resume/');
             $dateDir = date('Ymd');
             $fullPath = $uploadPath . $dateDir . '/';
             if (!is_dir($fullPath)) {

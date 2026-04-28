@@ -289,7 +289,7 @@
             <span v-else>用于接收系统通知</span>
           </div>
         </el-form-item>
-        <el-form-item label="OpenID" prop="openid">
+        <el-form-item label="OpenID" prop="openid" required>
           <el-input v-model="form.openid" placeholder="请输入小程序用户OpenID" />
           <div class="form-tip">绑定小程序用户的OpenID，用于关联小程序账号</div>
         </el-form-item>
@@ -337,6 +337,16 @@
           </div>
           <div v-if="!form.id" class="form-tip" style="color: #E6A23C;">请先点击「确定」保存该管理员，再上传二维码</div>
           <div v-else class="form-tip">家长端小程序「免费找家教」提交成功页展示；图片需为 HTTPS 或已在小程序配置下载域名</div>
+        </el-form-item>
+        <el-form-item label="企业管理权限" prop="can_access_enterprise" v-if="isSuperAdmin && form.id !== currentAdminId">
+          <el-switch
+            v-model="form.can_access_enterprise"
+            :active-value="1"
+            :inactive-value="0"
+            active-text="允许"
+            inactive-text="禁止"
+          />
+          <div class="form-tip">开启后，该管理员可以访问企业管理模块</div>
         </el-form-item>
         <el-form-item label="状态" prop="status" v-if="isSuperAdmin && (!form.id || form.id !== currentAdminId)">
           <el-switch
@@ -455,6 +465,7 @@ const form = reactive({
   openid: '',
   booking_service_phone: '',
   wechat_qrcode: '',
+  can_access_enterprise: 0,
   status: 1
 })
 
@@ -470,6 +481,30 @@ const rules = {
   email: [
     { required: function() { return form.role === 'customer_service' }, message: '客服组角色必须填写邮箱', trigger: 'blur' },
     { type: 'email', message: '请输入正确的邮箱地址', trigger: ['blur', 'change'] }
+  ],
+  openid: [
+    {
+      required: true,
+      message: '请输入OpenID',
+      trigger: 'blur'
+    },
+    {
+      validator: (rule, value, callback) => {
+        const v = String(value || '').trim()
+        if (!v) {
+          callback(new Error('请输入OpenID'))
+          return
+        }
+        // 兼容多个 openid（逗号分隔），要求至少一个非空 token
+        const tokens = v.split(',').map(s => s.trim()).filter(Boolean)
+        if (tokens.length === 0) {
+          callback(new Error('请输入OpenID'))
+          return
+        }
+        callback()
+      },
+      trigger: ['blur', 'change']
+    }
   ],
   password: [
     { 
@@ -598,6 +633,7 @@ const resetForm = () => {
   form.openid = ''
   form.booking_service_phone = ''
   form.wechat_qrcode = ''
+  form.can_access_enterprise = 0
   form.status = 1
 }
 
@@ -728,6 +764,7 @@ const showEditDialog = (row) => {
     openid: row.openid || '',
     booking_service_phone: row.booking_service_phone || '',
     wechat_qrcode: row.wechat_qrcode || '',
+    can_access_enterprise: row.can_access_enterprise || 0,
     status: row.status
   })
   dialogVisible.value = true
@@ -761,17 +798,19 @@ const handleSubmit = async () => {
 
         if (form.id) {
           // 更新
-          await updateAdmin(form.id, submitData)
+          const res = await updateAdmin(form.id, submitData)
+          if (res && res.success === false) throw new Error(res.error || res.message || '更新失败')
           ElMessage.success('更新成功')
         } else {
           // 添加
-          await addAdmin(submitData)
+          const res = await addAdmin(submitData)
+          if (res && res.success === false) throw new Error(res.error || res.message || '添加失败')
           ElMessage.success('添加成功')
         }
         dialogVisible.value = false
         loadData()
       } catch (error) {
-        
+        ElMessage.error(error?.response?.data?.error || error?.message || '操作失败')
       } finally {
         submitLoading.value = false
       }

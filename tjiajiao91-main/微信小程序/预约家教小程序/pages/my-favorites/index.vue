@@ -278,13 +278,6 @@ export default {
 				}, 16000)
 
 				try {
-					console.log('[my-favorites] request start:', requestUrl, {
-						userRole: this.userRole,
-						page: this.page,
-						pageSize: this.pageSize,
-						openid: userInfo.openid
-					})
-
 					uni.request({
 						url: requestUrl,
 						method: 'GET',

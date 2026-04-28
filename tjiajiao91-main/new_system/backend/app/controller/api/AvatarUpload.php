@@ -43,66 +43,28 @@ class AvatarUpload extends BaseController
             if (!$file) {
                 return json(['code' => 400, 'message' => '未找到上传文件']);
             }
-            
-            \think\facade\Log::info('3. 上传文件信息: ' . json_encode([
-                'name' => $file->getOriginalName(),
-                'size' => $file->getSize(),
-                'mime' => $file->getMime()
-            ]));
-            
-            // 验证文件类型
-            $allowedTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp'];
-            if (!in_array($file->getMime(), $allowedTypes)) {
-                return json(['code' => 400, 'message' => '不支持的文件类型']);
+
+            $service = new UploadService();
+            $ext = strtolower((string)$file->extension());
+            $filename = 'avatar_' . md5($openid . time()) . '.' . $ext;
+            $stored = $service->storeToPublicUploads(
+                $file,
+                'avatars',
+                ['jpg', 'jpeg', 'png', 'gif', 'webp'],
+                2 * 1024 * 1024,
+                $filename,
+                'Ym'
+            );
+
+            if (empty($stored['success'])) {
+                return json(['code' => 400, 'message' => $stored['message'] ?? '上传失败']);
             }
-            
-            // 验证文件大小（最大2MB）
-            if ($file->getSize() > 2 * 1024 * 1024) {
-                return json(['code' => 400, 'message' => '文件大小不能超过2MB']);
-            }
-            
-            // 生成文件名
-            $extension = $file->extension();
-            $filename = 'avatar_' . md5($openid . time()) . '.' . $extension;
-            
-            // 保存到服务器
-            $uploadPath = 'uploads/avatars/' . date('Ym') . '/';
-            $fullPath = public_path() . $uploadPath;
-            
-            \think\facade\Log::info('4. 保存路径信息: ' . json_encode([
-                'uploadPath' => $uploadPath,
-                'fullPath' => $fullPath,
-                'filename' => $filename
-            ]));
-            
-            // 创建目录
-            if (!is_dir($fullPath)) {
-                mkdir($fullPath, 0755, true);
-                \think\facade\Log::info('5. 创建目录: ' . $fullPath);
-            }
-            
-            // 移动文件
-            $filePath = $fullPath . $filename;
-            if (!$file->move($fullPath, $filename)) {
-                return json(['code' => 500, 'message' => '保存文件失败']);
-            }
-            
-            \think\facade\Log::info('6. 文件保存成功: ' . $filePath);
-            
-            // 生成访问URL
+
+            $relativePath = ltrim((string)($stored['data']['relative_path'] ?? ''), '/');
             $request = request();
             $domain = $request->domain();
-            
-            // 线上环境特殊处理
-            if (strpos($domain, 'localhost') === false && strpos($domain, '127.0.0.1') === false) {
-                // 线上环境，返回相对路径，让前端处理完整URL
-                $avatarUrl = $uploadPath . $filename;
-                \think\facade\Log::info('7. 线上环境，返回相对路径: ' . $avatarUrl);
-            } else {
-                // 开发环境，返回完整URL
-                $avatarUrl = $domain . '/' . $uploadPath . $filename;
-                \think\facade\Log::info('7. 开发环境，返回完整URL: ' . $avatarUrl);
-            }
+            $isProd = (strpos($domain, 'localhost') === false && strpos($domain, '127.0.0.1') === false);
+            $avatarUrl = $isProd ? $relativePath : ($domain . '/' . $relativePath);
             
             // 更新用户头像
             $this->updateUserAvatar($openid, $avatarUrl);

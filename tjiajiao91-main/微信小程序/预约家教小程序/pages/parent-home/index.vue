@@ -336,7 +336,7 @@ export default {
     },
     handleImageError(index) {
       if (this.teacherList[index]) {
-        this.$set(this.teacherList[index], 'avatar', '/static/ai-avatar.png')
+        this.$set(this.teacherList[index], 'avatar', 'https://t.jiajiao91.com/public/miniprogram/images/ai-avatar.png')
       }
     },
     goTeacherRegister() {

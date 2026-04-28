@@ -17,12 +17,12 @@
 				
 				<view class="form-item">
 					<text class="item-label">服务号通知</text>
-					<switch :checked="formData.wechat_notify === 1" @change="onWechatNotifyChange" color="#52C9A6" />
+					<switch :key="'wechat_' + wechatSwitchKey" :checked="formData.wechat_notify === 1" @change="onWechatNotifyChange" color="#52C9A6" />
 				</view>
 
 				<view class="form-item">
 					<text class="item-label">邮箱通知</text>
-					<switch :checked="formData.email_notify === 1" @change="onEmailNotifyChange" color="#52C9A6" />
+					<switch :key="'email_' + emailSwitchKey" :checked="formData.email_notify === 1" @change="onEmailNotifyChange" color="#52C9A6" />
 				</view>
 			</view>
 
@@ -239,6 +239,10 @@ export default {
 		return {
 			statusBarHeight: 0,
 			isAuthorizingSubscribe: false,
+			wechatSwitchKey: 0,
+			emailSwitchKey: 0,
+			autoSaveTimer: null,
+			isAutoSaving: false,
 			formData: {
 				city_id: null,
 				city_name: '',
@@ -399,7 +403,6 @@ export default {
 				return
 			}
 			
-			console.log('加载授课信息，用户信息:', userInfo)
 			
 			uni.request({
 				url: envConfig.API_BASE_URL + '/api/teaching-info/get',
@@ -409,7 +412,6 @@ export default {
 					phone: userInfo.phone || ''
 				},
 				success: (res) => {
-					console.log('获取授课信息响应:', res)
 					
 					if (res.data.success && res.data.data) {
 						const data = res.data.data
@@ -489,6 +491,7 @@ export default {
 			}
 			
 			this.showCityPicker = false
+			this.queueAutoSave('confirmCity')
 		},
 		
 		toggleDistrictSelection(district) {
@@ -507,14 +510,17 @@ export default {
 		confirmDistrict() {
 			this.formData.districts = [...this.tempDistricts]
 			this.showDistrictPicker = false
+			this.queueAutoSave('confirmDistrict')
 		},
 		
 		removeDistrict(index) {
 			this.formData.districts.splice(index, 1)
+			this.queueAutoSave('removeDistrict')
 		},
 		
 		removeSubject(index) {
 			this.formData.subjects.splice(index, 1)
+			this.queueAutoSave('removeSubject')
 		},
 		
 		selectCategory(index) {
@@ -544,6 +550,7 @@ export default {
 		confirmSubject() {
 			this.formData.subjects = [...this.tempSubjects]
 			this.showSubjectPicker = false
+			this.queueAutoSave('confirmSubject')
 		},
 		
 		toggleGrade(grade) {
@@ -553,6 +560,7 @@ export default {
 			} else {
 				this.formData.grades.push(grade)
 			}
+			this.queueAutoSave('toggleGrade')
 		},
 		
 		isGradeSelected(grade) {
@@ -604,22 +612,30 @@ export default {
 				// 关闭通知时同步关闭 subscribe_push，避免“关了开关还继续收到”
 				this.formData.subscribe_push = 0
 				uni.setStorageSync('teaching_notify_any_enabled', (this.formData.wechat_notify === 1 || this.formData.email_notify === 1) ? 1 : 0)
+				this.wechatSwitchKey = Date.now()
+				this.queueAutoSave('wechatNotifyOff')
 				return
 			}
+			// 先乐观置为开启，保证用户拒绝时 UI 能回滚
+			this.formData.wechat_notify = 1
+			this.wechatSwitchKey = Date.now()
 			// 开启“微信通知”时，引导用户完成订阅消息授权
 			this.isAuthorizingSubscribe = true
 			requestSubscribeMessage()
 				.then(() => {
-					this.formData.wechat_notify = 1
 					// 开启微信通知时，默认也开启订阅推送（可手动关闭）
 					if (this.formData.subscribe_push !== 1) {
 						this.formData.subscribe_push = 1
 					}
 					uni.setStorageSync('teaching_notify_any_enabled', 1)
+					this.wechatSwitchKey = Date.now()
+					this.queueAutoSave('wechatNotifyOn')
 				})
 				.catch(() => {
 					this.formData.wechat_notify = 0
 					uni.setStorageSync('teaching_notify_any_enabled', (this.formData.wechat_notify === 1 || this.formData.email_notify === 1) ? 1 : 0)
+					this.wechatSwitchKey = Date.now()
+					this.queueAutoSave('wechatNotifyReject')
 				})
 				.finally(() => {
 					this.isAuthorizingSubscribe = false
@@ -629,6 +645,9 @@ export default {
 		onEmailNotifyChange(e) {
 			const isEnabled = e.detail.value
 			if (isEnabled) {
+				// 先保持关闭状态，待用户确认邮箱后再真正开启（否则取消时 UI 不会回滚）
+				this.formData.email_notify = 0
+				this.emailSwitchKey = Date.now()
 				// 打开邮箱输入弹窗
 				this.tempEmail = this.formData.email || ''
 				this.showEmailModal = true
@@ -637,6 +656,8 @@ export default {
 				this.formData.email_notify = 0
 				this.formData.email = ''
 				uni.setStorageSync('teaching_notify_any_enabled', (this.formData.wechat_notify === 1 || this.formData.email_notify === 1) ? 1 : 0)
+				this.emailSwitchKey = Date.now()
+				this.queueAutoSave('emailNotifyOff')
 			}
 		},
 		
@@ -663,6 +684,8 @@ export default {
 			this.formData.email_notify = 1
 			this.showEmailModal = false
 			uni.setStorageSync('teaching_notify_any_enabled', 1)
+			this.emailSwitchKey = Date.now()
+			this.queueAutoSave('emailConfirm')
 		},
 		
 		cancelEmail() {
@@ -670,6 +693,51 @@ export default {
 			this.formData.email_notify = 0
 			this.showEmailModal = false
 			uni.setStorageSync('teaching_notify_any_enabled', (this.formData.wechat_notify === 1 || this.formData.email_notify === 1) ? 1 : 0)
+			this.emailSwitchKey = Date.now()
+			this.queueAutoSave('emailCancel')
+		},
+
+		queueAutoSave(reason = '') {
+			// 授权弹窗中不做实时保存，避免并发干扰；等授权结束会再次触发 queue
+			if (this.isAuthorizingSubscribe) return
+			if (this.autoSaveTimer) {
+				clearTimeout(this.autoSaveTimer)
+				this.autoSaveTimer = null
+			}
+			this.autoSaveTimer = setTimeout(() => {
+				this.autoSaveTimer = null
+				this.autoSave(reason)
+			}, 600)
+		},
+
+		autoSave(reason = '') {
+			// 仅“已登录 + 已选城市”才自动保存（避免频繁报错与 toast 打扰）
+			const userInfo = uni.getStorageSync('userInfo')
+			if (!userInfo || (!userInfo.openid && !userInfo.phone)) return
+			if (!this.formData.city_id) return
+			if (this.formData.email_notify === 1 && !this.formData.email) return
+			if (this.isAutoSaving) return
+
+			this.isAutoSaving = true
+			uni.request({
+				url: envConfig.API_BASE_URL + '/api/teaching-info/save',
+				method: 'POST',
+				data: {
+					openid: userInfo.openid || '',
+					phone: userInfo.phone || '',
+					...this.formData,
+					_auto_save: 1,
+					_auto_save_reason: reason
+				},
+				success: (res) => {
+					if (res && res.data && res.data.success) {
+						uni.setStorageSync('teaching_notify_any_enabled', (this.formData.wechat_notify === 1 || this.formData.email_notify === 1) ? 1 : 0)
+					}
+				},
+				complete: () => {
+					this.isAutoSaving = false
+				}
+			})
 		},
 		
 		saveInfo() {
@@ -730,8 +798,6 @@ export default {
 				return
 			}
 			
-			console.log('保存授课信息，用户信息:', userInfo)
-			console.log('提交的数据:', this.formData)
 			
 			uni.showLoading({
 				title: '保存中...'
@@ -748,7 +814,6 @@ export default {
 				success: (res) => {
 					uni.hideLoading()
 					
-					console.log('保存授课信息响应:', res)
 					
 					if (res.data.success) {
 						uni.setStorageSync('teaching_notify_any_enabled', (this.formData.wechat_notify === 1 || this.formData.email_notify === 1) ? 1 : 0)

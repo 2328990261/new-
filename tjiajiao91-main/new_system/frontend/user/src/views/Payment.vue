@@ -237,6 +237,17 @@ import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import request from '@/utils/request'
 import { initWechatShare, setWechatShare, resolveUserH5Url } from '@/utils/wechatShare'
+import {
+  syncWxSceneInUrl,
+  currentWxPayScene,
+  readStoredOpenid,
+  writeStoredOpenid,
+  clearStoredOpenid,
+  normalizeWxPayScene
+} from '@/utils/wechatJsapiOpenid'
+
+/** 本页未传 wechat_scene，后端 JSAPI 使用 default 场景支付配置 */
+const WX_PAY_SCENE = 'default'
 
 const router = useRouter()
 
@@ -259,7 +270,7 @@ const selectedStaffName = ref('')
 const qrCodeVisible = ref(false)
 const qrCodeData = ref(null)
 const manualStatusChecking = ref(false)
-const wechatOpenid = ref(localStorage.getItem('wechat_jsapi_openid') || '')
+const wechatOpenid = ref(readStoredOpenid(WX_PAY_SCENE))
 const wechatAuthStatus = ref('idle') // idle|authorizing|ready|failed
 const wechatAuthError = ref('')
 // 如果用户未同意协议但点击了“立即支付”，则在弹窗同意后自动继续支付
@@ -520,6 +531,12 @@ const handleSubmit = async () => {
 
 const ensureWechatOpenid = async () => {
   if (!isWechatBrowser.value) return
+  syncWxSceneInUrl(WX_PAY_SCENE)
+  const scene = currentWxPayScene(WX_PAY_SCENE)
+  if (!wechatOpenid.value) {
+    const cached = readStoredOpenid(scene)
+    if (cached) wechatOpenid.value = cached
+  }
   if (wechatOpenid.value) {
     wechatAuthStatus.value = 'ready'
     return
@@ -531,10 +548,10 @@ const ensureWechatOpenid = async () => {
   if (code) {
     wechatAuthStatus.value = 'authorizing'
     try {
-      const response = await request.get('/payment/wechat-openid', { params: { code } })
+      const response = await request.get('/payment/wechat-openid', { params: { code, wx_scene: scene } })
       if (response.code === 200 && response.data?.openid) {
         wechatOpenid.value = response.data.openid
-        localStorage.setItem('wechat_jsapi_openid', response.data.openid)
+        writeStoredOpenid(scene, response.data.openid)
         wechatAuthStatus.value = 'ready'
         wechatAuthError.value = ''
 
@@ -562,7 +579,7 @@ const ensureWechatOpenid = async () => {
   try {
     const currentUrl = window.location.origin + window.location.pathname + window.location.search
     const response = await request.get('/payment/wechat-oauth-url', {
-      params: { redirect_uri: currentUrl }
+      params: { redirect_uri: currentUrl, wx_scene: scene }
     })
     if (response.code === 200 && response.data?.auth_url) {
       window.location.href = response.data.auth_url
@@ -580,7 +597,7 @@ const ensureWechatOpenid = async () => {
 }
 
 const retryWechatAuth = async () => {
-  localStorage.removeItem('wechat_jsapi_openid')
+  clearStoredOpenid(normalizeWxPayScene(WX_PAY_SCENE))
   wechatOpenid.value = ''
   wechatAuthStatus.value = 'idle'
   wechatAuthError.value = ''

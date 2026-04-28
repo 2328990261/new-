@@ -127,7 +127,6 @@ export function refreshTokenExpire(expireDays = 30) {
 		const expireTime = new Date().getTime() + expireDays * 24 * 60 * 60 * 1000
 		uni.setStorageSync('tokenExpireTime', expireTime)
 		
-		console.log('token过期时间已刷新')
 		return true
 	} catch (e) {
 		console.error('刷新token过期时间失败', e)
@@ -228,7 +227,6 @@ export function updateUserInfo(updates) {
 		}
 		
 		uni.setStorageSync('userInfo', newUserInfo)
-		console.log('用户信息已更新')
 		return true
 	} catch (e) {
 		console.error('更新用户信息失败', e)

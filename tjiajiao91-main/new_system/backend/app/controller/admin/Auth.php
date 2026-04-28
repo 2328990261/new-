@@ -59,6 +59,7 @@ class Auth extends BaseController
             $_SESSION['admin_nickname'] = $admin->nickname;
             $_SESSION['admin_username'] = $admin->username;
             $_SESSION['admin_role'] = $admin->role;
+            $_SESSION['admin_can_access_enterprise'] = $admin->can_access_enterprise ?? 0;
             $_SESSION['login_time'] = time();  // 记录登录时间
             
             // 更新最后登录时间
@@ -72,7 +73,8 @@ class Auth extends BaseController
                     'id' => $admin->id,
                     'username' => $admin->username,
                     'nickname' => $admin->nickname,
-                    'role' => $admin->role
+                    'role' => $admin->role,
+                    'can_access_enterprise' => $admin->can_access_enterprise ?? 0
                 ]
             ]);
             
@@ -126,7 +128,8 @@ class Auth extends BaseController
                     'id' => $_SESSION['admin_id'] ?? null,
                     'username' => $_SESSION['admin_username'] ?? '',
                     'nickname' => $_SESSION['admin_nickname'] ?? '',
-                    'role' => $_SESSION['admin_role'] ?? 'customer_service'
+                    'role' => $_SESSION['admin_role'] ?? 'customer_service',
+                    'can_access_enterprise' => $_SESSION['admin_can_access_enterprise'] ?? 0
                 ]
             ]);
         } else {

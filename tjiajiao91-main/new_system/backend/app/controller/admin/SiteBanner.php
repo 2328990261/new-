@@ -205,8 +205,9 @@ class SiteBanner extends BaseController
             
             // 删除实际图片文件
             if (!empty($banner['image_url'])) {
-                $imagePath = public_path() . ltrim($banner['image_url'], '/');
-                if (file_exists($imagePath)) {
+                $imagePath = new_system_public_path(ltrim($banner['image_url'], '/'));
+                // open_basedir 下 file_exists 可能告警；用 @ 避免影响接口返回
+                if (@file_exists($imagePath)) {
                     @unlink($imagePath);
                 }
             }

@@ -275,7 +275,8 @@ class Payment extends BaseController
             $paymentData = [
                 'order_no' => $orderNo,
                 'tutor_order_id' => $data['tutor_order_id'] ?? null,
-                'tutor_name' => $data['tutor_name'] ?? null,
+                // payments.tutor_name(varchar(50))：做长度保护，避免“String data right truncated”
+                'tutor_name' => isset($data['tutor_name']) ? mb_substr((string)$data['tutor_name'], 0, 50, 'UTF-8') : null,
                 'amount' => $data['amount'],
                 'payment_method' => $data['payment_method'],
                 'payer_name' => $data['payer_name'],
@@ -597,6 +598,11 @@ class Payment extends BaseController
                     Log::warning('支付状态查单同步跳过: ' . $e->getMessage());
                 }
             }
+
+            // 库里有 paid_time 但 status 未同步为 success 时，H5/后台会一直显示「待支付」且轮询不到 success
+            if ($payment && $payment->repairInconsistentPaidPending()) {
+                $payment = PaymentModel::where('order_no', $orderNo)->find();
+            }
             
             return json([
                 'code' => 200,
@@ -725,7 +731,8 @@ class Payment extends BaseController
                 if ($payment->status !== 'success') {
                     $payment->status = 'success';
                     $payment->transaction_id = $data['transaction_id'] ?? ($payment->transaction_id ?? '');
-                    $payment->paid_time = date('Y-m-d H:i:s');
+                    $wxPaid = WechatPayService::parseWechatTradeFinishTime($data['time_end'] ?? '');
+                    $payment->paid_time = $wxPaid ?? date('Y-m-d H:i:s');
                     $payment->save();
                     Log::info('微信支付回调更新成功: ' . $orderNo);
                 }
@@ -758,10 +765,10 @@ class Payment extends BaseController
     public function dispatchers()
     {
         try {
-            // 可对接人员：派单组 + 客服组 + 组长（与支付页「派单客服」一致；原仅 dispatcher 时客服账号不会出现在列表）
+            // 支付页对接同学：只展示派单组成员（role=dispatcher），且包含启用/禁用
+            // 排除管理员、家长组等非派单角色
             $dispatchers = Db::name('admin')
-                ->where('status', 1)
-                ->whereIn('role', ['dispatcher', 'customer_service', 'team_leader'])
+                ->where('role', 'dispatcher')
                 ->field('id,username,nickname,contact,status')
                 ->order('id', 'asc')
                 ->select()
@@ -918,17 +925,55 @@ class Payment extends BaseController
     }
 
     /**
+     * JSAPI 网页授权：按支付场景取 AppID/AppSecret（payment_config.default / h5），缺省时回退 notification_config
+     *
+     * @return array{app_id:string,app_secret:string,scene:string,source:string}|null
+     */
+    private function resolveWechatJsapiOauthCredentials(string $scene): ?array
+    {
+        $scene = ($scene === 'h5') ? 'h5' : 'default';
+        $row = PaymentConfig::getConfigRow('wechat', $scene);
+        if ($row) {
+            $appId = trim((string) ($row->app_id ?? ''));
+            $secret = trim((string) ($row->app_secret ?? ''));
+            if ($appId !== '' && $secret !== '') {
+                return [
+                    'scene' => $scene,
+                    'app_id' => $appId,
+                    'app_secret' => $secret,
+                    'source' => 'payment_config',
+                ];
+            }
+        }
+
+        $config = Db::name('notification_config')->find(1);
+        if ($config && !empty($config['wechat_app_id']) && !empty($config['wechat_app_secret'])) {
+            return [
+                'scene' => $scene,
+                'app_id' => trim((string) $config['wechat_app_id']),
+                'app_secret' => trim((string) $config['wechat_app_secret']),
+                'source' => 'notification_config',
+            ];
+        }
+
+        return null;
+    }
+
+    /**
      * 获取微信网页静默授权URL（用于JSAPI）
      * GET /api/payment/wechat-oauth-url
+     *
+     * @param string wx_scene 支付场景：default | h5，与 fa_payment_config.scene 一致；缺省为 default
      */
     public function wechatOauthUrl()
     {
         try {
-            $config = Db::name('notification_config')->find(1);
-            if (!$config || empty($config['wechat_app_id'])) {
+            $wxScene = $this->request->get('wx_scene', 'default');
+            $oauth = $this->resolveWechatJsapiOauthCredentials((string) $wxScene);
+            if ($oauth === null) {
                 return json([
                     'code' => 500,
-                    'message' => '微信公众号AppID未配置'
+                    'message' => '微信网页授权未配置：请在支付配置（对应场景）填写应用ID与应用密钥，或在通知配置中填写公众号 AppID/AppSecret 作为兜底',
                 ]);
             }
 
@@ -942,7 +987,7 @@ class Payment extends BaseController
 
             $state = substr(md5(uniqid('', true)), 0, 16);
             $authUrl = 'https://open.weixin.qq.com/connect/oauth2/authorize?' . http_build_query([
-                'appid' => $config['wechat_app_id'],
+                'appid' => $oauth['app_id'],
                 'redirect_uri' => $redirectUri,
                 'response_type' => 'code',
                 'scope' => 'snsapi_base',
@@ -954,7 +999,9 @@ class Payment extends BaseController
                 'message' => '获取成功',
                 'data' => [
                     'auth_url' => $authUrl,
-                    'state' => $state
+                    'state' => $state,
+                    'wx_scene' => $oauth['scene'],
+                    'oauth_source' => $oauth['source'],
                 ]
             ]);
         } catch (\Exception $e) {
@@ -968,6 +1015,8 @@ class Payment extends BaseController
     /**
      * 微信网页授权 code 换 openid（用于JSAPI）
      * GET /api/payment/wechat-openid
+     *
+     * @param string wx_scene 须与发起授权时一致：default | h5
      */
     public function wechatOpenid()
     {
@@ -980,17 +1029,18 @@ class Payment extends BaseController
                 ]);
             }
 
-            $config = Db::name('notification_config')->find(1);
-            if (!$config || empty($config['wechat_app_id']) || empty($config['wechat_app_secret'])) {
+            $wxScene = $this->request->get('wx_scene', 'default');
+            $oauth = $this->resolveWechatJsapiOauthCredentials((string) $wxScene);
+            if ($oauth === null) {
                 return json([
                     'code' => 500,
-                    'message' => '微信公众号配置不完整，请检查AppID/AppSecret'
+                    'message' => '微信公众号配置不完整：请在支付配置（对应场景）填写应用密钥，或配置通知里的公众号 AppSecret 作为兜底',
                 ]);
             }
 
             $tokenUrl = 'https://api.weixin.qq.com/sns/oauth2/access_token?' . http_build_query([
-                'appid' => $config['wechat_app_id'],
-                'secret' => $config['wechat_app_secret'],
+                'appid' => $oauth['app_id'],
+                'secret' => $oauth['app_secret'],
                 'code' => $code,
                 'grant_type' => 'authorization_code'
             ]);
@@ -1030,7 +1080,8 @@ class Payment extends BaseController
                 'code' => 200,
                 'message' => '获取openid成功',
                 'data' => [
-                    'openid' => $result['openid']
+                    'openid' => $result['openid'],
+                    'wx_scene' => $oauth['scene'],
                 ]
             ]);
         } catch (\Exception $e) {
@@ -1040,7 +1091,7 @@ class Payment extends BaseController
             ]);
         }
     }
-    
+
     /**
      * 自动检测支付类型
      * 根据User-Agent判断是否在微信环境，以及是PC还是移动端

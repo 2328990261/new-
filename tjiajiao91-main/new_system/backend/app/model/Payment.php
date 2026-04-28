@@ -2,6 +2,7 @@
 
 namespace app\model;
 
+use think\facade\Log;
 use think\Model;
 
 class Payment extends Model
@@ -98,5 +99,43 @@ class Payment extends Model
     public static function generateOrderNo()
     {
         return 'PAY' . date('YmdHis') . rand(1000, 9999);
+    }
+
+    /**
+     * 是否已写入有效的支付完成时间（排除空值与零日期）
+     */
+    public static function hasMeaningfulPaidTime($paidTime): bool
+    {
+        if ($paidTime === null || $paidTime === false || $paidTime === '') {
+            return false;
+        }
+        $s = is_string($paidTime) ? trim($paidTime) : trim((string) $paidTime);
+        if ($s === '') {
+            return false;
+        }
+        if (strncmp($s, '0000-00-00', 10) === 0) {
+            return false;
+        }
+        return true;
+    }
+
+    /**
+     * 已存在支付完成时间但状态仍为 pending 时，修正为 success（修复历史脚本/异常写入与前端「待支付」误判）
+     *
+     * @return bool 是否执行了保存
+     */
+    public function repairInconsistentPaidPending(): bool
+    {
+        if (($this->status ?? '') !== 'pending' || !self::hasMeaningfulPaidTime($this->paid_time ?? null)) {
+            return false;
+        }
+        $this->status = 'success';
+        $tx = trim((string) ($this->transaction_id ?? ''));
+        if ($tx === '') {
+            $this->transaction_id = 'REPAID_PENDING_' . ($this->order_no ?: (string) $this->id);
+        }
+        $this->save();
+        Log::warning('支付记录状态已按 paid_time 自动修正: id=' . $this->id . ' order_no=' . ($this->order_no ?? ''));
+        return true;
     }
 }

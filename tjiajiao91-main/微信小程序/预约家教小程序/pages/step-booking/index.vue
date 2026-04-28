@@ -345,9 +345,6 @@ export default {
 		this.statusBarHeight = systemInfo.statusBarHeight || 0
 		this.navbarHeight = this.statusBarHeight + 44
 		
-		console.log('=== 页面加载调试信息 ===')
-		console.log('URL参数:', options)
-		
 		// 获取URL参数
 		if (options.admin_openid) {
 			this.adminOpenid = options.admin_openid
@@ -379,7 +376,6 @@ export default {
 		if (savedStep !== null && savedStep !== undefined && savedStep !== '') {
 			const stepNum = parseInt(savedStep, 10)
 			if (!Number.isNaN(stepNum) && stepNum >= 0 && stepNum < this.totalSteps) {
-				console.log('onShow: 从storage恢复步骤:', stepNum)
 				this.currentStep = stepNum
 			}
 			uni.removeStorageSync('step_booking_current_step')
@@ -468,7 +464,6 @@ export default {
 			try {
 				const savedData = uni.getStorageSync('step_booking_form_data')
 				if (savedData) {
-					console.log('加载保存的表单数据:', savedData)
 					// 恢复保存的数据，但不覆盖已有的手机号
 					Object.keys(savedData).forEach(key => {
 						if (this.formData.hasOwnProperty(key)) {
@@ -479,8 +474,6 @@ export default {
 							this.$set(this.formData, key, savedData[key])
 						}
 					})
-					
-					console.log('表单数据已恢复')
 				}
 			} catch (e) {
 				console.error('加载保存的数据失败:', e)
@@ -497,7 +490,6 @@ export default {
 		clearSavedData() {
 			try {
 				uni.removeStorageSync('step_booking_form_data')
-				console.log('已清除保存的表单数据')
 			} catch (e) {
 				console.error('清除保存的数据失败:', e)
 			}
@@ -520,18 +512,12 @@ export default {
 				if (params && typeof params === 'object') {
 					if (params.admin_openid) this.adminOpenid = params.admin_openid
 					if (params.admin_id) this.adminId = params.admin_id
-					if (this.adminOpenid || this.adminId) {
-						console.log('从storage恢复管理员参数:', params)
-					}
 				}
 				// 也检查 login 流程保存的 booking_redirect_admin
 				const redirectParams = uni.getStorageSync('booking_redirect_admin')
 				if (redirectParams && typeof redirectParams === 'object' && (!this.adminOpenid && !this.adminId)) {
 					if (redirectParams.admin_openid) this.adminOpenid = redirectParams.admin_openid
 					if (redirectParams.admin_id) this.adminId = redirectParams.admin_id
-					if (this.adminOpenid || this.adminId) {
-						console.log('从booking_redirect_admin恢复管理员参数:', redirectParams)
-					}
 				}
 			} catch (e) {
 				console.error('恢复管理员参数失败:', e)
@@ -815,9 +801,6 @@ export default {
 		if (adminOpenid) {
 			sharePath += '?admin_openid=' + adminOpenid
 			sharePath += '&superior_openid=' + encodeURIComponent(superiorOpenid)
-			console.log('分享路径（带管理员openid）:', sharePath)
-		} else {
-			console.log('⚠️ 当前用户没有openid，分享路径不带参数')
 		}
 		
 		const imageUrl = '/static/tabbar/applications.png'
@@ -843,9 +826,6 @@ export default {
 		let query = ''
 		if (adminOpenid) {
 			query = 'admin_openid=' + adminOpenid + '&superior_openid=' + encodeURIComponent(superiorOpenid)
-			console.log('分享到朋友圈（带管理员openid）:', query)
-		} else {
-			console.log('⚠️ 当前用户没有openid，分享不带参数')
 		}
 		
 		const imageUrl = '/static/tabbar/applications.png'

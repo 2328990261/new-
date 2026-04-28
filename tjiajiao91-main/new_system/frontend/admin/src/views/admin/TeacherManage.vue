@@ -1,41 +1,34 @@
 <template>
   <div class="teacher-manage">
-    <!-- 统计面板 -->
-    <div class="stats-panel">
-      <el-row :gutter="16" class="stats-row">
-        <el-col :xs="12" :sm="6" :md="6">
-          <el-card shadow="hover" class="stat-card" @click="handleStatClick('')">
-            <div class="stat-content">
-              <div class="stat-label">全部教师</div>
-              <div class="stat-value">{{ statistics.total || 0 }}</div>
-            </div>
-          </el-card>
-        </el-col>
-        <el-col :xs="12" :sm="6" :md="6">
-          <el-card shadow="hover" class="stat-card" @click="handleStatClick('pending')">
-            <div class="stat-content">
-              <div class="stat-label">待审核</div>
-              <div class="stat-value warning">{{ statistics.pending || 0 }}</div>
-            </div>
-          </el-card>
-        </el-col>
-        <el-col :xs="12" :sm="6" :md="6">
-          <el-card shadow="hover" class="stat-card" @click="handleStatClick('approved')">
-            <div class="stat-content">
-              <div class="stat-label">审核通过</div>
-              <div class="stat-value success">{{ statistics.approved || 0 }}</div>
-            </div>
-          </el-card>
-        </el-col>
-        <el-col :xs="12" :sm="6" :md="6">
-          <el-card shadow="hover" class="stat-card" @click="handleStatClick('rejected')">
-            <div class="stat-content">
-              <div class="stat-label">审核拒绝</div>
-              <div class="stat-value danger">{{ statistics.rejected || 0 }}</div>
-            </div>
-          </el-card>
-        </el-col>
-      </el-row>
+    <!-- 城市老师数量统计（所在城市 + 授课城市合并） -->
+    <div class="city-stats-container" v-if="cityStats.length > 0">
+      <div class="stats-content" :class="{ collapsed: !statsExpanded }">
+        <el-tag
+          type="primary"
+          effect="dark"
+          size="small"
+          style="margin-right: 8px; margin-bottom: 4px; font-weight: bold; cursor: pointer;"
+          @click="handleCityStatClick(null)"
+        >
+          全部：{{ totalTeacherCount }}
+        </el-tag>
+        <el-tag
+          v-for="stat in cityStats"
+          :key="stat.city_id"
+          :type="String(searchForm.city_id) === String(stat.city_id) ? 'success' : (Number(stat.count) > 100 ? 'danger' : Number(stat.count) > 50 ? 'warning' : '')"
+          :effect="String(searchForm.city_id) === String(stat.city_id) ? 'dark' : 'light'"
+          size="small"
+          style="margin-right: 8px; margin-bottom: 4px; cursor: pointer;"
+          @click="handleCityStatClick(stat.city_id)"
+        >
+          {{ stat.city_name }}：{{ stat.count }}
+        </el-tag>
+      </div>
+      <el-button link class="expand-btn" @click="statsExpanded = !statsExpanded">
+        <el-icon>
+          <component :is="statsExpanded ? 'ArrowUp' : 'ArrowDown'" />
+        </el-icon>
+      </el-button>
     </div>
 
     <!-- 主内容卡片 -->
@@ -1359,12 +1352,12 @@ export default {
 </script>
 
 <script setup>
-import { ref, onMounted, watch } from 'vue'
+import { ref, onMounted, watch, computed } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { useRouter } from 'vue-router'
-import { List, CircleCheck, Clock, CircleClose, Lock, Delete, DocumentDelete, Search, Setting, Location, Plus, Close, DocumentCopy, Picture, Refresh } from '@element-plus/icons-vue'
+import { List, CircleCheck, Clock, CircleClose, Lock, Delete, DocumentDelete, Search, Setting, Location, Plus, Close, DocumentCopy, Picture, Refresh, ArrowUp, ArrowDown } from '@element-plus/icons-vue'
 import TeacherCard from '@/components/teacher/TeacherCard.vue'
-import { getTeacherList, updateTeacherStatus, setTeacherTop, deleteTeacher, batchDeleteTeachers, batchUpdateTeacherStatus, updateTeacher, getTeacherStatistics, reviewTeacher, getTeacherDetail } from '@/api/teacher'
+import { getTeacherList, updateTeacherStatus, setTeacherTop, deleteTeacher, batchDeleteTeachers, batchUpdateTeacherStatus, updateTeacher, getTeacherStatistics, getTeacherCityStats, reviewTeacher, getTeacherDetail } from '@/api/teacher'
 
 const router = useRouter()
 
@@ -1402,6 +1395,11 @@ const statistics = ref({
   approved: 0,
   rejected: 0
 })
+
+// 城市老师数量统计（所在城市 + 授课城市合并）
+const cityStats = ref([])
+const statsExpanded = ref(false)
+const totalTeacherCount = computed(() => Number(statistics.value.total || 0))
 
 const detailVisible = ref(false)
 const editVisible = ref(false)
@@ -1475,6 +1473,18 @@ const loadStatistics = async () => {
   }
 }
 
+// 加载城市统计数据
+const loadCityStats = async () => {
+  try {
+    const res = await getTeacherCityStats()
+    if (res.success) {
+      cityStats.value = Array.isArray(res.data) ? res.data : []
+    }
+  } catch (error) {
+    console.error('加载城市统计失败:', error)
+  }
+}
+
 // 加载数据
 const loadData = async () => {
   try {
@@ -1529,7 +1539,7 @@ const handleRefresh = async () => {
   if (refreshing.value) return
   refreshing.value = true
   try {
-    await Promise.all([loadData(), loadStatistics()])
+    await Promise.all([loadData(), loadStatistics(), loadCityStats()])
     ElMessage.success('刷新成功')
   } catch (error) {
     ElMessage.error('刷新失败')
@@ -1538,6 +1548,16 @@ const handleRefresh = async () => {
       refreshing.value = false
     }, 500)
   }
+}
+
+// 城市统计标签点击：按城市筛选（所在城市 + 授课城市）
+const handleCityStatClick = async (cityId) => {
+  // 仅做城市维度快捷筛选，不影响其它筛选项（如审核状态/类型等）
+  searchForm.value.city_id = cityId == null ? '' : cityId
+  // 切换城市时，清空区域并按需加载新区域
+  await handleCityChange(searchForm.value.city_id)
+  currentPage.value = 1
+  loadData()
 }
 
 // 统计卡片点击
@@ -2445,6 +2465,7 @@ onMounted(() => {
   loadSubjects()
   loadData()
   loadStatistics()
+  loadCityStats()
 })
 </script>
 
@@ -2453,6 +2474,34 @@ onMounted(() => {
   padding: 20px;
   background: #f5f7fa;
   min-height: calc(100vh - 60px);
+}
+
+/* 城市统计条（参考家教信息管理） */
+.city-stats-container {
+  position: relative;
+  margin-bottom: 16px;
+  padding: 12px 14px;
+  background: #fff;
+  border-radius: 8px;
+}
+
+.stats-content {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  padding-right: 34px; /* 给右侧展开按钮留空间 */
+  max-height: 160px;
+  overflow: hidden;
+}
+
+.stats-content.collapsed {
+  max-height: 40px;
+}
+
+.expand-btn {
+  position: absolute;
+  right: 10px;
+  top: 8px;
 }
 
 /* 统计面板 */

@@ -97,9 +97,36 @@ class MiniProgramConfigService
         });
     }
 
-    public function getRuntimeConfig(string $platform): array
+    public function getRuntimeConfig(string $platform, string $appId = ''): array
     {
         $platform = strtolower(trim($platform));
+        $appId = trim($appId);
+        
+        // 优先根据 AppID 精确匹配
+        if ($appId !== '') {
+            $row = MiniProgramConfig::where('platform', $platform)
+                ->where('app_id', $appId)
+                ->where('is_enabled', 1)
+                ->find();
+            
+            if ($row) {
+                $item = $row->toArray();
+                $config = [
+                    'platform' => $platform,
+                    'app_id' => (string)$item['app_id'],
+                    'app_secret' => $this->decryptSecret((string)($item['app_secret_enc'] ?? '')),
+                    'env_version' => (string)($item['env_version'] ?? 'release'),
+                    'source' => 'db_by_appid',
+                ];
+                // 支付宝小程序：添加手机号 AES 密钥
+                if ($platform === 'alipay') {
+                    $config['phone_aes_key'] = $this->decryptSecret((string)($item['phone_aes_key_enc'] ?? ''));
+                }
+                return $config;
+            }
+        }
+        
+        // 如果没有 AppID 或未找到，使用默认配置
         $row = MiniProgramConfig::where('platform', $platform)
             ->where('is_enabled', 1)
             ->order('is_default', 'desc')
@@ -108,13 +135,18 @@ class MiniProgramConfigService
 
         if ($row) {
             $item = $row->toArray();
-            return [
+            $config = [
                 'platform' => $platform,
                 'app_id' => (string)$item['app_id'],
                 'app_secret' => $this->decryptSecret((string)($item['app_secret_enc'] ?? '')),
                 'env_version' => (string)($item['env_version'] ?? 'release'),
-                'source' => 'db',
+                'source' => 'db_default',
             ];
+            // 支付宝小程序：添加手机号 AES 密钥
+            if ($platform === 'alipay') {
+                $config['phone_aes_key'] = $this->decryptSecret((string)($item['phone_aes_key_enc'] ?? ''));
+            }
+            return $config;
         }
 
         return $this->fallbackEnvConfig($platform);
@@ -142,6 +174,16 @@ class MiniProgramConfigService
             }
         } elseif (isset($old['app_secret_enc'])) {
             $payload['app_secret_enc'] = (string)$old['app_secret_enc'];
+        }
+
+        // 支付宝小程序：处理手机号 AES 密钥
+        if (array_key_exists('phone_aes_key', $data)) {
+            $phoneAesKey = trim((string)$data['phone_aes_key']);
+            if ($phoneAesKey !== '') {
+                $payload['phone_aes_key_enc'] = $this->encryptSecret($phoneAesKey);
+            }
+        } elseif (isset($old['phone_aes_key_enc'])) {
+            $payload['phone_aes_key_enc'] = (string)$old['phone_aes_key_enc'];
         }
 
         if (isset($data['env_version'])) {
@@ -203,6 +245,16 @@ class MiniProgramConfigService
             $item['app_secret_masked'] = $this->maskString($decrypted);
         }
         unset($item['app_secret_enc']);
+        
+        // 支付宝小程序：处理手机号 AES 密钥的脱敏显示
+        $item['phone_aes_key'] = '';
+        $item['phone_aes_key_masked'] = '';
+        $phoneAesKeyDecrypted = $this->decryptSecret((string)($item['phone_aes_key_enc'] ?? ''));
+        if ($phoneAesKeyDecrypted !== '') {
+            $item['phone_aes_key_masked'] = $this->maskString($phoneAesKeyDecrypted);
+        }
+        unset($item['phone_aes_key_enc']);
+        
         return $item;
     }
 

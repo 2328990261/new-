@@ -174,7 +174,13 @@ class EmailLog extends BaseController
                 ]
             ];
             
-            $mail->setFrom($config['from_email'], $config['from_name'] ?: '家教信息平台');
+            // 发件人兜底：避免 From 与登录账号不一致导致 DATA 阶段拒收
+            $fromEmail = trim((string)($config['from_email'] ?? ''));
+            if ($fromEmail === '') {
+                $fromEmail = trim((string)($config['smtp_username'] ?? ''));
+            }
+            $mail->setFrom($fromEmail, $config['from_name'] ?: '家教信息平台');
+            $mail->Sender = $fromEmail;
             $mail->addAddress($log['recipient_email'], $log['recipient_name'] ?? '');
             $mail->isHTML(true);
             $mail->Subject = $log['subject'];

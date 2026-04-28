@@ -166,7 +166,7 @@
         <view v-if="index === 4" class="ai-banner" @click="goToAIBooking">
           <view class="banner-content">
             <view class="banner-left">
-              <image src="/static/ai-avatar.png" class="banner-icon-img" mode="aspectFit"></image>
+              <image src="https://t.jiajiao91.com/public/miniprogram/images/ai-avatar.png" class="banner-icon-img" mode="aspectFit"></image>
               <view class="banner-text-group">
                 <text class="banner-title">一键填写预约</text>
                 <text class="banner-subtitle">AI帮你快速匹配心仪家教老师</text>
@@ -450,13 +450,9 @@ export default {
           params.sort = this.selectedSort
         }
         
-        console.log('请求教师列表，参数:', params)
-        
         // 调用API
         const response = await teacherApi.getList(params)
-        
-        console.log('教师列表响应:', response)
-        
+
         if (response.success) {
           const data = response.data
           
@@ -471,8 +467,6 @@ export default {
           if (data.list && data.list.length > 0) {
             this.page++
           }
-          
-          console.log('教师列表加载成功，当前数量:', this.teacherList.length, '总数:', data.total)
         } else {
           console.error('教师列表加载失败:', response.error)
           uni.showToast({
@@ -689,7 +683,7 @@ export default {
       const index = this.teacherList.findIndex((t) => String((t && t.id) ?? '') === String(id ?? ''))
       if (index !== -1) {
         // 使用本地默认头像，避免外部域名请求
-        this.teacherList[index].avatar = '/static/ai-avatar.png'
+        this.teacherList[index].avatar = 'https://t.jiajiao91.com/public/miniprogram/images/ai-avatar.png'
       }
     },
     

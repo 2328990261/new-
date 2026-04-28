@@ -402,9 +402,16 @@ class WechatMiniProgramService
             
             $isNewUser = true;
             
-            // 处理邀请逻辑
+            // 处理邀请逻辑：优先使用 inviter_openid（邀请码），其次使用 superior_openid（分享链接）
+            $finalInviterOpenid = '';
             if (!empty($inviterOpenid) && $inviterOpenid !== $openid) {
-                $this->handleInvitation($inviterOpenid, $openid, $user->id);
+                $finalInviterOpenid = $inviterOpenid;
+            } elseif (!empty($superiorOpenid) && $superiorOpenid !== $openid) {
+                $finalInviterOpenid = $superiorOpenid;
+            }
+            
+            if ($finalInviterOpenid !== '') {
+                $this->handleInvitation($finalInviterOpenid, $openid, $user->id);
             }
         } else {
             // 检查用户状态（只检查fa_users表）

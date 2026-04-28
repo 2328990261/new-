@@ -12,7 +12,7 @@
 			<!-- Logo和标题 -->
 			<view class="logo-section">
 				<view class="logo-box">
-					<image src="/static/ai-avatar.png" mode="aspectFit" class="logo-img"></image>
+					<image src="https://t.jiajiao91.com/public/miniprogram/images/ai-avatar.png" mode="aspectFit" class="logo-img"></image>
 				</view>
 				<text class="app-name">小萌家教助手</text>
 				<text class="app-slogan">AI智能匹配 · 快速找到好老师</text>
@@ -139,9 +139,15 @@ export default {
 		// 简化初始化，使用固定状态栏高度
 		this.statusBarHeight = 44
 		
-		// 获取邀请人openid
+		// 获取邀请人openid：优先从 URL 参数，其次从本地存储（邀请落地页保存）
 		if (options.inviter) {
 			this.inviterOpenid = options.inviter
+		} else {
+			// 从本地存储读取（邀请落地页已保存）
+			const storedInviter = uni.getStorageSync('inviterOpenid')
+			if (storedInviter) {
+				this.inviterOpenid = storedInviter
+			}
 		}
 		// 获取来源页面（预约页跳转登录时带上，登录成功后返回）
 		if (options.from) {
@@ -241,11 +247,6 @@ export default {
 					uni.hideLoading()
 					
 					if (res.code === 200) {
-						const u = res?.data?.unionid
-						console.log('[unionid_debug][autoLogin]', {
-							has_unionid: !!u,
-							unionid: u ? `${u.slice(0, 6)}...${u.slice(-4)}` : ''
-						})
 						this.loginSuccess(res.data)
 					} else {
 						// 自动登录失败，清除旧的登录信息
@@ -883,12 +884,6 @@ export default {
 			if (data.isNewUser) {
 				uni.removeStorageSync('userRole')
 			}
-			const u = data?.unionid
-			console.log('[unionid_debug][loginSuccess]', {
-				has_unionid: !!u,
-				unionid: u ? `${u.slice(0, 6)}...${u.slice(-4)}` : ''
-			})
-			
 			// 从token中解析openid（token格式：base64编码的JSON）
 			let openid = ''
 			try {

@@ -101,14 +101,6 @@
 		<view class="menu-section">
 			<!-- 老师端菜单 -->
 			<view v-if="userRole === 'teacher'" class="menu-group">
-				<view class="menu-item" @click="goToTeachingInfo">
-					<view class="menu-icon-wrapper">
-						<uni-icons type="notification" size="28" color="#52C9A6" />
-					</view>
-					<text class="menu-text">订阅消息通知</text>
-					<text class="menu-arrow">›</text>
-				</view>
-
 				<view class="menu-item" @click="goToMyApplications">
 					<view class="menu-icon-wrapper">
 						<uni-icons type="paperplane" size="28" color="#52C9A6" />
@@ -144,6 +136,22 @@
 					<view class="invitation-badge">
 						<text class="badge-text">赚优惠券</text>
 					</view>
+					<text class="menu-arrow">›</text>
+				</view>
+
+				<view class="menu-item" @click="goToFeedback">
+					<view class="menu-icon-wrapper">
+						<uni-icons type="help" size="28" color="#52C9A6" />
+					</view>
+					<text class="menu-text">问题反馈</text>
+					<text class="menu-arrow">›</text>
+				</view>
+
+				<view class="menu-item" @click="goToCityWecomGroup">
+					<view class="menu-icon-wrapper wecom-icon">
+						<uni-icons type="chat" size="28" color="#FFFFFF" />
+					</view>
+					<text class="menu-text">找同城家教群</text>
 					<text class="menu-arrow">›</text>
 				</view>
 			</view>
@@ -187,14 +195,12 @@
 					</view>
 					<text class="menu-arrow">›</text>
 				</view>
-			</view>
-			
-			<view class="menu-group">
-				<view class="menu-item" @click="switchRole">
+				
+				<view class="menu-item" @click="goToFeedback">
 					<view class="menu-icon-wrapper">
-						<uni-icons type="refreshempty" size="28" color="#52C9A6" />
+						<uni-icons type="help" size="28" color="#52C9A6" />
 					</view>
-					<text class="menu-text">{{ userRole === 'teacher' ? '切换家长端' : '切换老师端' }}</text>
+					<text class="menu-text">问题反馈</text>
 					<text class="menu-arrow">›</text>
 				</view>
 			</view>
@@ -226,8 +232,6 @@ import envConfig from '@/config/env.js'
 import CustomTabbar from '@/components/custom-tabbar/index.vue'
 import auth from '@/utils/auth.js'
 import uniIcons from '@/uni_modules/uni-icons/components/uni-icons/uni-icons.vue'
-import { wechatLogin } from '@/utils/api.js'
- 
 export default {
 	components: {
 		CustomTabbar,
@@ -319,21 +323,13 @@ export default {
 				return
 			}
 			
-			console.log('=== 清理临时头像URL ===')
-			console.log('OpenID:', openid)
-			
 			uni.request({
 				url: envConfig.API_BASE_URL + '/api/avatar/cleanup-temp',
 				method: 'POST',
 				data: {
 					openid: openid
 				},
-				success: (res) => {
-					console.log('清理临时头像URL响应:', res.data)
-					if (res.data.code === 200) {
-						console.log('临时头像URL已清理')
-					}
-				},
+				success: () => {},
 				fail: (error) => {
 					console.error('清理临时头像URL失败:', error)
 				}
@@ -342,19 +338,15 @@ export default {
 		
 		// 加载用户信息
 		loadUserInfo() {
-			console.log('=== 加载用户信息调试 ===')
-			
 			try {
 				// 使用auth工具检查登录状态
 				if (auth.isLoggedIn()) {
 					const userInfo = auth.getUserInfo()
-					console.log('1. 从auth获取的用户信息:', userInfo)
-					
+
 					if (userInfo) {
 						// 检查头像URL是否为临时文件
 						let avatarUrl = userInfo.avatar || userInfo.avatarUrl || ''
 						if (avatarUrl && (avatarUrl.includes('http://tmp/') || avatarUrl.includes('tmp/'))) {
-							console.log('2. 检测到临时头像URL，清理中:', avatarUrl)
 							avatarUrl = '' // 清空临时URL
 							
 							// 更新本地存储，清除临时URL
@@ -368,31 +360,23 @@ export default {
 								avatar: '',
 								avatarUrl: ''
 							})
-							
-							console.log('3. 已清理临时头像URL')
 						}
-						
+
 						this.userInfo = {
 							name: userInfo.name || userInfo.nickname || '',
 							phone: userInfo.phone || '',
 							avatar: avatarUrl
 						}
-						
-						console.log('4. 设置的用户信息:', this.userInfo)
-						console.log('5. 当前头像URL:', this.userInfo.avatar)
-						
+
 						// 检查本地存储
 						const localUserInfo = uni.getStorageSync('userInfo') || {}
-						console.log('6. 本地存储的用户信息:', localUserInfo)
-						console.log('7. 本地存储的头像URL:', localUserInfo.avatar)
-						
+
 						this.isLoggedIn = true
 						return
 					}
 				}
 				
 				// 未登录或登录已过期
-				console.log('8. 用户未登录或登录已过期')
 				this.isLoggedIn = false
 				this.userInfo = {
 					name: '',
@@ -481,12 +465,7 @@ export default {
 		
 		onChooseAvatar(e) {
 			const { avatarUrl } = e.detail
-			
-			console.log('微信头像授权回调:', e)
-			console.log('=== 头像上传调试信息 ===')
-			console.log('1. 选择的头像路径:', avatarUrl)
-			console.log('2. API地址:', envConfig.API_BASE_URL + '/api/avatar/upload')
-			
+
 			// 显示加载提示
 			uni.showLoading({
 				title: '上传头像中...'
@@ -495,9 +474,7 @@ export default {
 			// 获取用户信息
 			const userInfo = uni.getStorageSync('userInfo') || {}
 			const openid = userInfo.openid || ''
-			
-			console.log('3. 用户OpenID:', openid)
-			
+
 			if (!openid) {
 				uni.hideLoading()
 				uni.showToast({
@@ -516,16 +493,12 @@ export default {
 					openid: openid
 				},
 				success: (uploadRes) => {
-					console.log('4. 服务器响应原始数据:', uploadRes.data)
-					
 					try {
 						const result = JSON.parse(uploadRes.data)
-						console.log('5. 解析后的响应数据:', result)
-						
+
 						if (result.code === 200) {
 							const serverAvatarUrl = result.data.avatar_url
-							console.log('6. 服务器返回的头像URL:', serverAvatarUrl)
-							
+
 							// 构建完整的头像URL
 							let fullAvatarUrl = serverAvatarUrl
 							if (serverAvatarUrl && !serverAvatarUrl.startsWith('http')) {
@@ -536,9 +509,7 @@ export default {
 									fullAvatarUrl = envConfig.API_BASE_URL + '/uploads/' + serverAvatarUrl
 								}
 							}
-							
-							console.log('7. 完整的头像URL:', fullAvatarUrl)
-							
+
 							// 更新本地头像显示
 							this.userInfo.avatar = fullAvatarUrl
 							
@@ -553,11 +524,7 @@ export default {
 								avatar: fullAvatarUrl,
 								avatarUrl: fullAvatarUrl
 							})
-							
-							console.log('8. 更新后的本地存储:', localUserInfo)
-							console.log('9. 当前显示的头像URL:', this.userInfo.avatar)
-							console.log('10. auth工具中的用户信息:', auth.getUserInfo())
-							
+
 							uni.hideLoading()
 							uni.showToast({
 								title: '头像上传成功',
@@ -683,6 +650,12 @@ export default {
 				url: '/pages/my-applications/index'
 			})
 		},
+
+		goToCityWecomGroup() {
+			uni.navigateTo({
+				url: '/pages/city-wecom-group/index'
+			})
+		},
 		
 		goToMyFavorites() {
 			uni.navigateTo({
@@ -727,6 +700,12 @@ export default {
 		goToInvitation() {
 			uni.navigateTo({
 				url: '/pages/invitation/index'
+			})
+		},
+
+		goToFeedback() {
+			uni.navigateTo({
+				url: '/pages/feedback/index'
 			})
 		},
 		
@@ -782,51 +761,6 @@ export default {
 					icon: 'success'
 				})
 			}
-		},
-		
-		switchToParent() {
-			// 保留旧方法名以兼容，实际调用switchRole
-			this.switchRole()
-		},
-		
-		switchRole() {
-			const newRole = this.userRole === 'teacher' ? 'parent' : 'teacher'
-			const roleText = newRole === 'teacher' ? '老师端' : '家长端'
-			
-			uni.showModal({
-				title: '切换角色',
-				content: `确定要切换到${roleText}吗？`,
-				success: (res) => {
-					if (res.confirm) {
-						uni.setStorageSync('userRole', newRole)
-						this.userRole = newRole
-
-						// 已登录时同步身份到服务端，避免库里 user_type 仍是旧值
-						const token = uni.getStorageSync('token')
-						if (token) {
-							wechatLogin.updateUserType(newRole).catch(() => {})
-						}
-						
-						uni.showToast({
-							title: `已切换到${roleText}`,
-							icon: 'success'
-						})
-						
-						// 延迟跳转到对应首页
-						setTimeout(() => {
-							if (newRole === 'parent') {
-								uni.reLaunch({
-									url: '/pages/parent-home/index'
-								})
-							} else {
-								uni.reLaunch({
-									url: '/pages/tutor-list/index'
-								})
-							}
-						}, 1500)
-					}
-				}
-			})
 		},
 		
 		goToPrivacyPolicy() {
@@ -1184,6 +1118,11 @@ export default {
 
 .menu-icon-wrapper.wallet-icon {
 	background: linear-gradient(135deg, #FFB6C1 0%, #FF69B4 100%);
+}
+
+.menu-icon-wrapper.wecom-icon {
+	background: linear-gradient(135deg, #ffb347 0%, #ff8c00 100%);
+	box-shadow: 0 6rpx 18rpx rgba(255, 140, 0, 0.25);
 }
 
 .menu-icon-wrapper .icon-emoji {

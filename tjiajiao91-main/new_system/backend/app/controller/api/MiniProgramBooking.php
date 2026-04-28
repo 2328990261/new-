@@ -244,6 +244,39 @@ class MiniProgramBooking extends BaseController
                 }
             }
 
+            // 绑定补偿：若本次已解析到管理员，但用户 superior_openid 为空，则将其写入一次
+            // 目的：兼容“后台复制链接带 admin_id”的入口（不一定携带 superior_openid），避免后台归属显示一直是 “-”
+            try {
+                if ($admin && $user) {
+                    $currentSuperior = trim((string)($user->superior_openid ?? ''));
+                    if ($currentSuperior === '') {
+                        $tokens = \app\model\Admin::splitOpenids($admin->openid ?? '');
+                        $first = '';
+                        foreach ($tokens as $t) {
+                            $t = trim((string)$t);
+                            // openid 常见以 o 开头
+                            if ($t !== '' && preg_match('/^o[A-Za-z0-9\-_]{19,39}$/', $t)) {
+                                $first = $t;
+                                break;
+                            }
+                        }
+                        if ($first !== '' && $first !== (string)($user->openid ?? '')) {
+                            $user->superior_openid = $first;
+                            $user->update_time = date('Y-m-d H:i:s');
+                            $user->save();
+                            \think\facade\Log::info('[superior_bind] mini-booking.create 补写 superior_openid', [
+                                'user_id' => (int)($user->id ?? 0),
+                                'user_openid' => (string)($user->openid ?? ''),
+                                'superior_openid_written' => $first,
+                                'admin_id' => (int)($admin->id ?? 0),
+                            ]);
+                        }
+                    }
+                }
+            } catch (\Throwable $e) {
+                \think\facade\Log::warning('[superior_bind] mini-booking.create 补写失败: ' . $e->getMessage());
+            }
+
             // 生成订单号
             $orderNo = ParentOrder::generateOrderNo();
             

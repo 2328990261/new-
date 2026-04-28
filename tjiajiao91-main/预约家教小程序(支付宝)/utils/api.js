@@ -67,25 +67,49 @@ export const wechatLogin = {
 
 // 支付宝登录相关接口
 export const alipayLogin = {
+	// 获取当前小程序的 AppID
+	_getAppId() {
+		try {
+			// #ifdef MP-ALIPAY
+			const accountInfo = my.getAppIdSync?.() || {}
+			const appId = accountInfo.appId || ''
+			console.log('[DEBUG] 支付宝小程序 AppID:', appId)
+			console.log('[DEBUG] accountInfo:', JSON.stringify(accountInfo))
+			return appId
+			// #endif
+			console.log('[DEBUG] 非支付宝环境，AppID 为空')
+			return ''
+		} catch (e) {
+			console.error('[DEBUG] 获取 AppID 失败:', e)
+			return ''
+		}
+	},
+	
 	login(code, extra = {}) {
+		const appId = this._getAppId()
+		console.log('[DEBUG] alipayLogin.login 调用参数:', { code, app_id: appId, extra })
 		return request({
 			url: '/api/alipay/login',
 			method: 'POST',
-			data: { code, ...extra }
+			data: { code, app_id: appId, ...extra }
 		})
 	},
 	loginWithOpenid(data) {
+		const appId = this._getAppId()
+		console.log('[DEBUG] alipayLogin.loginWithOpenid 调用参数:', { ...data, app_id: appId })
 		return request({
 			url: '/api/alipay/login-openid',
 			method: 'POST',
-			data
+			data: { ...data, app_id: appId }
 		})
 	},
 	loginWithPhone(data) {
+		const appId = this._getAppId()
+		console.log('[DEBUG] alipayLogin.loginWithPhone 调用参数:', { ...data, app_id: appId })
 		return request({
 			url: '/api/alipay/login-phone',
 			method: 'POST',
-			data
+			data: { ...data, app_id: appId }
 		})
 	},
 	updateUserType(userType) {

@@ -2,6 +2,7 @@
 namespace app\service;
 
 use think\facade\Log;
+use think\facade\Filesystem;
 
 /**
  * 文件上传服务
@@ -22,6 +23,118 @@ class UploadService
      * 最大文件大小（5MB）
      */
     private $maxFileSize = 5 * 1024 * 1024;
+
+    /**
+     * 保存文件到 public/uploads 下的指定子目录（统一校验与落盘）
+     *
+     * @param \think\File $file
+     * @param string $subDir uploads 下子目录（如 avatars、teacher、ssl）
+     * @param array $allowedExts 允许的扩展名（不含点）
+     * @param int|null $maxSizeBytes 最大大小（字节），默认使用 $this->maxFileSize
+     * @param string|null $filename 自定义文件名（含扩展名），为空则自动生成
+     * @return array
+     */
+    public function storeToPublicUploads($file, $subDir, array $allowedExts, $maxSizeBytes = null, $filename = null, $dateFormat = 'Ymd')
+    {
+        try {
+            $subDir = trim((string)$subDir, "/\\");
+            if ($subDir === '') {
+                $subDir = 'files';
+            }
+
+            $maxSizeBytes = $maxSizeBytes === null ? $this->maxFileSize : (int)$maxSizeBytes;
+
+            // 在 move 前缓存文件信息：部分环境下 move 后临时文件被清理，getSize/getOriginalMime 会 stat failed
+            $originalName = $this->safeGetOriginalName($file);
+            $fileSize = $this->safeGetSize($file);
+            $fileMime = $this->safeGetOriginalMime($file);
+
+            $validation = $this->validateFileWithMaxSize($file, $allowedExts, $maxSizeBytes);
+            if (!$validation['success']) {
+                return $validation;
+            }
+
+            $dateFormat = $dateFormat === null ? '' : (string)$dateFormat;
+            $dateDir = $dateFormat !== '' ? date($dateFormat) : '';
+            $uploadRelativeDir = 'uploads/' . $subDir . '/' . ($dateDir !== '' ? ($dateDir . '/') : '');
+            $uploadAbsDir = new_system_public_path($uploadRelativeDir);
+
+            if (!is_dir($uploadAbsDir)) {
+                mkdir($uploadAbsDir, 0755, true);
+            }
+
+            $ext = strtolower((string)$file->extension());
+            if (!$filename) {
+                $filename = uniqid('', true) . '_' . time() . '.' . $ext;
+            }
+
+            if (!$file->move($uploadAbsDir, $filename)) {
+                throw new \Exception('文件保存失败');
+            }
+
+            $relativePath = $uploadRelativeDir . $filename; // 不带前导 /
+            $url = '/' . str_replace('\\', '/', $relativePath);
+
+            return [
+                'success' => true,
+                'data' => [
+                    'name' => $originalName,
+                    'url' => $url,
+                    'relative_path' => $relativePath,
+                    'full_path' => $uploadAbsDir . $filename,
+                    'size' => $fileSize,
+                    'type' => $fileMime,
+                    'extension' => $ext,
+                    'upload_time' => date('Y-m-d H:i:s'),
+                ],
+            ];
+        } catch (\Throwable $e) {
+            Log::error('保存文件失败(storeToPublicUploads): ' . $e->getMessage());
+            return [
+                'success' => false,
+                'message' => '文件上传失败: ' . $e->getMessage(),
+            ];
+        }
+    }
+
+    private function safeGetOriginalName($file): string
+    {
+        try {
+            return (string)$file->getOriginalName();
+        } catch (\Throwable $e) {
+            return '';
+        }
+    }
+
+    private function safeGetOriginalMime($file): string
+    {
+        try {
+            return (string)$file->getOriginalMime();
+        } catch (\Throwable $e) {
+            return '';
+        }
+    }
+
+    private function safeGetSize($file): int
+    {
+        // ThinkPHP UploadedFile 的 getSize() 可能触发 SplFileInfo::getSize()，在临时文件被清理时会抛异常
+        try {
+            $size = $file->getSize();
+            return is_numeric($size) ? (int)$size : 0;
+        } catch (\Throwable $e) {
+            // 兜底：尝试 real path + filesize
+            try {
+                $p = (string)$file->getRealPath();
+                if ($p !== '' && @is_file($p)) {
+                    $fs = @filesize($p);
+                    return is_numeric($fs) ? (int)$fs : 0;
+                }
+            } catch (\Throwable $e2) {
+                // ignore
+            }
+            return 0;
+        }
+    }
     
     /**
      * 上传退款凭证
@@ -44,7 +157,7 @@ class UploadService
             }
             
             // 生成保存路径
-            $uploadPath = root_path('public') . 'uploads/voucher/' . date('Ymd') . '/';
+            $uploadPath = new_system_public_path('uploads/voucher/' . date('Ymd') . '/');
             
             // 创建目录（如果不存在）
             if (!is_dir($uploadPath)) {
@@ -93,7 +206,7 @@ class UploadService
     {
         try {
             // 验证文件
-            $validation = $this->validateFile($file, $this->allowedImageTypes);
+            $validation = $this->validateFileWithMaxSize($file, $this->allowedImageTypes, $this->maxFileSize);
             if (!$validation['success']) {
                 return $validation;
             }
@@ -140,6 +253,18 @@ class UploadService
      */
     private function validateFile($file, $allowedTypes)
     {
+        return $this->validateFileWithMaxSize($file, $allowedTypes, $this->maxFileSize);
+    }
+
+    /**
+     * 验证文件（可指定最大大小）
+     * @param \think\File $file
+     * @param array $allowedTypes
+     * @param int $maxSizeBytes
+     * @return array
+     */
+    private function validateFileWithMaxSize($file, $allowedTypes, $maxSizeBytes)
+    {
         // 检查文件是否存在
         if (!$file || !$file->isValid()) {
             return [
@@ -149,10 +274,10 @@ class UploadService
         }
         
         // 检查文件大小
-        if ($file->getSize() > $this->maxFileSize) {
+        if ($this->safeGetSize($file) > $maxSizeBytes) {
             return [
                 'success' => false,
-                'message' => '文件大小不能超过 ' . ($this->maxFileSize / 1024 / 1024) . 'MB'
+                'message' => '文件大小不能超过 ' . ($maxSizeBytes / 1024 / 1024) . 'MB'
             ];
         }
         
@@ -166,7 +291,7 @@ class UploadService
         }
         
         // 检查文件MIME类型（防止伪造扩展名）
-        $mimeType = $file->getOriginalMime();
+        $mimeType = $this->safeGetOriginalMime($file);
         $allowedMimes = $this->getAllowedMimeTypes($allowedTypes);
         
         if (!in_array($mimeType, $allowedMimes)) {
@@ -264,7 +389,7 @@ class UploadService
             }
             
             // 获取完整路径
-            $fullPath = root_path('public') . 'uploads/' . str_replace('\\', '/', $saveName);
+            $fullPath = new_system_public_path('uploads/' . str_replace('\\', '/', $saveName));
             
             // 压缩图片
             $compressed = $this->compressImage($fullPath, $fullPath, 1920, 80);

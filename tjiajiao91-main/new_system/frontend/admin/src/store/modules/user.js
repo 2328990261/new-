@@ -33,7 +33,8 @@ export const useUserStore = defineStore('user', {
       id: savedUser.id || null,
       username: savedUser.username || '',
       nickname: savedUser.nickname || '',
-      role: savedUser.role || '' // 'customer_service' 或 'dispatcher'
+      role: savedUser.role || '', // 'customer_service' 或 'dispatcher'
+      can_access_enterprise: savedUser.can_access_enterprise || 0
     }
   },
 
@@ -46,6 +47,8 @@ export const useUserStore = defineStore('user', {
     isCustomerService: (state) => state.role === 'customer_service',
     // 检查是否可以删除订单（超级管理员或客服组长）
     canDeleteOrder: (state) => state.role === 'super_admin' || state.role === 'team_leader',
+    // 检查是否可以访问企业管理（超级管理员或有权限的管理员）
+    canAccessEnterprise: (state) => state.role === 'super_admin' || state.can_access_enterprise === 1,
   },
 
   actions: {
@@ -54,13 +57,15 @@ export const useUserStore = defineStore('user', {
       this.username = userInfo.username
       this.nickname = userInfo.nickname || userInfo.username
       this.role = userInfo.role || 'customer_service' // 默认为客服组
+      this.can_access_enterprise = userInfo.can_access_enterprise || 0
       
       // 保存到localStorage
       saveUserToStorage({
         id: this.id,
         username: this.username,
         nickname: this.nickname,
-        role: this.role
+        role: this.role,
+        can_access_enterprise: this.can_access_enterprise
       })
     },
     
@@ -69,6 +74,7 @@ export const useUserStore = defineStore('user', {
       this.username = ''
       this.nickname = ''
       this.role = ''
+      this.can_access_enterprise = 0
       
       // 清除 localStorage
       clearUserFromStorage()

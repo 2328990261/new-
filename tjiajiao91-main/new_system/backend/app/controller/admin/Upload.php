@@ -3,6 +3,7 @@
 namespace app\controller\admin;
 
 use app\BaseController;
+use app\service\UploadService;
 use app\service\WatermarkService;
 
 /**
@@ -26,43 +27,17 @@ class Upload extends BaseController
                 ]);
             }
             
-            // 手动验证文件
-            $fileSize = $file->getSize();
-            $fileExt = strtolower($file->extension());
+            $service = new UploadService();
             $allowedExts = ['jpg', 'jpeg', 'png', 'gif', 'webp'];
-            
-            // 验证文件大小 (10MB)
-            if ($fileSize > 10 * 1024 * 1024) {
+            $stored = $service->storeToPublicUploads($file, 'lead', $allowedExts, 10 * 1024 * 1024);
+            if (empty($stored['success'])) {
                 return json([
                     'success' => false,
-                    'error' => '文件大小不能超过10MB'
+                    'error' => $stored['message'] ?? '上传失败'
                 ]);
             }
-            
-            // 验证文件扩展名
-            if (!in_array($fileExt, $allowedExts)) {
-                return json([
-                    'success' => false,
-                    'error' => '只支持上传 jpg, jpeg, png, gif, webp 格式的图片'
-                ]);
-            }
-            
-            // 创建上传目录
-            $uploadPath = app()->getRootPath() . 'public/uploads/lead/';
-            $dateDir = date('Ymd');
-            $fullPath = $uploadPath . $dateDir . '/';
-            
-            if (!is_dir($fullPath)) {
-                mkdir($fullPath, 0755, true);
-            }
-            
-            // 生成文件名
-            $filename = uniqid() . '.' . $fileExt;
-            
-            // 移动文件
-            $file->move($fullPath, $filename);
 
-            $imagePath = $fullPath . $filename;
+            $imagePath = (string)($stored['data']['full_path'] ?? '');
 
             // 部分场景需原图（如退费关注公众号二维码）；表单传 skip_watermark=1 则不打水印
             $skip = $this->request->post('skip_watermark');
@@ -72,14 +47,14 @@ class Upload extends BaseController
             }
             
             // 返回文件URL
-            $url = '/uploads/lead/' . $dateDir . '/' . $filename;
+            $url = (string)($stored['data']['url'] ?? '');
             
             return json([
                 'success' => true,
                 'message' => '上传成功',
                 'data' => [
                     'url' => $url,
-                    'path' => 'lead/' . $dateDir . '/' . $filename
+                    'path' => preg_replace('#^/uploads/#', '', (string)($stored['data']['url'] ?? ''))
                 ]
             ]);
         } catch (\Exception $e) {
@@ -115,11 +90,11 @@ class Upload extends BaseController
             }
             
             // 构建完整文件路径
-            $fullPath = app()->getRootPath() . 'public/uploads/' . $path;
+            $fullPath = new_system_public_path('uploads/' . $path);
             
-            // 删除文件
-            if (file_exists($fullPath)) {
-                $result = unlink($fullPath);
+            // 删除文件（open_basedir 下 file_exists 可能告警；用 @ 避免影响接口）
+            if (@file_exists($fullPath)) {
+                $result = @unlink($fullPath);
                 
                 if ($result) {
                     return json([

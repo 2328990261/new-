@@ -76,12 +76,8 @@ const routes = [
     component: () => import('@/views/PaymentSuccess.vue'),
     meta: { title: '支付凭证需保存', hideNavbar: true }
   },
-  {
-    path: '/h5/payment-success',
-    name: 'H5PaymentSuccess',
-    component: () => import('@/views/H5PaymentSuccess.vue'),
-    meta: { title: '支付成功', hideNavbar: true }
-  },
+  // 已废弃：H5 支付成功改为在支付页内弹出海报，不再使用独立成功页
+  { path: '/h5/payment-success', redirect: '/h5/payment' },
   {
     path: '/booking/:adminId',
     name: 'Booking',

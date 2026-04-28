@@ -145,13 +145,8 @@ applications: [] // 投递列表
 }
 },
 onLoad(options) {
-  // 添加调试日志
-  console.log('预约详情页面接收到的参数:', options)
-  console.log('所有参数的键名:', Object.keys(options))
-  
   const orderIdFromOptions = options && (options.order_id || options.id)
   this.orderId = orderIdFromOptions ? (options.order_id || options.id) : ''
-  console.log('解析出的orderId:', this.orderId)
   
   if (!this.orderId) {
     uni.showToast({
@@ -213,9 +208,7 @@ async loadDetail() {
     const userInfo = uni.getStorageSync('userInfo')
     const userInfoId = userInfo ? userInfo.id : ''
     const userId = cachedUserId || userInfoId
-    console.log('获取的用户ID:', userId)
-    console.log('存储的userInfo:', uni.getStorageSync('userInfo'))
-    
+
     const res = await request({
       url: `/api/mini-booking/detail/${this.orderId}`,
       method: 'GET',
@@ -225,14 +218,8 @@ async loadDetail() {
       timeout: 10000 // 10秒超时
     })
     
-    // 添加调试日志
-    console.log('预约详情API响应:', res)
-    console.log('订单ID:', this.orderId)
-    console.log('响应数据:', JSON.stringify(res, null, 2))
-    
     if (res && res.code === 200 && res.data) {
       this.detail = res.data
-      console.log('设置详情数据:', this.detail)
       this.loadApplications()
     } else {
       // 订单不存在或已被后台取消：不报错，直接显示为「已取消」
@@ -243,7 +230,6 @@ async loadDetail() {
         id: this.orderId,
         create_time: '-'
       }
-      console.log('订单不存在或已被删除，设置为已取消状态')
     }
   } catch (e) {
     console.error('加载预约详情失败:', e)
@@ -260,7 +246,6 @@ async loadDetail() {
         id: this.orderId,
         create_time: '-'
       }
-      console.log('请求失败，设置为已取消状态:', e.message || e)
     }
   } finally {
     this.isLoading = false

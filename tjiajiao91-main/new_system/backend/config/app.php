@@ -26,15 +26,4 @@ return [
     'show_error_msg'   => false,
     
     'admin_notification_emails' => env('admin.notification_emails', []),
-
-    /**
-     * 订单邮件调试开关（用于线上临时只发给指定邮箱，避免误发）
-     * - order.email_debug_only=1 时生效
-     * - order.email_debug_target 为收件邮箱（必须是合法 email）
-     */
-    // 默认关闭；线上临时调试请在 .env 设置：
-    // order.email_debug_only=1
-    // order.email_debug_target=2328990261@qq.com
-    'order_email_debug_only' => (int) env('order.email_debug_only', 0) === 1,
-    'order_email_debug_target' => env('order.email_debug_target', ''),
 ];

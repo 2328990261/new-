@@ -10,6 +10,18 @@
 				<text class="share-icon">⋯</text>
 			</view>
 		</view>
+
+		<!-- 引导添加「我的小程序」（右上角系统菜单）；点「知道了」关闭并记住 -->
+		<view class="add-mini-guide" v-if="showAddMiniProgramGuide" @click.stop>
+			<view class="add-mini-guide-mask" @click="dismissAddMiniProgramGuide"></view>
+			<view class="add-mini-guide-bubble" :style="addMiniGuideBubbleStyle">
+				<view class="add-mini-guide-pointer" :style="addMiniGuidePointerStyle"></view>
+				<text class="add-mini-guide-text">点击右上角「···」添加到我的小程序，下次使用更方便</text>
+				<view class="add-mini-guide-footer">
+					<view class="add-mini-guide-btn" @click="dismissAddMiniProgramGuide">知道了</view>
+				</view>
+			</view>
+		</view>
 		
 		<!-- 主内容区域 - 使用scroll-view实现滚动 -->
 		<scroll-view 
@@ -61,8 +73,12 @@
 				</swiper>
 			</view>
 			
-			<!-- 吸顶占位区域（当搜索栏吸顶时显示） -->
-			<view v-if="isSearchBarFixed && bannerList.length > 0" class="search-placeholder"></view>
+			<!-- 吸顶占位区域（当搜索栏吸顶时显示；含订阅条时增高，避免跳动） -->
+			<view
+				v-if="isSearchBarFixed && bannerList.length > 0"
+				class="search-placeholder"
+				:class="{ 'search-placeholder--with-subscribe': showSubscribeEntry }"
+			></view>
 			
 			<!-- 搜索和筛选区域 -->
 			<view class="filter-section" :class="{ 'fixed-top': isSearchBarFixed }" :style="fixedTopStyle">
@@ -77,16 +93,20 @@
 					</view>
 				</view>
 
-				<!-- 订阅消息通知入口（放在搜索栏下、类型 Tab 上）
-				     规则：授课信息里“服务号通知/邮箱通知”任意开启，则这里隐藏 -->
-				<view v-if="showSubscribeEntry" class="subscribe-entry" @click="goToSubscribeNotify">
+				<!-- 订阅入口：放在搜索框下方（与筛选区一起滚动 / 吸顶） -->
+				<view
+					v-if="showSubscribeEntry"
+					class="subscribe-entry subscribe-entry--inline"
+					@click="goToSubscribeNotify"
+				>
 					<view class="subscribe-entry-left">
-						<view class="subscribe-dot"></view>
-						<text class="subscribe-desc">开启后，匹配的生源信息将及时通知你</text>
+						<view class="subscribe-bell-wrap">
+							<uni-icons type="notification-filled" color="#FF8C00" :size="20" />
+						</view>
+						<text class="subscribe-desc">为了实时推送家教信息，第一时间抢先接单，请点击去订阅家教信息</text>
 					</view>
 					<view class="subscribe-entry-right">
 						<text class="subscribe-btn">去订阅</text>
-						<text class="subscribe-arrow">›</text>
 					</view>
 				</view>
 
@@ -463,7 +483,7 @@
 				</view>
 			</view>
 		</view>
-		
+
 		<!-- 自定义 tabBar -->
 		<custom-tabbar current="/pages/tutor-list/index" />
 	</view>
@@ -475,10 +495,12 @@ import envConfig from '@/config/env.js'
 import shareMixin from '@/mixins/share.js'
 import { teacherRegisterApi, bannerApi } from '@/utils/api.js'
 import CustomTabbar from '@/components/custom-tabbar/index.vue'
+import uniIcons from '@/uni_modules/uni-icons/components/uni-icons/uni-icons.vue'
 
 export default {
 	components: {
-		CustomTabbar
+		CustomTabbar,
+		uniIcons
 	},
 	mixins: [shareMixin],
 	data() {
@@ -550,11 +572,56 @@ export default {
 		// 教师注册状态
 		isTeacherRegistered: false,
 
-		// 顶部订阅入口是否显示（默认显示；若授课信息里已开启任意通知则隐藏）
-		showSubscribeEntry: true
+		// 订阅条是否显示（默认显示；若授课信息里已开启任意通知则隐藏）
+		showSubscribeEntry: true,
+
+		// 引导添加「我的小程序」
+		showAddMiniProgramGuide: false,
+		addMiniProgramGuideKey: 'tutor_list_add_mini_program_tip_v1',
+
+		/** 微信小程序胶囊区域（getMenuButtonBoundingClientRect），用于弹层对齐 */
+		menuCapsule: null
 	}
 	},
 	computed: {
+		/** 气泡贴在胶囊正下方，随机型变化 */
+		addMiniGuideBubbleStyle() {
+			const marginPx = uni.upx2px(24)
+			const gapPx = uni.upx2px(12)
+			const mb = this.menuCapsule
+			if (mb && typeof mb.bottom === 'number') {
+				return {
+					top: (mb.bottom + gapPx) + 'px',
+					left: marginPx + 'px',
+					right: marginPx + 'px'
+				}
+			}
+			const topPx = (this.statusBarHeight || 0) + uni.upx2px(8)
+			return {
+				top: topPx + 'px',
+				left: marginPx + 'px',
+				right: marginPx + 'px'
+			}
+		},
+		/**
+		 * 小三角对准「···」菜单键：微信 API 只给整条胶囊外框，··· 在左侧区域，
+		 * 取左半胶囊的几何中心（与多数机型上三个点的视觉中心接近）。
+		 */
+		addMiniGuidePointerStyle() {
+			const marginPx = uni.upx2px(24)
+			const mb = this.menuCapsule
+			const sys = uni.getSystemInfoSync()
+			const winW = sys.windowWidth || sys.screenWidth || 375
+			if (!mb || !mb.width) {
+				return { left: 'auto', right: uni.upx2px(48) + 'px' }
+			}
+			const moreMenuCenterX = mb.left + mb.width * 0.25
+			let leftPx = moreMenuCenterX - marginPx
+			const innerW = winW - marginPx * 2
+			const halfBase = uni.upx2px(16)
+			leftPx = Math.max(halfBase, Math.min(innerW - halfBase, leftPx))
+			return { left: leftPx + 'px', right: 'auto' }
+		},
 		selectedCityName() {
 			if (!this.filters.city_id) return ''
 			const city = this.cities.find(c => c.id === this.filters.city_id)
@@ -604,25 +671,63 @@ export default {
 		// 获取状态栏高度
 		const systemInfo = uni.getSystemInfoSync()
 		this.statusBarHeight = systemInfo.statusBarHeight || 0
-		
+		this.refreshMenuCapsuleLayout()
+
 		this.loadBannerList()
 		this.loadCities()
 		this.loadSubjects()
 		this.loadTutorList()
 		this.checkTeacherRegistration()
 		this.refreshSubscribeEntryVisibility()
+		try {
+			const dismissed = uni.getStorageSync(this.addMiniProgramGuideKey)
+			this.showAddMiniProgramGuide = !dismissed
+		} catch (e) {
+			this.showAddMiniProgramGuide = true
+		}
+		this.$nextTick(() => {
+			this.refreshMenuCapsuleLayout()
+		})
 	},
 	onShow() {
 		// 从“授课信息”返回时立即刷新显示状态
 		this.refreshSubscribeEntryVisibility()
+		this.refreshMenuCapsuleLayout()
 	},
 	methods: {
+		refreshMenuCapsuleLayout() {
+			// #ifdef MP-WEIXIN
+			try {
+				if (typeof uni.getMenuButtonBoundingClientRect === 'function') {
+					const rect = uni.getMenuButtonBoundingClientRect()
+					if (rect && rect.width > 0 && typeof rect.bottom === 'number') {
+						this.menuCapsule = {
+							top: rect.top,
+							bottom: rect.bottom,
+							left: rect.left,
+							right: rect.right,
+							width: rect.width,
+							height: rect.height
+						}
+						return
+					}
+				}
+			} catch (e) {}
+			// #endif
+			this.menuCapsule = null
+		},
+		dismissAddMiniProgramGuide() {
+			this.showAddMiniProgramGuide = false
+			try {
+				uni.setStorageSync(this.addMiniProgramGuideKey, '1')
+			} catch (e) {}
+		},
 		goToSubscribeNotify() {
 			uni.navigateTo({
 				url: '/pages/teaching-info/index'
 			})
 		},
-		// 若授课信息中已开启任意通知（服务号/邮箱），则隐藏顶部订阅入口
+		// 若授课信息中已开启任意通知（服务号/邮箱），则隐藏订阅条
 		refreshSubscribeEntryVisibility() {
 			try {
 				// 先读本地缓存（从授课信息页切换开关后可立即生效）
@@ -670,10 +775,8 @@ export default {
 		// 加载Banner横幅列表
 		async loadBannerList() {
 			try {
-				console.log('开始加载Banner横幅...')
 				const res = await bannerApi.getBannerList()
-				console.log('Banner API响应:', JSON.stringify(res))
-				
+
 				// 兼容不同的返回格式
 				const isSuccess = res.success === true || res.code === 200
 				const data = res.data || []
@@ -687,15 +790,11 @@ export default {
 						if (banner.image_url && !banner.image_url.startsWith('http')) {
 							banner.image_url = envConfig.API_BASE_URL + banner.image_url
 						}
-						console.log('Banner图片URL:', banner.image_url)
 						return banner
 					})
-					
+
 					this.bannerList = banners
-					console.log('最终Banner列表:', this.bannerList)
-					console.log('Banner数量:', this.bannerList.length)
 				} else {
-					console.log('Banner API返回失败或无数据:', res)
 				}
 			} catch (error) {
 				console.error('加载横幅失败:', error)
@@ -1305,98 +1404,15 @@ ${dispatcher ? `派单员：${dispatcher.nickname || dispatcher.username}${dispa
 		},
 		
 		// 报名
-		async applyTutor(tutor) {
-			// 检查登录状态
-			const token = uni.getStorageSync('token')
-			if (!token) {
-				uni.showModal({
-					title: '提示',
-					content: '请先登录',
-					confirmText: '去登录',
-					success: (res) => {
-						if (res.confirm) {
-							auth.navigateToLogin()
-						}
-					}
+		applyTutor(tutor) {
+			// 直接跳转到家教详情页
+			if (tutor && tutor.id) {
+				uni.navigateTo({
+					url: `/pages/tutor-detail/index?id=${tutor.id}`
 				})
-				return
-			}
-
-			// 检查教师注册状态
-			try {
-				const statusRes = await teacherRegisterApi.getRegistrationStatus()
-				const statusData = statusRes.data || statusRes
-				
-				if (!statusData.success) {
-					// 未注册
-					uni.showModal({
-						title: '提示',
-						content: '您还未注册成为教师，请先完成教师注册',
-						confirmText: '去注册',
-						cancelText: '取消',
-						success: (res) => {
-							if (res.confirm) {
-								uni.redirectTo({
-									url: '/pages/teacher-register/index'
-								})
-							}
-						}
-					})
-					return
-				}
-
-				const status = (statusData && statusData.data) ? statusData.data.status : undefined
-				
-				if (status === 'pending') {
-					// 待审核
-					uni.showModal({
-						title: '提示',
-						content: '您的教师认证正在审核中，请耐心等待',
-						confirmText: '查看简历',
-						cancelText: '取消',
-						success: (res) => {
-							if (res.confirm) {
-								uni.redirectTo({
-									url: '/pages/teacher-resume-preview/index'
-								})
-							}
-						}
-					})
-					return
-				} else if (status === 'rejected') {
-					// 已驳回
-					uni.showModal({
-						title: '提示',
-						content: '您的教师认证未通过，请修改后重新提交',
-						confirmText: '去修改',
-						cancelText: '取消',
-						success: (res) => {
-							if (res.confirm) {
-								uni.redirectTo({
-									url: '/pages/teacher-resume-preview/index'
-								})
-							}
-						}
-					})
-					return
-				} else if (status !== 'approved') {
-					// 其他状态
-					uni.showModal({
-						title: '提示',
-						content: '您的教师认证状态异常，请联系客服',
-						showCancel: false
-					})
-					return
-				}
-
-				// 认证通过，显示报名弹窗
-				this.currentTutor = tutor
-				this.currentDispatcher = tutor.dispatcher || tutor.admin
-				this.showApplyDialog = true
-			} catch (error) {
-				console.error('检查教师注册状态失败:', error)
+			} else {
 				uni.showToast({
-					title: '检查状态失败，请重试',
+					title: '家教信息异常',
 					icon: 'none'
 				})
 			}
@@ -1683,10 +1699,14 @@ this.isTeacherRegistered = false
 	box-shadow: 0 2rpx 12rpx rgba(0, 0, 0, 0.08);
 }
 
-/* 吸顶占位 */
+/* 吸顶占位（与 filter-section 实际高度大致匹配） */
 .search-placeholder {
 	height: 200rpx;
 	background: transparent;
+}
+
+.search-placeholder.search-placeholder--with-subscribe {
+	height: 320rpx;
 }
 
 /* 搜索栏 */
@@ -1729,34 +1749,121 @@ this.isTeacherRegistered = false
 	color: #606266;
 }
 
-/* 订阅消息入口（搜索栏下方） */
+/* 引导添加「我的小程序」 */
+.add-mini-guide {
+	position: fixed;
+	left: 0;
+	right: 0;
+	top: 0;
+	bottom: 0;
+	z-index: 1500;
+	pointer-events: none;
+}
+
+.add-mini-guide-mask {
+	position: absolute;
+	left: 0;
+	right: 0;
+	top: 0;
+	bottom: 0;
+	background: rgba(0, 0, 0, 0.48);
+	pointer-events: auto;
+}
+
+.add-mini-guide-bubble {
+	position: absolute;
+	left: 24rpx;
+	right: 24rpx;
+	background: #fff;
+	border-radius: 16rpx;
+	padding: 24rpx 24rpx 20rpx;
+	box-shadow: 0 12rpx 40rpx rgba(0, 0, 0, 0.12);
+	pointer-events: auto;
+}
+
+.add-mini-guide-pointer {
+	position: absolute;
+	top: -14rpx;
+	/* right 由 addMiniGuidePointerStyle 按胶囊位置动态计算 */
+	width: 0;
+	height: 0;
+	border-left: 16rpx solid transparent;
+	border-right: 16rpx solid transparent;
+	border-bottom: 16rpx solid #fff;
+	filter: drop-shadow(0 -2rpx 2rpx rgba(0, 0, 0, 0.04));
+}
+
+.add-mini-guide-text {
+	font-size: 28rpx;
+	color: #303133;
+	line-height: 1.55;
+	display: block;
+	padding-right: 8rpx;
+}
+
+.add-mini-guide-footer {
+	margin-top: 20rpx;
+	display: flex;
+	justify-content: flex-end;
+}
+
+.add-mini-guide-btn {
+	min-width: 160rpx;
+	text-align: center;
+	font-size: 28rpx;
+	font-weight: 600;
+	color: #fff;
+	padding: 14rpx 32rpx;
+	border-radius: 999rpx;
+	background: linear-gradient(135deg, #52C9A6 0%, #3BA888 100%);
+}
+
+.add-mini-guide-btn:active {
+	opacity: 0.88;
+}
+
+/* 订阅消息入口（搜索框下方，与筛选区同列） */
 .subscribe-entry {
 	margin: 0 24rpx 12rpx;
 	padding: 16rpx 18rpx;
 	border-radius: 14rpx;
-	background: linear-gradient(135deg, rgba(82, 201, 166, 0.16) 0%, rgba(59, 168, 136, 0.10) 100%);
-	border: 1rpx solid rgba(82, 201, 166, 0.35);
+	background: linear-gradient(135deg, rgba(255, 140, 90, 0.14) 0%, rgba(245, 108, 108, 0.10) 100%);
+	border: 1rpx solid rgba(245, 108, 108, 0.32);
 	display: flex;
 	align-items: center;
 	justify-content: space-between;
 	gap: 16rpx;
 }
 
+.subscribe-entry--inline {
+	margin: 0 24rpx 8rpx;
+	padding: 14rpx 18rpx;
+	border-radius: 12rpx;
+	background: linear-gradient(180deg, #fff9f0 0%, #fff3e4 100%);
+	border: 1rpx solid rgba(255, 180, 120, 0.45);
+	box-shadow: 0 4rpx 16rpx rgba(255, 140, 0, 0.08);
+	align-items: center;
+}
+
 .subscribe-entry-left {
 	flex: 1;
 	min-width: 0;
 	display: flex;
-	align-items: center;
+	align-items: flex-start;
 	flex-wrap: nowrap;
-	gap: 10rpx;
+	gap: 12rpx;
 }
 
-.subscribe-dot {
-	width: 12rpx;
-	height: 12rpx;
-	border-radius: 999rpx;
-	background: #52C9A6;
-	box-shadow: 0 0 0 6rpx rgba(82, 201, 166, 0.18);
+.subscribe-bell-wrap {
+	width: 44rpx;
+	height: 44rpx;
+	border-radius: 50%;
+	background: rgba(255, 140, 0, 0.12);
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	flex-shrink: 0;
+	margin-top: 2rpx;
 }
 
 .subscribe-title {
@@ -1769,11 +1876,12 @@ this.isTeacherRegistered = false
 	font-size: 24rpx;
 	color: #4b5563;
 	opacity: 0.95;
-	line-height: 1.4;
+	line-height: 1.45;
 	flex: 1;
-	white-space: nowrap;
+	display: -webkit-box;
+	-webkit-box-orient: vertical;
+	-webkit-line-clamp: 2;
 	overflow: hidden;
-	text-overflow: ellipsis;
 }
 
 .subscribe-entry-right {
@@ -1781,20 +1889,27 @@ this.isTeacherRegistered = false
 	align-items: center;
 	gap: 10rpx;
 	flex-shrink: 0;
+	align-self: center;
 }
 
 .subscribe-btn {
 	font-size: 24rpx;
 	font-weight: 700;
 	color: #ffffff;
-	padding: 8rpx 14rpx;
+	padding: 10rpx 22rpx;
 	border-radius: 999rpx;
-	background: linear-gradient(135deg, #52C9A6 0%, #3BA888 100%);
+	background: linear-gradient(180deg, #ffb347 0%, #ff8c00 100%);
+	box-shadow: 0 4rpx 12rpx rgba(255, 140, 0, 0.35);
+}
+
+.subscribe-entry--inline .subscribe-btn {
+	font-size: 26rpx;
+	padding: 12rpx 28rpx;
 }
 
 .subscribe-arrow {
 	font-size: 34rpx;
-	color: #3BA888;
+	color: #f56c6c;
 	font-weight: 600;
 	line-height: 1;
 }

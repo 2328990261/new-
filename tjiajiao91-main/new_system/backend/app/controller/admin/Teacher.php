@@ -130,7 +130,19 @@ class Teacher extends BaseController
                 
                 // 获取符合条件的 teacher_id 列表
                 $teacherIds = $teachingInfoQuery->column('teacher_id');
-                
+
+                // 城市筛选：同时支持「所在城市(location_address)」与「授课城市(teacher_teaching_info.city_id)」
+                // 说明：当同时筛选了具体区域时，仅按授课信息筛选（所在城市无法精确到区域）
+                if ($cityId && !$districtIds) {
+                    $cityName = trim((string)Db::name('cities')->where('id', (int)$cityId)->value('name'));
+                    if ($cityName !== '') {
+                        $locationTeacherIds = TeacherModel::where('location_address', 'like', '%' . $cityName . '%')->column('id');
+                        if (!empty($locationTeacherIds)) {
+                            $teacherIds = array_values(array_unique(array_merge($teacherIds ?: [], $locationTeacherIds)));
+                        }
+                    }
+                }
+
                 if (empty($teacherIds)) {
                     // 如果没有符合条件的教师，直接返回空结果
                     return json([
@@ -143,7 +155,7 @@ class Teacher extends BaseController
                         ]
                     ]);
                 }
-                
+
                 // 添加 teacher_id 筛选条件
                 $where[] = ['id', 'in', $teacherIds];
             }
@@ -818,6 +830,57 @@ class Teacher extends BaseController
             
         } catch (\Exception $e) {
             return json(['success' => false, 'error' => $e->getMessage()]);
+        }
+    }
+
+    /**
+     * 获取各城市老师数量统计（所在城市 + 授课城市合并去重）
+     */
+    public function cityStats()
+    {
+        if (session_status() === PHP_SESSION_NONE) {
+            session_start();
+        }
+        if (!isset($_SESSION['admin_id'])) {
+            return json(['success' => false, 'error' => '未登录']);
+        }
+
+        try {
+            // 说明：
+            // - 所在城市：从 teachers.location_address 字段中提取城市信息，模糊匹配 cities.name
+            // - 授课城市：teacher_teaching_info.city_id 精确匹配
+            // - 合并后按城市维度对 teacher_id 去重计数
+            $prefix = (string) (config('database.connections.mysql.prefix') ?? '');
+            $tTeachers = $prefix . 'teachers';
+            $tCities = $prefix . 'cities';
+            $tTeaching = $prefix . 'teacher_teaching_info';
+            $sql = <<<SQL
+SELECT x.city_id, x.city_name, COUNT(DISTINCT x.teacher_id) AS count
+FROM (
+    SELECT c.id AS city_id, c.name AS city_name, t.id AS teacher_id
+    FROM {$tTeachers} t
+    INNER JOIN {$tCities} c ON t.location_address LIKE CONCAT('%', c.name, '%')
+    WHERE t.location_address IS NOT NULL AND t.location_address != ''
+    UNION
+    SELECT c.id AS city_id, c.name AS city_name, ti.teacher_id AS teacher_id
+    FROM {$tTeaching} ti
+    INNER JOIN {$tCities} c ON ti.city_id = c.id
+) x
+GROUP BY x.city_id, x.city_name
+ORDER BY count DESC
+SQL;
+
+            $rows = Db::query($sql);
+
+            return json([
+                'success' => true,
+                'data' => $rows
+            ]);
+        } catch (\Exception $e) {
+            return json([
+                'success' => false,
+                'error' => '获取城市统计失败：' . $e->getMessage()
+            ]);
         }
     }
     

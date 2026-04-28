@@ -74,6 +74,13 @@ Route::group('api', function () {
     Route::get('teacher-register/my-profile', 'api.TeacherRegister/myProfile');
     Route::post('teacher-register/parse-resume', 'api.TeacherRegister/parseResume');
     Route::get('teacher-register/approval-notice', 'api.TeacherRegister/approvalNotice');
+
+    // 问题反馈（小程序端）
+    Route::post('feedback/upload-image', 'api.Feedback/uploadImage');
+    Route::post('feedback/submit', 'api.Feedback/submit');
+    Route::get('feedback/my-list', 'api.Feedback/myList');
+    Route::get('feedback/messages', 'api.Feedback/messages');
+    Route::post('feedback/add-message', 'api.Feedback/addMessage');
     
     // 投递管理
     Route::post('application/apply', 'api.Application/apply');
@@ -179,6 +186,11 @@ Route::group('api', function () {
     Route::get('site-banners', 'api.SiteBanner/index');
     Route::get('success-cases', 'api.SuccessCase/index');
     Route::post('user/location', 'api.UserLocation/save');
+
+    // 企业微信城市入口：优先入群二维码，失败回退联系我二维码
+    Route::get('wecom/city-entry', 'api.WecomGroup/cityEntry');
+    Route::get('wecom/join-landing', 'api.WecomCallback/joinLanding');
+    Route::rule('wecom/callback', 'api.WecomCallback/receive', 'GET|POST');
     
     // 授课信息管理
     Route::get('teaching-info/get', 'api.TeachingInfo/getInfo');

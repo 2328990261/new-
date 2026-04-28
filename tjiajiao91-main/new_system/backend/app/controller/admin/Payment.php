@@ -18,6 +18,26 @@ class Payment extends BaseController
     private $cachedPaymentsHasIsDeleted = null;
     /** @var bool|null 当前请求内缓存：是否含 refund_remark */
     private $cachedPaymentsHasRefundRemark = null;
+    /** @var string|null 当前请求内缓存：tutor_orders_new 实际表名（含前缀） */
+    private $cachedTutorOrdersNewTable = null;
+
+    /**
+     * 获取 tutor_orders_new 的真实表名（自动带前缀）。
+     * 部分环境实际表为 fa_tutor_orders_new；如果写死 tutor_orders_new 会导致 42S02。
+     */
+    private function tutorOrdersNewTable(): string
+    {
+        if ($this->cachedTutorOrdersNewTable !== null) {
+            return $this->cachedTutorOrdersNewTable;
+        }
+        try {
+            $table = Db::name('tutor_orders_new')->getTable();
+            $this->cachedTutorOrdersNewTable = $table ?: 'tutor_orders_new';
+        } catch (\Throwable $e) {
+            $this->cachedTutorOrdersNewTable = 'tutor_orders_new';
+        }
+        return $this->cachedTutorOrdersNewTable;
+    }
 
     /**
      * 获取支付列表
@@ -27,6 +47,15 @@ class Payment extends BaseController
         try {
             $page = $this->request->param('page', 1);
             $limit = $this->request->param('limit', 10);
+            
+            // 添加调试日志
+            Log::info('支付列表查询', [
+                'page' => $page,
+                'limit' => $limit,
+                'refund_status' => $this->request->param('refund_status'),
+                'status' => $this->request->param('status'),
+                'all_params' => $this->request->param()
+            ]);
             
             $query = PaymentModel::with(['dispatcher'])->order('is_pinned', 'desc');
             // 软删除过滤：仅在字段存在时启用；否则不影响“全部订单”显示
@@ -52,6 +81,35 @@ class Payment extends BaseController
             $query->order('paid_time', 'desc');
             
             // 筛选条件
+            $keyword = trim((string)$this->request->param('keyword', ''));
+            if ($keyword !== '') {
+                // 先把可能的“客服昵称/用户名”映射成管理员 id 列表
+                $adminIds = Db::name('admin')
+                    ->where('role', 'dispatcher')
+                    ->where(function ($q) use ($keyword) {
+                        $q->whereLike('nickname', "%{$keyword}%")
+                          ->whereOrLike('username', "%{$keyword}%");
+                    })
+                    ->column('id');
+                $adminIds = array_values(array_unique(array_map('intval', $adminIds ?: [])));
+
+                $query->where(function ($q) use ($keyword, $adminIds) {
+                    $q->whereLike('order_no', "%{$keyword}%")
+                        ->whereOrLike('tutor_name', "%{$keyword}%")
+                        ->whereOrLike('payer_name', "%{$keyword}%")
+                        ->whereOrLike('teacher_name', "%{$keyword}%")
+                        ->whereOrLike('contact_student', "%{$keyword}%");
+
+                    // 命中管理员昵称/用户名时，也按 dispatcher_id 兜底匹配（含 tutor_orders_new.dispatcher_id）
+                    if (!empty($adminIds)) {
+                        $in = implode(',', array_map('intval', $adminIds));
+                        // 这里用 IN + 子查询（避免 join 影响现有 with/分页）
+                        $tutorOrdersTable = $this->tutorOrdersNewTable();
+                        $q->whereOrRaw("(dispatcher_id IN ({$in}) OR ((dispatcher_id IS NULL OR dispatcher_id = 0) AND tutor_order_id IN (SELECT id FROM `{$tutorOrdersTable}` WHERE dispatcher_id IN ({$in}))))");
+                    }
+                });
+            }
+
             $tutorName = $this->request->param('tutor_name');
             if ($tutorName) {
                 $query->where('tutor_name', 'like', "%{$tutorName}%");
@@ -92,17 +150,26 @@ class Payment extends BaseController
                 $query->where('amount', '<=', $amountMax);
             }
             
-            // 支付时间筛选
+            // 支付时间筛选（daterange 常为同日 00:00~00:00，扩展为整日）
+            // 兼容 paid_time 为空的情况：同时搜索 paid_time 和 create_time
             $payTimeStart = $this->request->param('pay_time_start');
             $payTimeEnd = $this->request->param('pay_time_end');
             if ($payTimeStart && $payTimeEnd) {
-                $query->whereBetweenTime('paid_time', $payTimeStart, $payTimeEnd);
+                [$payTimeStart, $payTimeEnd] = $this->expandInclusiveDateRange($payTimeStart, $payTimeEnd);
+                $query->where(function($q) use ($payTimeStart, $payTimeEnd) {
+                    $q->whereBetweenTime('paid_time', $payTimeStart, $payTimeEnd)
+                      ->whereOr(function($q2) use ($payTimeStart, $payTimeEnd) {
+                          $q2->where('paid_time', 'null')
+                             ->whereBetweenTime('create_time', $payTimeStart, $payTimeEnd);
+                      });
+                });
             }
             
             // 退款时间筛选
             $refundTimeStart = $this->request->param('refund_time_start');
             $refundTimeEnd = $this->request->param('refund_time_end');
             if ($refundTimeStart && $refundTimeEnd) {
+                [$refundTimeStart, $refundTimeEnd] = $this->expandInclusiveDateRange($refundTimeStart, $refundTimeEnd);
                 $query->whereBetweenTime('refund_time', $refundTimeStart, $refundTimeEnd);
             }
             
@@ -110,13 +177,24 @@ class Payment extends BaseController
             $refundApplyTimeStart = $this->request->param('refund_apply_time_start');
             $refundApplyTimeEnd = $this->request->param('refund_apply_time_end');
             if ($refundApplyTimeStart && $refundApplyTimeEnd) {
+                [$refundApplyTimeStart, $refundApplyTimeEnd] = $this->expandInclusiveDateRange($refundApplyTimeStart, $refundApplyTimeEnd);
                 $query->whereBetweenTime('refund_apply_time', $refundApplyTimeStart, $refundApplyTimeEnd);
             }
             
             // 派单员筛选
             $dispatcherId = $this->request->param('dispatcher_id');
             if ($dispatcherId) {
-                $query->where('dispatcher_id', $dispatcherId);
+                // 兼容历史数据：
+                // - 部分 payments.dispatcher_id 为空，但列表展示会从 tutor_orders_new.dispatcher_id 补全 contact_student
+                // - 这会导致“按客服筛选”对不上（下拉选中客服但筛不出）
+                // 因此这里扩展筛选：优先匹配 payments.dispatcher_id；若 payments.dispatcher_id 为空/0，则回退匹配关联家教单的 dispatcher_id
+                $did = (int)$dispatcherId;
+                $tutorOrdersTable = $this->tutorOrdersNewTable();
+                // 使用 ? 占位符，避免部分环境命名参数触发 HY093
+                $query->whereRaw(
+                    "(dispatcher_id = ? OR ((dispatcher_id IS NULL OR dispatcher_id = 0) AND tutor_order_id IN (SELECT id FROM `{$tutorOrdersTable}` WHERE dispatcher_id = ?)))",
+                    [$did, $did]
+                );
             }
             
             $list = $query->paginate(['list_rows' => $limit, 'page' => $page]);
@@ -124,6 +202,17 @@ class Payment extends BaseController
             // 计算实收金额
             $items = $list->items();
             foreach ($items as &$item) {
+                $pid = (int) ($item['id'] ?? 0);
+                // 不能依赖列表序列化里的 paid_time：部分环境下字段未出现在 $item 上但库内已写入，
+                // 会导致自愈分支不执行，前台一直显示「待支付」。pending 一律按主键回表尝试修复。
+                if ($pid > 0 && ($item['status'] ?? '') === 'pending') {
+                    $p = PaymentModel::find($pid);
+                    if ($p && $p->repairInconsistentPaidPending()) {
+                        $item['status'] = 'success';
+                        $item['transaction_id'] = $p->transaction_id;
+                        $item['paid_time'] = $p->paid_time;
+                    }
+                }
                 $item['actual_amount'] = $item['amount'] - $item['refunded_amount'];
                 if (empty($item['contact_student']) && !empty($item['dispatcher'])) {
                     $item['contact_student'] = $item['dispatcher']['nickname'] ?: ($item['dispatcher']['username'] ?? '');
@@ -143,6 +232,16 @@ class Payment extends BaseController
                 }
             }
             unset($item);
+            
+            // 添加调试日志
+            Log::info('支付列表查询结果', [
+                'total' => $list->total(),
+                'count' => count($items),
+                'refund_status_param' => $this->request->param('refund_status'),
+                'pending_count' => count(array_filter($items, function($item) {
+                    return ($item['refund_status'] ?? '') === 'pending';
+                }))
+            ]);
             
             return json([
                 'code' => 200,
@@ -174,6 +273,31 @@ class Payment extends BaseController
             }
             
             // 应用相同的筛选条件
+            $keyword = trim((string)$this->request->param('keyword', ''));
+            if ($keyword !== '') {
+                $adminIds = Db::name('admin')
+                    ->where('role', 'dispatcher')
+                    ->where(function ($q) use ($keyword) {
+                        $q->whereLike('nickname', "%{$keyword}%")
+                          ->whereOrLike('username', "%{$keyword}%");
+                    })
+                    ->column('id');
+                $adminIds = array_values(array_unique(array_map('intval', $adminIds ?: [])));
+
+                $query->where(function ($q) use ($keyword, $adminIds) {
+                    $q->whereLike('order_no', "%{$keyword}%")
+                        ->whereOrLike('tutor_name', "%{$keyword}%")
+                        ->whereOrLike('payer_name', "%{$keyword}%")
+                        ->whereOrLike('teacher_name', "%{$keyword}%")
+                        ->whereOrLike('contact_student', "%{$keyword}%");
+                    if (!empty($adminIds)) {
+                        $in = implode(',', array_map('intval', $adminIds));
+                        $tutorOrdersTable = $this->tutorOrdersNewTable();
+                        $q->whereOrRaw("(dispatcher_id IN ({$in}) OR ((dispatcher_id IS NULL OR dispatcher_id = 0) AND tutor_order_id IN (SELECT id FROM `{$tutorOrdersTable}` WHERE dispatcher_id IN ({$in}))))");
+                    }
+                });
+            }
+
             $tutorName = $this->request->param('tutor_name');
             if ($tutorName) {
                 $query->where('tutor_name', 'like', "%{$tutorName}%");
@@ -209,24 +333,38 @@ class Payment extends BaseController
             $payTimeStart = $this->request->param('pay_time_start');
             $payTimeEnd = $this->request->param('pay_time_end');
             if ($payTimeStart && $payTimeEnd) {
-                $query->whereBetweenTime('paid_time', $payTimeStart, $payTimeEnd);
+                [$payTimeStart, $payTimeEnd] = $this->expandInclusiveDateRange($payTimeStart, $payTimeEnd);
+                $query->where(function($q) use ($payTimeStart, $payTimeEnd) {
+                    $q->whereBetweenTime('paid_time', $payTimeStart, $payTimeEnd)
+                      ->whereOr(function($q2) use ($payTimeStart, $payTimeEnd) {
+                          $q2->where('paid_time', 'null')
+                             ->whereBetweenTime('create_time', $payTimeStart, $payTimeEnd);
+                      });
+                });
             }
             
             $refundTimeStart = $this->request->param('refund_time_start');
             $refundTimeEnd = $this->request->param('refund_time_end');
             if ($refundTimeStart && $refundTimeEnd) {
+                [$refundTimeStart, $refundTimeEnd] = $this->expandInclusiveDateRange($refundTimeStart, $refundTimeEnd);
                 $query->whereBetweenTime('refund_time', $refundTimeStart, $refundTimeEnd);
             }
             
             $refundApplyTimeStart = $this->request->param('refund_apply_time_start');
             $refundApplyTimeEnd = $this->request->param('refund_apply_time_end');
             if ($refundApplyTimeStart && $refundApplyTimeEnd) {
+                [$refundApplyTimeStart, $refundApplyTimeEnd] = $this->expandInclusiveDateRange($refundApplyTimeStart, $refundApplyTimeEnd);
                 $query->whereBetweenTime('refund_apply_time', $refundApplyTimeStart, $refundApplyTimeEnd);
             }
             
             $dispatcherId = $this->request->param('dispatcher_id');
             if ($dispatcherId) {
-                $query->where('dispatcher_id', $dispatcherId);
+                $did = (int)$dispatcherId;
+                $tutorOrdersTable = $this->tutorOrdersNewTable();
+                $query->whereRaw(
+                    "(dispatcher_id = ? OR ((dispatcher_id IS NULL OR dispatcher_id = 0) AND tutor_order_id IN (SELECT id FROM `{$tutorOrdersTable}` WHERE dispatcher_id = ?)))",
+                    [$did, $did]
+                );
             }
             
             // 统计数据
@@ -260,9 +398,13 @@ class Payment extends BaseController
     public function dispatchers()
     {
         try {
-            // 获取所有管理员作为派单员
-            $dispatchers = Admin::field('id,nickname,username')
-                ->where('status', 1)
+            // 这里给支付管理页的「客服」下拉使用。
+            // 需求：这里只展示「派单组」成员即可，不显示全部管理员。
+            // 约定：派单组 = admin.role = 'dispatcher'（含启用/禁用，避免历史订单客服选不到）
+            $dispatchers = Admin::field('id,nickname,username,status,role')
+                ->where('role', 'dispatcher')
+                ->order('status', 'desc')
+                ->order('id', 'asc')
                 ->select();
             
             return json([
@@ -294,6 +436,8 @@ class Payment extends BaseController
             if (!$payment) {
                 return json(['code' => 404, 'message' => '支付记录不存在']);
             }
+
+            $payment->repairInconsistentPaidPending();
             
             // 计算实收金额
             $payment['actual_amount'] = $payment['amount'] - $payment['refunded_amount'];
@@ -407,6 +551,86 @@ class Payment extends BaseController
     }
     
     /**
+     * 管理员手动退款（无需用户提交退费申请，跳过 pending 状态校验）
+     */
+    public function manualRefund()
+    {
+        try {
+            $id = $this->request->post('id');
+            $refundAmount = (float)$this->request->post('refund_amount');
+            $remark = $this->request->post('remark', '');
+
+            $payment = PaymentModel::find($id);
+            if (!$payment) {
+                return json(['code' => 404, 'message' => '支付记录不存在']);
+            }
+
+            // 检查退款金额
+            $canRefundAmount = (float)$payment->amount - (float)$payment->refunded_amount;
+            if ($canRefundAmount <= 0) {
+                return json(['code' => 400, 'message' => '该订单已无可退金额']);
+            }
+            if ($refundAmount <= 0) {
+                return json(['code' => 400, 'message' => '退款金额必须大于0']);
+            }
+            if ($refundAmount > $canRefundAmount) {
+                return json(['code' => 400, 'message' => '退款金额超过可退金额（可退：' . number_format($canRefundAmount, 2) . '）']);
+            }
+
+            // 微信支付先调用微信退款接口
+            $refundExtraRemark = '';
+            if (($payment->payment_method ?? '') === 'wechat') {
+                $wechatService = WechatPayService::forPayment($payment);
+                $refundNo = 'REF' . date('YmdHis') . str_pad((string)$payment->id, 6, '0', STR_PAD_LEFT);
+                $refundRes = $wechatService->refund([
+                    'order_no'       => $payment->order_no,
+                    'refund_no'      => $refundNo,
+                    'total_amount'   => (float)$payment->amount,
+                    'refund_amount'  => $refundAmount,
+                    'refund_reason'  => $remark ?: '信息费退款',
+                    'transaction_id' => $payment->transaction_id ?? ''
+                ]);
+                if (empty($refundRes['success'])) {
+                    $msg = $refundRes['message'] ?? '微信退款失败';
+                    Log::error('管理员手动退款调用微信接口失败: ' . $msg . '，order_no=' . ($payment->order_no ?? ''));
+                    return json(['code' => 500, 'message' => '微信退款失败：' . $msg]);
+                }
+                $wechatRefundId = $refundRes['data']['refund_id'] ?? '';
+                $refundExtraRemark = $wechatRefundId ? ('微信退款单号:' . $wechatRefundId) : ('商户退款单号:' . $refundNo);
+            }
+
+            Db::startTrans();
+            try {
+                $payment->refund_status    = 'completed';
+                $payment->refunded_amount  = (float)$payment->refunded_amount + $refundAmount;
+                $payment->refund_time      = date('Y-m-d H:i:s');
+
+                $remarkParts = [];
+                if ($remark) $remarkParts[] = $remark;
+                if ($refundExtraRemark) $remarkParts[] = $refundExtraRemark;
+                if (!empty($remarkParts)) {
+                    $joined = implode(' | ', $remarkParts);
+                    if ($this->paymentsTableHasRefundRemark()) {
+                        $payment->refund_remark = $joined;
+                    } else {
+                        $payment->remark = $joined;
+                    }
+                }
+                $payment->save();
+                Db::commit();
+            } catch (\Throwable $txe) {
+                Db::rollback();
+                throw $txe;
+            }
+
+            return json(['code' => 200, 'message' => '退款成功']);
+        } catch (\Exception $e) {
+            Log::error('管理员手动退款失败: ' . $e->getMessage());
+            return json(['code' => 500, 'message' => '退款失败：' . $e->getMessage()]);
+        }
+    }
+
+    /**
      * 处理退款
      */
     public function processRefund()
@@ -449,7 +673,7 @@ class Payment extends BaseController
                     'refund_no' => $refundNo,
                     'total_amount' => (float)$payment->amount,
                     'refund_amount' => $refundAmount,
-                    'refund_reason' => $remark ?: '管理员处理退款',
+                    'refund_reason' => $remark ?: '信息费退款',
                     'transaction_id' => $payment->transaction_id ?? ''
                 ]);
 
@@ -700,6 +924,26 @@ class Payment extends BaseController
         } catch (\Exception $e) {
             return json(['success' => false, 'error' => $e->getMessage()]);
         }
+    }
+
+    /**
+     * 将「日期范围」筛选扩展为起止两个自然日的闭区间（避免 Element daterange 同日 00:00:00~00:00:00 查不到数据）
+     *
+     * @return array{0:string,1:string}
+     */
+    private function expandInclusiveDateRange(string $start, string $end): array
+    {
+        $start = trim($start);
+        $end = trim($end);
+        if ($start === '' || $end === '') {
+            return [$start, $end];
+        }
+        $ds = substr($start, 0, 10);
+        $de = substr($end, 0, 10);
+        if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $ds) || !preg_match('/^\d{4}-\d{2}-\d{2}$/', $de)) {
+            return [$start, $end];
+        }
+        return [$ds . ' 00:00:00', $de . ' 23:59:59'];
     }
 
     private function paymentsTableHasPinnedAt(): bool

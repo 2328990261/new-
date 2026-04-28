@@ -1,28 +1,36 @@
 import { ref, computed } from 'vue'
 import { ElMessage } from 'element-plus'
 import request from '@/utils/request'
+import {
+  syncWxSceneInUrl,
+  currentWxPayScene,
+  readStoredOpenid,
+  writeStoredOpenid,
+  clearStoredOpenid,
+  normalizeWxPayScene
+} from '@/utils/wechatJsapiOpenid'
 
 /**
  * 微信内退费：OAuth、关注门禁、openid 拉单、选单、上传、提交（与 RefundApply 行为一致）
- * @param {{ route: import('vue-router').RouteLocationNormalizedLoaded, router: import('vue-router').Router, shareLinkPath?: string, successPath?: string }} opts
+ * @param {{ route: import('vue-router').RouteLocationNormalizedLoaded, router: import('vue-router').Router, shareLinkPath?: string, successPath?: string, wxPayScene?: 'default'|'h5' }} opts wxPayScene 须与支付所用 payment_config.scene 一致
  */
 export function useWechatRefundFlow(opts) {
   const { route, router } = opts
   const successPath = opts.successPath || '/refund-success'
+  const wxPayScene = normalizeWxPayScene(opts.wxPayScene ?? 'default')
 
   const loading = ref(false)
   const fileInput = ref(null)
 
   const isWechatBrowser = computed(() => /MicroMessenger/i.test(navigator.userAgent || ''))
-  const wechatOpenid = ref(
-    typeof localStorage !== 'undefined' ? localStorage.getItem('wechat_jsapi_openid') || '' : ''
-  )
+  const wechatOpenid = ref(typeof localStorage !== 'undefined' ? readStoredOpenid(wxPayScene) : '')
   const wechatAuthStatus = ref('idle')
   const wechatAuthError = ref('')
 
   const checkingGate = ref(true)
   const bypassFollowGate = ref(false)
-  const subscribed = ref(false)
+  // 已取消“必须关注公众号”门禁：仍保留 openid 校验（必须与支付时同一账号），但不再拦截未关注用户
+  const subscribed = ref(true)
   const subscribeGateError = ref('')
   const gateQrcodeUrl = ref(null)
   const gateRechecking = ref(false)
@@ -47,14 +55,7 @@ export function useWechatRefundFlow(opts) {
 
   const uploadedImages = ref([])
 
-  const showFollowGate = computed(() => {
-    if (!isWechatBrowser.value) return false
-    if (bypassFollowGate.value) return false
-    if (checkingGate.value) return false
-    if (wechatAuthStatus.value !== 'ready') return false
-    if (!wechatOpenid.value) return false
-    return !subscribed.value || !!subscribeGateError.value
-  })
+  const showFollowGate = computed(() => false)
 
   const showMainContent = computed(() => {
     if (!isWechatBrowser.value) return false
@@ -89,6 +90,12 @@ export function useWechatRefundFlow(opts) {
 
   const ensureWechatOpenid = async () => {
     if (!isWechatBrowser.value) return
+    syncWxSceneInUrl(wxPayScene)
+    const scene = currentWxPayScene(wxPayScene)
+    if (!wechatOpenid.value) {
+      const cached = readStoredOpenid(scene)
+      if (cached) wechatOpenid.value = cached
+    }
     if (wechatOpenid.value) {
       wechatAuthStatus.value = 'ready'
       return
@@ -100,10 +107,10 @@ export function useWechatRefundFlow(opts) {
     if (code) {
       wechatAuthStatus.value = 'authorizing'
       try {
-        const response = await request.get('/payment/wechat-openid', { params: { code } })
+        const response = await request.get('/payment/wechat-openid', { params: { code, wx_scene: scene } })
         if (response.code === 200 && response.data?.openid) {
           wechatOpenid.value = response.data.openid
-          localStorage.setItem('wechat_jsapi_openid', response.data.openid)
+          writeStoredOpenid(scene, response.data.openid)
           wechatAuthStatus.value = 'ready'
           wechatAuthError.value = ''
           url.searchParams.delete('code')
@@ -127,7 +134,7 @@ export function useWechatRefundFlow(opts) {
     try {
       const currentUrl = window.location.origin + window.location.pathname + window.location.search
       const response = await request.get('/payment/wechat-oauth-url', {
-        params: { redirect_uri: currentUrl }
+        params: { redirect_uri: currentUrl, wx_scene: scene }
       })
       if (response.code === 200 && response.data?.auth_url) {
         window.location.href = response.data.auth_url
@@ -245,35 +252,14 @@ export function useWechatRefundFlow(opts) {
       return
     }
 
-    try {
-      const gc = await request.get('/refund/gate-config')
-      if (gc.success && gc.data) {
-        gateQrcodeUrl.value = gc.data.qrcode_url || null
-      }
-    } catch {
-      gateQrcodeUrl.value = null
-    }
-
-    const subRes = await request.get('/refund/subscribe-status', { params: { openid: wechatOpenid.value } })
     checkingGate.value = false
-
-    if (!subRes.success) {
-      subscribeGateError.value =
-        subRes.message || '无法获取关注状态，请检查公众号服务器 IP 白名单与接口权限'
-      subscribed.value = false
-      return
-    }
-
     subscribeGateError.value = ''
-    subscribed.value = !!subRes.data?.subscribed
-
-    if (subscribed.value) {
-      await refreshOrderOptions()
-    }
+    subscribed.value = true
+    await refreshOrderOptions()
   }
 
   const retryWechatAuth = async () => {
-    localStorage.removeItem('wechat_jsapi_openid')
+    clearStoredOpenid(wxPayScene)
     wechatOpenid.value = ''
     wechatAuthStatus.value = 'idle'
     wechatAuthError.value = ''
@@ -282,22 +268,13 @@ export function useWechatRefundFlow(opts) {
   }
 
   const recheckSubscribe = async () => {
+    // 兼容旧 UI 按钮：不再校验关注状态，直接刷新订单列表
     if (!wechatOpenid.value) return
     gateRechecking.value = true
     subscribeGateError.value = ''
     try {
-      const subRes = await request.get('/refund/subscribe-status', { params: { openid: wechatOpenid.value } })
-      if (!subRes.success) {
-        subscribeGateError.value = subRes.message || '检测失败'
-        subscribed.value = false
-        return
-      }
-      subscribed.value = !!subRes.data?.subscribed
-      if (subscribed.value) {
-        await refreshOrderOptions()
-      } else {
-        ElMessage.info('仍未检测到关注，请先扫码关注后再试')
-      }
+      subscribed.value = true
+      await refreshOrderOptions()
     } finally {
       gateRechecking.value = false
     }
@@ -420,6 +397,9 @@ export function useWechatRefundFlow(opts) {
   }
 
   const submitRefund = async () => {
+    // 确保使用最新的openid
+    syncQueryOpenidForSubmit()
+    
     if (!paymentInfo.value?.order_no) {
       ElMessage.warning('请先查询并选择要退款的订单')
       return
@@ -439,11 +419,6 @@ export function useWechatRefundFlow(opts) {
       return
     }
 
-    if (formData.value.receivedAmount !== '' && Number(formData.value.receivedAmount) < 0) {
-      ElMessage.warning('收到课酬金额不能小于0')
-      return
-    }
-
     if (!formData.value.refundReason.trim()) {
       ElMessage.warning('请填写退费描述')
       return
@@ -460,7 +435,7 @@ export function useWechatRefundFlow(opts) {
       const receivedAmountValue =
         formData.value.receivedAmount === '' ? null : parseFloat(formData.value.receivedAmount)
 
-      const response = await request.post('/refund/apply', {
+      const submitData = {
         order_no: paymentInfo.value.order_no,
         query_phone: normalizedQueryPhone.value || '',
         query_openid: normalizedQueryOpenid.value || '',
@@ -468,7 +443,16 @@ export function useWechatRefundFlow(opts) {
         received_amount: receivedAmountValue,
         refund_reason: formData.value.refundReason,
         refund_voucher: JSON.stringify(uploadedImages.value)
+      }
+
+      // 添加调试日志
+      console.log('提交退款申请数据:', {
+        ...submitData,
+        wechatOpenid: wechatOpenid.value,
+        paymentOpenid: paymentInfo.value?.openid
       })
+
+      const response = await request.post('/refund/apply', submitData)
 
       if (response.success) {
         const p = paymentInfo.value
@@ -546,11 +530,10 @@ export function useWechatRefundFlow(opts) {
 
   function orderLabel(p) {
     if (!p) return ''
-    const remark = String(p.pay_remark || '').trim()
     const tutor = String(p.tutor_name || '').trim()
-    const no = String(p.order_no || '')
-    const parts = [remark, tutor, no].filter(Boolean)
-    return parts.length ? parts.join(' · ') : no || '订单'
+    const paid = formatPaidDate(p.paid_time || p.pay_time || p.payment_time || '')
+    const parts = [tutor, paid].filter((x) => String(x || '').trim() !== '')
+    return parts.length ? parts.join(' · ') : tutor || paid || '订单'
   }
 
   const orderDisplay = computed(() => {

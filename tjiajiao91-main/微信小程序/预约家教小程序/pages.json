@@ -73,6 +73,17 @@
 			}
 		},
 		{
+			"path": "pages/city-wecom-group/index",
+			"style": {
+				"navigationBarTitleText": "找同城家教群",
+				"navigationStyle": "custom",
+				"enablePullDownRefresh": false,
+				"backgroundColor": "#F5F7FA",
+				"backgroundColorTop": "#FFFFFF",
+				"backgroundColorBottom": "#F5F7FA"
+			}
+		},
+		{
 			"path": "pages/resume/index",
 			"style": {
 				"navigationBarTitleText": "我的简历",
@@ -310,6 +321,26 @@
 			"path": "pages/webview/index",
 			"style": {
 				"navigationBarTitleText": "加载中"
+			}
+		},
+		{
+			"path": "pages/feedback/index",
+			"style": {
+				"navigationBarTitleText": "问题反馈",
+				"navigationBarBackgroundColor": "#ffffff",
+				"navigationBarTextStyle": "black",
+				"backgroundColor": "#F5F7FA",
+				"enablePullDownRefresh": false
+			}
+		},
+		{
+			"path": "pages/my-feedback/index",
+			"style": {
+				"navigationBarTitleText": "我的反馈",
+				"navigationBarBackgroundColor": "#ffffff",
+				"navigationBarTextStyle": "black",
+				"backgroundColor": "#F5F7FA",
+				"enablePullDownRefresh": true
 			}
 		}
 	],

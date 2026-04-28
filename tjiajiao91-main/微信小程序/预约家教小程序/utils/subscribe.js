@@ -17,9 +17,8 @@ const FALLBACK_TEMPLATES = {
 let templatesCache = null
 let templatesPromise = null
 
-const LOG_PREFIX = '[subscribe]'
-function log(...args) {
-	try { console.log(LOG_PREFIX, ...args) } catch (e) {}
+function log() {
+	/* 订阅模块调试日志已关闭，避免控制台噪音 */
 }
 
 /**

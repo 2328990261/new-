@@ -290,6 +290,18 @@ class AdminManage extends BaseController
             if (empty($data['username']) || empty($data['password']) || empty($data['nickname'])) {
                 return json(['success' => false, 'error' => '请填写完整信息']);
             }
+
+            // OpenID 必填（避免空字符串命中 uk_openid 唯一索引）
+            $openidValue = trim((string)($data['openid'] ?? ''));
+            if ($openidValue === '') {
+                return json(['success' => false, 'error' => 'OpenID不能为空']);
+            }
+            $openidTokens = Admin::splitOpenids($openidValue);
+            if (empty($openidTokens)) {
+                return json(['success' => false, 'error' => 'OpenID不能为空']);
+            }
+            // 保存时使用原始格式（允许逗号分隔多个 openid），但先做 trim
+            $data['openid'] = $openidValue;
             
             // 客服组邮箱必填验证
             if ($role === 'customer_service') {
@@ -306,11 +318,9 @@ class AdminManage extends BaseController
                 return json(['success' => false, 'error' => '用户名已存在']);
             }
             
-            // 如果提供了openid，检查是否已被绑定（支持逗号分隔多个openid）
-            if (isset($data['openid']) && !empty($data['openid'])) {
-                if (Admin::hasOpenidConflict($data['openid'])) {
-                    return json(['success' => false, 'error' => '该OpenID已被其他管理员绑定']);
-                }
+            // OpenID 唯一性检查（支持逗号分隔多个 openid）
+            if (Admin::hasOpenidConflict($data['openid'])) {
+                return json(['success' => false, 'error' => '该OpenID已被其他管理员绑定']);
             }
             
             // 密码加密由Admin模型的setPasswordAttr自动处理，避免双重加密

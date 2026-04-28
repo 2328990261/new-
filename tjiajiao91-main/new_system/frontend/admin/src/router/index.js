@@ -22,11 +22,15 @@ const ApplicationDetail = () => import('@/views/admin/ApplicationDetail.vue')
 const SeoGuide = () => import('@/views/admin/SeoGuide.vue')
 const CityLightManage = () => import('@/views/admin/CityLightManage.vue')
 const DataImport = () => import('@/views/admin/DataImport.vue')
+const WecomManage = () => import('@/views/admin/WecomManage.vue')
 const LeadManage = () => import('@/views/admin/LeadManage.vue')
 const LeadFollowDetail = () => import('@/views/admin/LeadFollowDetail.vue')
 const MiniUserManage = () => import('@/views/admin/MiniUserManage.vue')
 const MiniProgramConfigManage = () => import('@/views/admin/MiniProgramConfigManage.vue')
+const MiniProgramFeedbackManage = () => import('@/views/admin/MiniProgramFeedbackManage.vue')
 const InvitationManage = () => import('@/views/admin/InvitationManage.vue')
+const EnterpriseManage = () => import('@/views/admin/EnterpriseManage.vue')
+const SalaryDataPanel = () => import('@/views/admin/SalaryDataPanel.vue')
 const Login = () => import('@/views/Login.vue')
 const ParentBooking = () => import('@/views/ParentBooking.vue')
 
@@ -163,6 +167,12 @@ const routes = [
         meta: { title: '数据导入', keepAlive: false }
       },
       {
+        path: 'wecom',
+        name: 'WecomManage',
+        component: WecomManage,
+        meta: { title: '企业微信', keepAlive: true }
+      },
+      {
         path: 'leads',
         name: 'LeadManage',
         component: LeadManage,
@@ -187,10 +197,28 @@ const routes = [
         meta: { title: '小程序管理', keepAlive: true }
       },
       {
+        path: 'mini-feedback',
+        name: 'MiniProgramFeedbackManage',
+        component: MiniProgramFeedbackManage,
+        meta: { title: '问题反馈', keepAlive: true }
+      },
+      {
         path: 'invitation',
         name: 'InvitationManage',
         component: InvitationManage,
         meta: { title: '邀请管理', keepAlive: true }
+      },
+      {
+        path: 'enterprise',
+        name: 'EnterpriseManage',
+        component: EnterpriseManage,
+        meta: { title: '企业管理', keepAlive: true }
+      },
+      {
+        path: 'salary-data-panel',
+        name: 'SalaryDataPanel',
+        component: SalaryDataPanel,
+        meta: { title: '支出数据面板', keepAlive: false }
       }
     ]
   },
@@ -239,6 +267,8 @@ router.beforeEach(async (to, from, next) => {
         return
       }
     }
+    
+    // 企业管理权限检查已移除，改为在页面内显示友好提示
   }
   
   next()

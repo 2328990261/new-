@@ -13,7 +13,8 @@ return [
             // 磁盘类型
             'type'       => 'local',
             // 磁盘路径
-            'root'       => app()->getRootPath() . 'public/uploads',
+            // 物理目录上移：new_system/public/uploads
+            'root'       => dirname(rtrim(app()->getRootPath(), "/\\")) . DIRECTORY_SEPARATOR . 'public' . DIRECTORY_SEPARATOR . 'uploads',
             // 磁盘路径对应的外部URL路径
             'url'        => '/uploads',
             // 可见性

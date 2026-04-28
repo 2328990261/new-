@@ -2,6 +2,7 @@
 namespace app\controller\admin;
 
 use app\BaseController;
+use app\service\UploadService;
 use think\facade\Db;
 
 /**
@@ -124,30 +125,25 @@ class SslConfig extends BaseController
                     'error' => '只允许上传 pem, crt, key, cer 格式的证书文件'
                 ]);
             }
-            
-            // 设置保存目录
-            $savePath = 'uploads/ssl/';
-            $uploadPath = public_path() . $savePath;
-            
-            if (!is_dir($uploadPath)) {
-                mkdir($uploadPath, 0755, true);
-            }
-            
-            // 生成文件名
+
+            $service = new UploadService();
             $fileName = date('YmdHis') . '_' . $type . '.' . $ext;
-            
-            // 移动文件
-            $file->move($uploadPath, $fileName);
-            
-            // 生成访问路径
-            $url = '/' . $savePath . $fileName;
+            $stored = $service->storeToPublicUploads($file, 'ssl', $allowedExts, null, $fileName, '');
+            if (empty($stored['success'])) {
+                return json([
+                    'success' => false,
+                    'error' => $stored['message'] ?? '上传失败'
+                ]);
+            }
+
+            $url = (string)($stored['data']['url'] ?? '');
             
             return json([
                 'success' => true,
                 'data' => [
                     'url' => $url,
                     'file_name' => $fileName,
-                    'file_path' => $uploadPath . $fileName
+                    'file_path' => $stored['data']['full_path'] ?? ''
                 ],
                 'message' => '上传成功'
             ]);

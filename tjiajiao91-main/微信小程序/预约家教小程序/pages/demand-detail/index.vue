@@ -195,7 +195,6 @@
 		},
 		methods: {
 			loadDemandDetail() {
-				console.log('加载需求详情:', this.demandId);
 			},
 			getStatusText(status) {
 				const statusMap = {

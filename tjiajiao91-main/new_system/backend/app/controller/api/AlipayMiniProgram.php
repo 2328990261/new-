@@ -22,15 +22,26 @@ class AlipayMiniProgram extends BaseController
             $nickname = (string)Request::post('nickname', '');
             $avatar = (string)Request::post('avatar', '');
             $superiorOpenid = trim((string)Request::post('superior_openid', ''));
+            $appId = trim((string)Request::post('app_id', '')); // 接收前端传来的 AppID
+            
+            // 调试日志
+            error_log("支付宝登录 - 接收到的参数: app_id={$appId}, code=" . substr($authCode, 0, 20) . "...");
 
-            $oauth = $this->exchangeAuthCode($authCode);
-            $alipayUserId = (string)($oauth['user_id'] ?? '');
+            $oauth = $this->exchangeAuthCode($authCode, $appId);
+            // 支付宝新版 API 返回 open_id，旧版返回 user_id，兼容两者
+            $alipayUserId = (string)($oauth['open_id'] ?? $oauth['user_id'] ?? '');
             if ($alipayUserId === '') {
-                return json(['code' => 500, 'message' => '支付宝登录失败：未获取到 user_id']);
+                return json(['code' => 500, 'message' => '支付宝登录失败：未获取到 open_id 或 user_id']);
             }
 
             $openid = 'alipay_' . $alipayUserId;
-            $user = User::where('openid', $openid)->find();
+            
+            // 支持多小程序：同时查询 openid 和 openid_secondary
+            $user = User::where(function($query) use ($openid) {
+                $query->where('openid', $openid)
+                      ->whereOr('openid_secondary', $openid);
+            })->find();
+            
             $isNewUser = false;
 
             if (!$user) {
@@ -154,14 +165,17 @@ class AlipayMiniProgram extends BaseController
             $avatar = (string)Request::post('avatar', '');
             $superiorOpenid = trim((string)Request::post('superior_openid', ''));
             $userType = (string)Request::post('user_type', 'parent');
+            $appId = trim((string)Request::post('app_id', '')); // 接收前端传来的 AppID
+            
             if (!in_array($userType, ['teacher', 'parent'], true)) {
                 $userType = 'parent';
             }
 
-            $oauth = $this->exchangeAuthCode($authCode);
-            $alipayUserId = (string)($oauth['user_id'] ?? '');
+            $oauth = $this->exchangeAuthCode($authCode, $appId);
+            // 支付宝新版 API 返回 open_id，旧版返回 user_id，兼容两者
+            $alipayUserId = (string)($oauth['open_id'] ?? $oauth['user_id'] ?? '');
             if ($alipayUserId === '') {
-                return json(['code' => 500, 'message' => '支付宝登录失败：未获取到 user_id']);
+                return json(['code' => 500, 'message' => '支付宝登录失败：未获取到 open_id 或 user_id']);
             }
 
             $openid = 'alipay_' . $alipayUserId;
@@ -171,49 +185,83 @@ class AlipayMiniProgram extends BaseController
                 return json(['code' => 500, 'message' => '支付宝手机号解密失败']);
             }
 
-            $user = User::where('openid', $openid)->find();
-            // 重要：支付宝端可能在 /alipay/login 先创建“空壳用户”（phone 为空）
-            // 这种情况下本次绑定手机号仍应视为“新用户流程”，以便前端进入身份选择页
-            $wasWithoutPhone = false;
-            if ($user) {
-                $wasWithoutPhone = trim((string)($user->phone ?? '')) === '';
-            }
-            $isNewUser = false;
+            // 支持多小程序：同时查询 openid 和 openid_secondary
+$user = User::where(function($query) use ($openid) {
+    $query->where('openid', $openid)->whereOr('openid_secondary', $openid);
+})->find();
 
-            if (!$user) {
-                $user = User::create([
-                    'openid' => $openid,
-                    'superior_openid' => ($superiorOpenid !== '' && $superiorOpenid !== $openid) ? $superiorOpenid : null,
-                    'phone' => $phone,
-                    'nickname' => $nickname !== '' ? $nickname : ('支付宝用户' . substr($alipayUserId, -4)),
-                    'avatar' => $avatar,
-                    'platform' => 'alipay_miniprogram',
-                    'status' => 1,
-                    'create_time' => date('Y-m-d H:i:s'),
-                    'update_time' => date('Y-m-d H:i:s'),
-                ]);
-                $isNewUser = true;
-            } else {
-                $update = [
-                    'phone' => $phone,
-                    'platform' => 'alipay_miniprogram',
-                    'update_time' => date('Y-m-d H:i:s'),
-                ];
-                if ($nickname !== '') {
-                    $update['nickname'] = $nickname;
-                }
-                if ($avatar !== '') {
-                    $update['avatar'] = $avatar;
-                }
-                if ($superiorOpenid !== '' && $superiorOpenid !== $openid && trim((string)($user->superior_openid ?? '')) === '') {
-                    $update['superior_openid'] = $superiorOpenid;
-                }
-                $user->save($update);
-            }
+$wasWithoutPhone = false;
+$isNewUser = false;
 
-            if ($wasWithoutPhone) {
-                $isNewUser = true;
-            }
+// 情况1：找到了用户（通过 openid 或 openid_secondary）
+if ($user) {
+    $wasWithoutPhone = trim((string)($user->phone ?? '')) === '';
+    
+    $update = [
+        'phone' => $phone,
+        'platform' => 'alipay_miniprogram',
+        'update_time' => date('Y-m-d H:i:s'),
+    ];
+    if ($nickname !== '') {
+        $update['nickname'] = $nickname;
+    }
+    if ($avatar !== '') {
+        $update['avatar'] = $avatar;
+    }
+    if ($superiorOpenid !== '' && $superiorOpenid !== $openid && trim((string)($user->superior_openid ?? '')) === '') {
+        $update['superior_openid'] = $superiorOpenid;
+    }
+    $user->save($update);
+    
+    if ($wasWithoutPhone) {
+        $isNewUser = true;
+    }
+}
+// 情况2：没找到用户，但手机号已存在（可能是另一个小程序的账号）
+else {
+    $existingUser = User::where('phone', $phone)
+        ->where('platform', 'like', '%alipay%')
+        ->find();
+    
+    if ($existingUser) {
+        // 将新 openid 存到 openid_secondary
+        $user = $existingUser;
+        $update = [
+            'platform' => 'alipay_miniprogram',
+            'update_time' => date('Y-m-d H:i:s'),
+        ];
+        
+        // 如果 openid_secondary 为空，就存进去
+        if (trim((string)($user->openid_secondary ?? '')) === '') {
+            $update['openid_secondary'] = $openid;
+        }
+        
+        if ($nickname !== '') {
+            $update['nickname'] = $nickname;
+        }
+        if ($avatar !== '') {
+            $update['avatar'] = $avatar;
+        }
+        
+        $user->save($update);
+        $isNewUser = false; // 不是新用户
+    }
+    // 情况3：完全新用户
+    else {
+        $user = User::create([
+            'openid' => $openid,
+            'superior_openid' => ($superiorOpenid !== '' && $superiorOpenid !== $openid) ? $superiorOpenid : null,
+            'phone' => $phone,
+            'nickname' => $nickname !== '' ? $nickname : ('支付宝用户' . substr($alipayUserId, -4)),
+            'avatar' => $avatar,
+            'platform' => 'alipay_miniprogram',
+            'status' => 1,
+            'create_time' => date('Y-m-d H:i:s'),
+            'update_time' => date('Y-m-d H:i:s'),
+        ]);
+        $isNewUser = true;
+    }
+}
 
             return json([
                 'code' => 200,
@@ -248,10 +296,27 @@ class AlipayMiniProgram extends BaseController
         // 可选验签开关：默认不强制（先把功能跑通）
         $verifySign = (bool)env('ALIPAY_PHONE_VERIFY_SIGN', false);
 
-        // AES 密钥（接口内容加密方式-查看-字符串），通常是 base64
-        $aesKeyBase64 = (string)env('ALIPAY_PHONE_AES_KEY', '');
+        // AES 密钥：优先从当前请求的小程序配置中获取，否则从环境变量获取
+        $aesKeyBase64 = '';
+        
+        // 尝试从请求中获取 app_id，然后查询配置
+        $appId = trim((string)request()->post('app_id', ''));
+        if ($appId !== '') {
+            try {
+                $cfg = (new MiniProgramConfigService())->getRuntimeConfig('alipay', $appId);
+                $aesKeyBase64 = (string)($cfg['phone_aes_key'] ?? '');
+            } catch (\Throwable $e) {
+                // 配置获取失败，继续使用环境变量
+            }
+        }
+        
+        // 如果配置中没有，回退到环境变量
         if ($aesKeyBase64 === '') {
-            throw new \RuntimeException('缺少 ALIPAY_PHONE_AES_KEY 环境变量');
+            $aesKeyBase64 = (string)env('ALIPAY_PHONE_AES_KEY', '');
+        }
+        
+        if ($aesKeyBase64 === '') {
+            throw new \RuntimeException('缺少 ALIPAY_PHONE_AES_KEY 配置（请在小程序配置或环境变量中设置）');
         }
 
         // 公钥（验签用）：接口内容加签方式-获取
@@ -374,19 +439,33 @@ class AlipayMiniProgram extends BaseController
         }
     }
 
-    private function exchangeAuthCode(string $authCode): array
+    private function exchangeAuthCode(string $authCode, string $appId = ''): array
     {
-        $cfg = (new MiniProgramConfigService())->getRuntimeConfig('alipay');
+        error_log("exchangeAuthCode - 传入的 appId: {$appId}");
+        
+        $cfg = (new MiniProgramConfigService())->getRuntimeConfig('alipay', $appId);
+        
+        error_log("exchangeAuthCode - 获取到的配置: app_id={$cfg['app_id']}, source={$cfg['source']}");
+        
         $appId = (string)($cfg['app_id'] ?? '');
         $privateKeyRaw = (string)($cfg['app_secret'] ?? '');
         if ($appId === '' || $privateKeyRaw === '') {
             throw new \RuntimeException('支付宝小程序配置缺失，请在后台配置 app_id 与私钥');
         }
 
+        // 格式化私钥：自动添加 BEGIN/END 标记
         $privateKey = str_replace("\\n", "\n", $privateKeyRaw);
         if (strpos($privateKey, 'BEGIN') === false) {
-            $privateKey = "-----BEGIN PRIVATE KEY-----\n" . chunk_split(preg_replace('/\s+/', '', $privateKey), 64, "\n") . "-----END PRIVATE KEY-----";
+            $cleaned = preg_replace('/\s+/', '', $privateKey);
+            $privateKey = "-----BEGIN PRIVATE KEY-----\n" . chunk_split($cleaned, 64, "\n") . "-----END PRIVATE KEY-----";
         }
+        
+        // 验证私钥是否可用
+        $keyResource = openssl_pkey_get_private($privateKey);
+        if ($keyResource === false) {
+            throw new \RuntimeException('支付宝私钥格式错误，无法加载：' . openssl_error_string());
+        }
+        openssl_free_key($keyResource);
 
         $params = [
             'app_id' => $appId,
@@ -417,12 +496,32 @@ class AlipayMiniProgram extends BaseController
         if ($err) {
             throw new \RuntimeException('请求支付宝失败: ' . $err);
         }
+        
         $json = json_decode((string)$resp, true);
-        $body = $json['alipay_system_oauth_token_response'] ?? [];
-        if (empty($body) || (isset($body['code']) && $body['code'] !== '10000')) {
-            $msg = $body['sub_msg'] ?? $body['msg'] ?? '未知错误';
-            throw new \RuntimeException('支付宝换取用户信息失败: ' . $msg);
+        if ($json === null) {
+            throw new \RuntimeException('支付宝返回数据解析失败: ' . $resp);
         }
+        
+        $body = $json['alipay_system_oauth_token_response'] ?? [];
+        
+        if (empty($body) || (isset($body['code']) && $body['code'] !== '10000')) {
+            $code = $body['code'] ?? 'unknown';
+            $msg = $body['sub_msg'] ?? $body['msg'] ?? '未知错误';
+            $subCode = $body['sub_code'] ?? '';
+            
+            // 详细错误信息
+            $errorDetail = "支付宝 OAuth 失败 [code: {$code}";
+            if ($subCode !== '') {
+                $errorDetail .= ", sub_code: {$subCode}";
+            }
+            $errorDetail .= "]: {$msg}";
+            
+            // 记录完整响应用于调试
+            error_log("支付宝登录失败详情: " . json_encode($json, JSON_UNESCAPED_UNICODE));
+            
+            throw new \RuntimeException($errorDetail);
+        }
+        
         return $body;
     }
 

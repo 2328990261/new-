@@ -198,24 +198,66 @@
             <text class="info-label">教龄：</text>
             <text class="info-value">{{ teacher.teaching_years }}年</text>
           </view>
+          <view class="info-row" v-if="teacher.location_address">
+            <text class="info-label">所在地址：</text>
+            <view class="info-value address-with-distance">
+              <text class="address-text">{{ teacher.location_address }}</text>
+              <view class="distance-badge-inline" v-if="teacher.distance_text">
+                <uni-icons type="location" size="14" color="#52C9A6" />
+                <text class="distance-badge-inline-text">{{ teacher.distance_text }}</text>
+              </view>
+            </view>
+          </view>
         </view>
       </view>
       
-      <!-- 授课科目 -->
-      <view class="section-card" v-if="teacher.subjects && teacher.subjects.length > 0">
+      <!-- 授课信息 -->
+      <view
+        class="section-card"
+        v-if="
+          teacher.teaching_city_name ||
+          (teacher.teaching_districts && teacher.teaching_districts.length > 0) ||
+          (teacher.teaching_grades && teacher.teaching_grades.length > 0) ||
+          (teacher.teaching_subjects && teacher.teaching_subjects.length > 0) ||
+          (teacher.subjects && teacher.subjects.length > 0)
+        "
+      >
         <view class="section-title">
           <text class="title-bullet">•</text>
-          <text class="title-text">授课科目</text>
+          <text class="title-text">授课信息</text>
         </view>
         <view class="section-content">
-          <view class="subject-tags">
-            <text 
-              v-for="(subject, index) in teacher.subjects" 
-              :key="index"
-              class="subject-tag"
-            >
-              {{ subject }}
-            </text>
+          <view class="info-row" v-if="teacher.teaching_city_name">
+            <text class="info-label">授课城市：</text>
+            <text class="info-value">{{ teacher.teaching_city_name }}</text>
+          </view>
+
+          <view class="info-row" v-if="teachingDistrictText">
+            <text class="info-label">授课区域：</text>
+            <text class="info-value">{{ teachingDistrictText }}</text>
+          </view>
+
+          <view class="info-row" v-if="teachingGradeText">
+            <text class="info-label">授课年级：</text>
+            <text class="info-value">{{ teachingGradeText }}</text>
+          </view>
+
+          <view
+            class="info-row"
+            v-if="(teacher.teaching_subjects && teacher.teaching_subjects.length > 0) || (teacher.subjects && teacher.subjects.length > 0)"
+          >
+            <text class="info-label">授课科目：</text>
+            <view class="info-value">
+              <view class="subject-tags">
+                <text
+                  v-for="(subject, index) in (teacher.teaching_subjects && teacher.teaching_subjects.length > 0 ? teacher.teaching_subjects : teacher.subjects)"
+                  :key="index"
+                  class="subject-tag"
+                >
+                  {{ subject }}
+                </text>
+              </view>
+            </view>
           </view>
         </view>
       </view>
@@ -314,6 +356,7 @@
 import { teacherApi, wechatLogin } from '@/utils/api.js'
 import uniIcons from '@/uni_modules/uni-icons/components/uni-icons/uni-icons.vue'
 import envConfig from '@/config/env.js'
+import { getLocationCache } from '@/utils/location.js'
 
 export default {
   components: {
@@ -327,6 +370,8 @@ export default {
       isLoading: true,
       isFavorited: false,
       shareImageUrl: '',
+      userLatitude: null,
+      userLongitude: null,
       
       // 分享相关
       shareMenuVisible: false,
@@ -375,6 +420,14 @@ export default {
     
     // 如果成功获取到teacherId，加载详情
     if (this.teacherId) {
+      // 用缓存定位给详情接口计算距离（不强制弹授权）
+      try {
+        const cached = getLocationCache()
+        if (cached && cached.latitude && cached.longitude) {
+          this.userLatitude = cached.latitude
+          this.userLongitude = cached.longitude
+        }
+      } catch (e) {}
       this.loadTeacherDetail()
       this.checkFavoriteStatus()
     } else {
@@ -387,28 +440,48 @@ export default {
       }, 1500)
     }
   },
+  computed: {
+    teachingDistrictText() {
+      return this.joinTeachingNames(this.teacher?.teaching_districts || [])
+    },
+    teachingGradeText() {
+      return this.joinTeachingNames(this.teacher?.teaching_grades || [])
+    }
+  },
   methods: {
+    normalizeTeachingNameList(list) {
+      if (!Array.isArray(list)) return []
+      return list
+        .map((v) => {
+          if (v == null) return ''
+          if (typeof v === 'string') return v.trim()
+          if (typeof v === 'object') return String(v.name || '').trim()
+          return String(v).trim()
+        })
+        .filter(Boolean)
+    },
+
+    joinTeachingNames(list) {
+      const names = this.normalizeTeachingNameList(list)
+      return names.length > 0 ? names.join('、') : ''
+    },
+
     // 加载教师详情
     async loadTeacherDetail() {
       this.isLoading = true
       
       try {
-        const response = await teacherApi.getDetail(this.teacherId)
-        
-        console.log('教师详情响应:', response)
-        
+        const params = {}
+        if (this.userLatitude && this.userLongitude) {
+          params.latitude = this.userLatitude
+          params.longitude = this.userLongitude
+        }
+        const response = await teacherApi.getDetail(this.teacherId, params)
+
         if (response.success) {
           this.teacher = response.data
           await this.prepareShareImage()
           
-          // 后端已经处理好了数据，直接使用
-          console.log('教师详情加载成功:', this.teacher)
-          console.log('自我介绍:', this.teacher.self_intro)
-          console.log('个人优势:', this.teacher.personal_advantage)
-          console.log('优势标签:', this.teacher.advantage_tags)
-          console.log('教学经历:', this.teacher.experiences)
-          console.log('教学照片:', this.teacher.teaching_photos)
-          console.log('头像:', this.teacher.avatar)
         } else {
           uni.showToast({
             title: response.error || '加载失败',
@@ -680,13 +753,10 @@ export default {
       
       try {
         uni.showLoading({ title: '生成中...' })
-        
-        console.log('开始生成海报，教师数据:', this.teacher)
-        
+
         // 先生成并下载小程序码
         let qrcodeImagePath = ''
         try {
-          console.log('开始生成小程序码...')
           const qrcodeRes = await wechatLogin.generateQRCode(
             'pages/teacher-detail/index',
             `id=${this.teacherId}`,
@@ -696,13 +766,10 @@ export default {
               is_hyaline: true
             }
           )
-          
-          console.log('小程序码API响应:', qrcodeRes)
-          
+
           if (qrcodeRes.code === 200 && qrcodeRes.data && qrcodeRes.data.qrcode) {
             const qrcodeData = qrcodeRes.data.qrcode
-            console.log('小程序码生成成功，数据类型:', qrcodeData.substring(0, 50))
-            
+
             // 判断是URL还是base64
             if (qrcodeData.startsWith('http://') || qrcodeData.startsWith('https://')) {
               // 是URL，直接下载
@@ -712,12 +779,9 @@ export default {
               
               if (downloadRes.statusCode === 200) {
                 qrcodeImagePath = downloadRes.tempFilePath
-                console.log('小程序码下载成功，本地路径:', qrcodeImagePath)
               }
             } else if (qrcodeData.startsWith('data:image')) {
               // 是base64格式，需要转换为临时文件
-              console.log('小程序码是base64格式，转换为临时文件')
-              
               // 提取base64数据
               const base64Data = qrcodeData.split(',')[1]
               
@@ -727,12 +791,9 @@ export default {
               
               fs.writeFileSync(tempFilePath, base64Data, 'base64')
               qrcodeImagePath = tempFilePath
-              console.log('小程序码转换成功，本地路径:', qrcodeImagePath)
             } else {
               console.error('未知的小程序码数据格式')
             }
-          } else {
-            console.log('小程序码生成失败:', qrcodeRes.message || '未知错误')
           }
         } catch (e) {
           console.error('小程序码生成或处理异常:', e)
@@ -1130,7 +1191,6 @@ export default {
         
         // 绘制小程序码（如果有）
         if (qrcodeImagePath) {
-          console.log('准备绘制小程序码，本地路径:', qrcodeImagePath)
           const qrcodeSize = 160
           const qrcodeX = (width - qrcodeSize) / 2
           
@@ -1138,15 +1198,11 @@ export default {
           ctx.setShadow(0, 4, 16, 'rgba(82, 201, 166, 0.2)')
           this.drawRoundRect(ctx, qrcodeX - 10, yPos - 10, qrcodeSize + 20, qrcodeSize + 20, 16, '#FFFFFF')
           ctx.setShadow(0, 0, 0, 'transparent')
-          
-          console.log(`绘制小程序码: x=${qrcodeX}, y=${yPos}, size=${qrcodeSize}`)
-          
+
           // 绘制小程序码
           ctx.drawImage(qrcodeImagePath, qrcodeX, yPos, qrcodeSize, qrcodeSize)
           
           yPos += qrcodeSize + 30
-        } else {
-          console.log('没有小程序码，跳过绘制')
         }
         
         // 品牌标语
@@ -1167,21 +1223,16 @@ export default {
         // 动态计算画布高度并更新
         height = yPos
         this.canvasHeight = height
-        
-        console.log(`最终画布尺寸: width=${width}, height=${height}`)
-        
+
         // 执行绘制
         ctx.draw(false, () => {
-          console.log('画布绘制完成，等待500ms后生成图片')
           // 延迟确保绘制完成
           setTimeout(() => {
-            console.log('开始调用 canvasToTempFilePath')
             uni.canvasToTempFilePath({
               canvasId: 'posterCanvas',
               destWidth: width,
               destHeight: height,
               success: (res) => {
-                console.log('海报图片生成成功:', res.tempFilePath)
                 this.posterImage = res.tempFilePath
                 uni.hideLoading()
               },
@@ -1616,6 +1667,41 @@ export default {
   border: none;
   box-shadow: 0 4rpx 24rpx rgba(82, 201, 166, 0.08);
   overflow: hidden;
+}
+
+/* 所在地址 + 距离（右侧徽章） */
+.address-with-distance {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16rpx;
+  min-width: 0;
+}
+
+.address-text {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.distance-badge-inline {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 6rpx;
+  padding: 6rpx 12rpx;
+  border-radius: 16rpx;
+  background: rgba(82, 201, 166, 0.08);
+  border: 1rpx solid rgba(82, 201, 166, 0.18);
+}
+
+.distance-badge-inline-text {
+  font-size: 22rpx;
+  color: #3ba888;
+  font-weight: 600;
+  line-height: 1;
 }
 
 /* 玻璃光泽效果 */

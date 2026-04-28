@@ -13,12 +13,21 @@
           >
             退费申请
           </el-button>
+          <el-button
+            v-else-if="detail.status !== 'pending' && manualMaxRefundAmount > 0"
+            type="primary"
+            size="large"
+            class="btn-manual-refund"
+            @click="openManualRefundDialog"
+          >
+            再退金额
+          </el-button>
         </div>
       </template>
 
       <el-descriptions :column="2" border>
         <el-descriptions-item label="订单号">{{ displayOrderNo(detail) }}</el-descriptions-item>
-        <el-descriptions-item label="支付时间">{{ detail.paid_time || '-' }}</el-descriptions-item>
+        <el-descriptions-item label="支付时间">{{ detail.paid_time || detail.create_time || '-' }}</el-descriptions-item>
         <el-descriptions-item label="家教标题">{{ detail.tutor_name || '-' }}</el-descriptions-item>
         <el-descriptions-item label="老师姓名">{{ detail.teacher_name || detail.payer_name || '-' }}</el-descriptions-item>
         <el-descriptions-item label="对接同学">{{ detail.contact_student || '-' }}</el-descriptions-item>
@@ -28,7 +37,14 @@
         <el-descriptions-item label="已退金额">{{ showMoney(detail.refunded_amount) }}</el-descriptions-item>
         <el-descriptions-item label="退款时间">{{ detail.refund_time || '-' }}</el-descriptions-item>
         <el-descriptions-item label="实收金额">¥{{ money(detail.actual_amount) }}</el-descriptions-item>
-        <el-descriptions-item label="退款状态">{{ refundStatusText(detail.refund_status) }}</el-descriptions-item>
+        <el-descriptions-item label="退款状态">
+          <el-tag v-if="detail.status === 'pending'" type="warning" size="small">待支付</el-tag>
+          <el-tag v-else-if="detail.refund_status === 'pending'" type="warning" size="small">退款待处理</el-tag>
+          <el-tag v-else-if="detail.refund_status === 'rejected'" type="danger" size="small">退款驳回</el-tag>
+          <el-tag v-else-if="detail.refund_status === 'completed'" type="info" size="small">已退费</el-tag>
+          <el-tag v-else-if="detail.status === 'success' || detail.status === 'paid'" type="success" size="small">已支付</el-tag>
+          <span v-else>-</span>
+        </el-descriptions-item>
         <el-descriptions-item label="客服人员">{{ detail.customer_service || '-' }}</el-descriptions-item>
         <el-descriptions-item label="退款原因" :span="2">{{ detail.refund_reason || '-' }}</el-descriptions-item>
         <el-descriptions-item label="驳回原因" :span="2">{{ detail.reject_reason || '-' }}</el-descriptions-item>
@@ -70,20 +86,126 @@
         />
       </div>
     </el-dialog>
+
+    <!-- 再退金额弹窗（无退费申请时管理员手动退） -->
+    <el-dialog
+      v-model="manualRefundDialogVisible"
+      title="再退金额"
+      width="920px"
+      destroy-on-close
+      append-to-body
+      :close-on-click-modal="false"
+      class="payment-refund-dialog manual-refund-dialog"
+    >
+      <div class="manual-refund-body" v-if="detail">
+        <div class="manual-refund-grid">
+          <!-- 左侧：订单信息 -->
+          <div class="manual-left-panel">
+            <div class="manual-info-row">
+              <span class="manual-label">支付备注：</span>
+              <span class="manual-value">{{ detail.pay_remark || '-' }}</span>
+            </div>
+            <div class="manual-info-row">
+              <span class="manual-label">订单备注：</span>
+              <span class="manual-value">{{ detail.remark || '-' }}</span>
+            </div>
+            <div class="manual-info-row">
+              <span class="manual-label">接单老师：</span>
+              <span class="manual-value">{{ detail.teacher_name || detail.payer_name || '-' }}</span>
+            </div>
+            <div class="manual-info-row">
+              <span class="manual-label">信息费金额：</span>
+              <span class="manual-value">{{ showMoney(detail.amount) }}</span>
+            </div>
+            <div class="manual-info-row">
+              <span class="manual-label">收到课酬：</span>
+              <span class="manual-value">{{ showMoney(detail.deposit_amount) }}</span>
+            </div>
+            <div class="manual-info-row">
+              <span class="manual-label">对接同学：</span>
+              <span class="manual-value">{{ detail.contact_student || detail.customer_service || '-' }}</span>
+            </div>
+            <div class="manual-info-row">
+              <span class="manual-label">退款凭证：</span>
+              <div class="manual-value voucher-list">
+                <template v-if="voucherList.length > 0">
+                  <el-image
+                    v-for="(item, index) in voucherList"
+                    :key="index"
+                    :src="item.url"
+                    :preview-src-list="voucherUrls"
+                    :initial-index="index"
+                    fit="cover"
+                    class="voucher-image"
+                  />
+                </template>
+                <span v-else>-</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- 右侧：退款金额 + 备注 -->
+          <div class="manual-right-panel">
+            <div class="manual-amount-section">
+              <div class="manual-section-title">退款金额：</div>
+              <el-input-number
+                v-model="manualRefundForm.refundAmount"
+                :min="0.01"
+                :max="manualMaxRefundAmount"
+                :precision="2"
+                :step="0.01"
+                :controls="false"
+                placeholder="请输入退款金额"
+                class="manual-amount-input"
+              />
+              <div class="manual-amount-hint">可退金额：¥{{ Number(manualMaxRefundAmount).toFixed(2) }}</div>
+            </div>
+            <div class="manual-remark-section">
+              <div class="manual-section-title">退款备注：</div>
+              <el-input
+                v-model="manualRefundForm.remark"
+                type="textarea"
+                :rows="5"
+                maxlength="2000"
+                show-word-limit
+                placeholder="请输入退款备注"
+              />
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <template #footer>
+        <el-button @click="manualRefundDialogVisible = false">取消</el-button>
+        <el-button type="success" @click="confirmManualRefund" :loading="manualRefundLoading">同意退费</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
 <script setup>
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, onMounted, ref, watch, reactive } from 'vue'
 import { useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import { getPaymentDetail } from '@/api/payment'
+import { getPaymentDetail, processRefund, manualRefund } from '@/api/payment'
 import RefundApplicationEmbed from './PaymentDetail.vue'
 
 const route = useRoute()
 const loading = ref(false)
 const detail = ref(null)
 const refundDialogVisible = ref(false)
+const manualRefundDialogVisible = ref(false)
+const manualRefundLoading = ref(false)
+const MANUAL_REFUND_DEFAULT_REMARK = '信息费退款'
+const manualRefundForm = reactive({
+  refundAmount: null,
+  remark: MANUAL_REFUND_DEFAULT_REMARK
+})
+const manualMaxRefundAmount = computed(() => {
+  if (!detail.value) return 0
+  const canRefund = Number(detail.value.amount || 0) - Number(detail.value.refunded_amount || 0)
+  return Math.max(0, canRefund)
+})
 
 const money = (val) => Number(val || 0).toFixed(2)
 const showMoney = (val) => (Number(val || 0) > 0 ? `¥${Number(val).toFixed(2)}` : '-')
@@ -179,6 +301,8 @@ const voucherUrls = computed(() => voucherList.value.map(item => item.url))
 
 const hasRefundApplication = computed(() => {
   const d = detail.value || {}
+  // 已退费完成的单子不走"退费申请"流程，走"再退金额"
+  if (d.refund_status === 'completed') return false
   return Boolean(
     (Number(d.refund_apply_amount || 0) > 0) ||
     d.refund_apply_time ||
@@ -200,6 +324,50 @@ const openRefundDialog = () => {
 const onRefundProcessed = async () => {
   refundDialogVisible.value = false
   await loadDetail()
+}
+
+const openManualRefundDialog = () => {
+  // 重置表单，默认退可退金额
+  manualRefundForm.refundAmount = manualMaxRefundAmount.value > 0
+    ? Number(manualMaxRefundAmount.value.toFixed(2))
+    : null
+  manualRefundForm.remark = MANUAL_REFUND_DEFAULT_REMARK
+  manualRefundDialogVisible.value = true
+}
+
+const onManualRefundProcessed = async () => {
+  manualRefundDialogVisible.value = false
+  await loadDetail()
+}
+
+const confirmManualRefund = async () => {
+  if (!manualRefundForm.refundAmount || manualRefundForm.refundAmount <= 0) {
+    ElMessage.warning('请输入退款金额')
+    return
+  }
+  if (manualRefundForm.refundAmount > manualMaxRefundAmount.value) {
+    ElMessage.warning('退款金额不能超过可退金额')
+    return
+  }
+  manualRefundLoading.value = true
+  try {
+    const res = await manualRefund({
+      id: route.params.id,
+      refund_amount: manualRefundForm.refundAmount,
+      remark: (manualRefundForm.remark || '').trim() || MANUAL_REFUND_DEFAULT_REMARK
+    })
+    if (res.success || res.code === 200) {
+      ElMessage.success('退款成功')
+      manualRefundDialogVisible.value = false
+      await loadDetail()
+    } else {
+      ElMessage.error(res.message || '退款失败')
+    }
+  } catch (e) {
+    ElMessage.error('退款失败')
+  } finally {
+    manualRefundLoading.value = false
+  }
 }
 
 const loadDetail = async () => {
@@ -261,8 +429,74 @@ watch(
   box-shadow: 0 6px 18px rgba(230, 162, 60, 0.55);
   filter: brightness(1.03);
 }
+.btn-manual-refund {
+  font-size: 16px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  padding: 12px 32px;
+  min-height: 46px;
+  border-radius: 10px;
+  box-shadow: 0 4px 14px rgba(64, 158, 255, 0.35);
+}
+.btn-manual-refund:hover {
+  box-shadow: 0 6px 18px rgba(64, 158, 255, 0.5);
+  filter: brightness(1.03);
+}
 .voucher-list { display: flex; gap: 10px; flex-wrap: wrap; }
 .voucher-image { width: 96px; height: 96px; border-radius: 4px; }
+
+/* 再退金额弹窗 */
+.manual-refund-body { padding: 4px 0; }
+.manual-refund-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 20px;
+}
+.manual-left-panel {
+  border-right: 1px solid #eef2f7;
+  padding-right: 20px;
+}
+.manual-info-row {
+  display: grid;
+  grid-template-columns: 90px 1fr;
+  align-items: flex-start;
+  margin-bottom: 10px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: #f8fafc;
+  border: 1px solid #eef2f7;
+}
+.manual-label {
+  color: #64748b;
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.manual-value {
+  color: #0f172a;
+  font-size: 13px;
+  font-weight: 600;
+  word-break: break-word;
+}
+.manual-right-panel { display: flex; flex-direction: column; gap: 16px; }
+.manual-section-title {
+  font-size: 13px;
+  font-weight: 700;
+  color: #111827;
+  margin-bottom: 8px;
+}
+.manual-amount-section {}
+.manual-amount-input { width: 100%; }
+.manual-amount-hint {
+  margin-top: 6px;
+  font-size: 12px;
+  color: #f56c6c;
+}
+.manual-remark-section { flex: 1; }
+@media (max-width: 700px) {
+  .manual-refund-grid { grid-template-columns: 1fr; }
+  .manual-left-panel { border-right: none; border-bottom: 1px solid #eef2f7; padding-right: 0; padding-bottom: 14px; }
+}
 </style>
 
 <style>

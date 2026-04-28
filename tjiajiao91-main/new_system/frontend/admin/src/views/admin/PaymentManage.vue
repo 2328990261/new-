@@ -35,6 +35,7 @@
       <div class="tabs-header">
         <el-tabs v-model="activeTab" @tab-click="handleTabClick" class="status-tabs">
           <el-tab-pane label="全部" name="all"></el-tab-pane>
+          <el-tab-pane label="待支付" name="unpaid"></el-tab-pane>
           <el-tab-pane label="已支付" name="paid"></el-tab-pane>
           <el-tab-pane label="退费待处理" name="pending"></el-tab-pane>
           <el-tab-pane label="退费驳回" name="rejected"></el-tab-pane>
@@ -58,8 +59,9 @@
                 range-separator="-"
                 start-placeholder="开始日期"
                 end-placeholder="结束日期"
-                format="YYYY-MM-DD HH:mm:ss"
+                format="YYYY-MM-DD HH:mm"
                 value-format="YYYY-MM-DD HH:mm:ss"
+                :default-time="rangePickerDefaultTime"
                 :shortcuts="dateShortcuts"
                 popper-class="date-picker-dropdown"
                 placement="bottom-start"
@@ -111,8 +113,9 @@
             range-separator="-"
             start-placeholder="退款时间"
             end-placeholder="退款时间"
-                format="YYYY-MM-DD HH:mm:ss"
+                format="YYYY-MM-DD HH:mm"
                 value-format="YYYY-MM-DD HH:mm:ss"
+                :default-time="rangePickerDefaultTime"
                 :shortcuts="dateShortcuts"
                 popper-class="date-picker-dropdown"
                 placement="bottom-start"
@@ -128,8 +131,9 @@
             range-separator="-"
             start-placeholder="申请退款时间"
             end-placeholder="申请退款时间"
-                format="YYYY-MM-DD HH:mm:ss"
+                format="YYYY-MM-DD HH:mm"
                 value-format="YYYY-MM-DD HH:mm:ss"
+                :default-time="rangePickerDefaultTime"
                 :shortcuts="dateShortcuts"
                 popper-class="date-picker-dropdown"
                 placement="bottom-start"
@@ -245,7 +249,18 @@
         <el-table-column type="selection" width="48" align="center" fixed="left" />
         <el-table-column v-if="isColumnVisible('id')" prop="id" label="ID" min-width="70" align="center" />
         <el-table-column v-if="isColumnVisible('order_no')" prop="order_no" label="订单编号" min-width="180" show-overflow-tooltip />
-        <el-table-column v-if="isColumnVisible('paid_time')" prop="paid_time" label="支付时间" min-width="150" />
+        <el-table-column v-if="isColumnVisible('paid_time')" prop="paid_time" label="支付时间" min-width="170">
+          <template #default="{ row }">
+            <el-tooltip
+              v-if="!row.paid_time && row.create_time"
+              :content="row.status === 'pending' ? '尚未支付，为下单时间' : '未记录支付时间，为创建时间'"
+              placement="top"
+            >
+              <span>{{ formatListPayTime(row) }}</span>
+            </el-tooltip>
+            <span v-else>{{ formatListPayTime(row) }}</span>
+          </template>
+        </el-table-column>
         <el-table-column v-if="isColumnVisible('tutor_name')" prop="tutor_name" label="家教标题" min-width="180" show-overflow-tooltip />
         <el-table-column v-if="isColumnVisible('payer_name')" prop="payer_name" label="老师姓名" min-width="90">
           <template #default="{ row }">
@@ -360,7 +375,7 @@
     <el-dialog v-model="viewDialogVisible" title="支付详情" width="700px">
       <el-descriptions :column="2" border v-if="currentPayment">
         <el-descriptions-item label="订单号">{{ displayOrderNo(currentPayment) }}</el-descriptions-item>
-        <el-descriptions-item label="支付时间">{{ currentPayment.paid_time }}</el-descriptions-item>
+        <el-descriptions-item label="支付时间">{{ formatListPayTime(currentPayment) }}</el-descriptions-item>
         <el-descriptions-item label="家教标题">{{ currentPayment.tutor_name }}</el-descriptions-item>
         <el-descriptions-item label="老师姓名">{{ currentPayment.teacher_name || currentPayment.payer_name }}</el-descriptions-item>
         <el-descriptions-item label="对接同学">{{ currentPayment.contact_student || '-' }}</el-descriptions-item>
@@ -599,6 +614,34 @@ const dateShortcuts = [
   }
 ]
 
+/** daterange 选日时默认：开始 00:00:00、结束 23:59:59，避免同日 00:00~00:00 筛不出 */
+const rangePickerDefaultTime = [new Date(2000, 0, 1, 0, 0, 0), new Date(2000, 0, 1, 23, 59, 59)]
+
+/**
+ * 提交给后端的起止时间：按「起止日期」闭区间扩展（与后端 expandInclusiveDateRange 一致）
+ */
+const toInclusiveApiRange = (startStr, endStr) => {
+  const s = String(startStr || '').trim()
+  const e = String(endStr || '').trim()
+  if (!s || !e) return [s, e]
+  const d1 = s.slice(0, 10)
+  const d2 = e.slice(0, 10)
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(d1) || !/^\d{4}-\d{2}-\d{2}$/.test(d2)) {
+    return [s, e]
+  }
+  return [`${d1} 00:00:00`, `${d2} 23:59:59`]
+}
+
+/** 列表「支付时间」：已支付用 paid_time；否则用 create_time 兜底（H5 待支付等不再空白） */
+const formatListPayTime = (row) => {
+  if (!row) return '—'
+  const paid = row.paid_time
+  if (paid) return paid
+  const ct = row.create_time
+  if (ct) return ct
+  return '—'
+}
+
 // 解析凭证列表
 const getVoucherList = (voucherJson) => {
   if (!voucherJson) return []
@@ -771,6 +814,7 @@ const searchForm = reactive({
   tutorName: '',
   payerName: '',
   status: undefined,
+  refund_status: undefined,  // 添加 refund_status 字段
   amountMin: '',
   amountMax: '',
   refundTime: null,
@@ -847,20 +891,32 @@ const rowHasRefund = (row) => {
 
 // 标签页切换
 const handleTabClick = (tab) => {
+  console.log('切换标签页:', tab.props.name)
+  
   // 根据标签页设置筛选条件
   if (tab.props.name === 'all') {
-    searchForm.status = ''
-    delete searchForm.refund_status
+    searchForm.status = undefined
+    searchForm.refund_status = undefined
+  } else if (tab.props.name === 'unpaid') {
+    searchForm.status = 'pending'
+    searchForm.refund_status = undefined
   } else if (tab.props.name === 'paid') {
     // 后端支付成功状态使用 success（不是 paid）
     searchForm.status = 'success'
     // 已支付 Tab：排除所有退款状态（pending/rejected/completed），仅保留 refund_status 为空的订单
     searchForm.refund_status = 'none'
   } else {
-    // 退款相关状态仅在已支付(success)数据上筛选
-    searchForm.status = 'success'
+    // 退款相关状态：不限制 status，让后端根据 refund_status 筛选
+    // 因为有些记录的 status 可能是 'paid' 而不是 'success'
+    searchForm.status = undefined
     searchForm.refund_status = tab.props.name
   }
+  
+  console.log('筛选条件:', {
+    status: searchForm.status,
+    refund_status: searchForm.refund_status
+  })
+  
   pagination.page = 1
   getList()
   getStatistics()
@@ -875,6 +931,9 @@ const getList = async () => {
       limit: pagination.limit
     }
 
+    // 右上角“搜索”关键字：交给后端统一模糊匹配（订单号/家教标题/老师姓名/对接同学/客服昵称等）
+    if (searchKeyword.value) params.keyword = searchKeyword.value
+
     // 添加有值的筛选参数
     if (searchForm.tutorName) params.tutor_name = searchForm.tutorName
     if (searchForm.payerName) params.payer_name = searchForm.payerName
@@ -888,23 +947,28 @@ const getList = async () => {
       params.refund_status = searchForm.refund_status
     }
 
-    // 处理支付时间
+    // 处理支付时间（整日闭区间，避免 00:00~00:00）
     if (searchForm.payTime && searchForm.payTime.length === 2) {
-      params.pay_time_start = searchForm.payTime[0]
-      params.pay_time_end = searchForm.payTime[1]
+      const [ps, pe] = toInclusiveApiRange(searchForm.payTime[0], searchForm.payTime[1])
+      params.pay_time_start = ps
+      params.pay_time_end = pe
     }
 
     // 处理退款时间
     if (searchForm.refundTime && searchForm.refundTime.length === 2) {
-      params.refund_time_start = searchForm.refundTime[0]
-      params.refund_time_end = searchForm.refundTime[1]
+      const [rs, re] = toInclusiveApiRange(searchForm.refundTime[0], searchForm.refundTime[1])
+      params.refund_time_start = rs
+      params.refund_time_end = re
     }
 
     // 处理申请退款时间
     if (searchForm.refundApplyTime && searchForm.refundApplyTime.length === 2) {
-      params.refund_apply_time_start = searchForm.refundApplyTime[0]
-      params.refund_apply_time_end = searchForm.refundApplyTime[1]
+      const [as, ae] = toInclusiveApiRange(searchForm.refundApplyTime[0], searchForm.refundApplyTime[1])
+      params.refund_apply_time_start = as
+      params.refund_apply_time_end = ae
     }
+
+    console.log('发送请求参数:', params)
 
     const res = await getPaymentList(params)
     if (res.success || res.code === 200) {
@@ -942,6 +1006,8 @@ const getStatistics = async () => {
   try {
     const params = {}
 
+    if (searchKeyword.value) params.keyword = searchKeyword.value
+
     // 添加有值的筛选参数
     if (searchForm.tutorName) params.tutor_name = searchForm.tutorName
     if (searchForm.payerName) params.payer_name = searchForm.payerName
@@ -954,22 +1020,25 @@ const getStatistics = async () => {
       params.refund_status = searchForm.refund_status
     }
 
-    // 处理支付时间
+    // 处理支付时间（整日闭区间）
     if (searchForm.payTime && searchForm.payTime.length === 2) {
-      params.pay_time_start = searchForm.payTime[0]
-      params.pay_time_end = searchForm.payTime[1]
+      const [ps, pe] = toInclusiveApiRange(searchForm.payTime[0], searchForm.payTime[1])
+      params.pay_time_start = ps
+      params.pay_time_end = pe
     }
 
     // 处理退款时间
     if (searchForm.refundTime && searchForm.refundTime.length === 2) {
-      params.refund_time_start = searchForm.refundTime[0]
-      params.refund_time_end = searchForm.refundTime[1]
+      const [rs, re] = toInclusiveApiRange(searchForm.refundTime[0], searchForm.refundTime[1])
+      params.refund_time_start = rs
+      params.refund_time_end = re
     }
 
     // 处理申请退款时间
     if (searchForm.refundApplyTime && searchForm.refundApplyTime.length === 2) {
-      params.refund_apply_time_start = searchForm.refundApplyTime[0]
-      params.refund_apply_time_end = searchForm.refundApplyTime[1]
+      const [as, ae] = toInclusiveApiRange(searchForm.refundApplyTime[0], searchForm.refundApplyTime[1])
+      params.refund_apply_time_start = as
+      params.refund_apply_time_end = ae
     }
 
     const res = await getPaymentStatistics(params)
@@ -1002,7 +1071,7 @@ const handleReset = () => {
   searchForm.refundTime = null
   searchForm.refundApplyTime = null
   searchForm.dispatcherId = undefined
-  delete searchForm.refund_status
+  searchForm.refund_status = undefined  // 使用 undefined 而不是 delete
   activeTab.value = 'all'
   pagination.page = 1
   getList()

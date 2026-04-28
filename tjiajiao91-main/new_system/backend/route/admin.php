@@ -81,8 +81,6 @@ Route::group('admin/api', function () {
         
         // 家教订单管理
         // 注意：具体路由必须放在通用路由之前，否则会被通用路由拦截
-        Route::post('tutors/recognize', 'admin.Tutor/recognize');
-        Route::post('tutors/test-batch-create', 'admin.Tutor/testBatchCreate');
         Route::post('tutors/batch-create', 'admin.Tutor/batchCreate');
         Route::post('admin/tutors/batch-create', 'admin.Tutor/batchCreate');
         Route::post('tutors/batch-delete', 'admin.Tutor/batchDelete');
@@ -184,6 +182,7 @@ Route::group('admin/api', function () {
         Route::get('payments/statistics', 'admin.Payment/statistics');
         Route::get('payments/dispatchers', 'admin.Payment/dispatchers');
         Route::post('payments/refund/process', 'admin.Payment/processRefund');
+        Route::post('payments/refund/manual', 'admin.Payment/manualRefund');
         Route::post('payments/refund/reject', 'admin.Payment/rejectRefund');
         Route::get('payments/refund/:id', 'admin.Payment/refundDetail');
         Route::post('payments/:id/remark', 'admin.Payment/updateRemark');
@@ -195,6 +194,7 @@ Route::group('admin/api', function () {
         
         // 教师管理
         Route::get('teachers/statistics', 'admin.Teacher/statistics');  // 统计信息（必须在 teachers/:id 之前）
+        Route::get('teachers/stats/by-city', 'admin.Teacher/cityStats');  // 按城市老师数量统计（所在城市+授课城市）
         Route::get('teachers/prev-next/:id', 'admin.Teacher/prevNext');  // 上一老师/下一老师 ID（必须在 teachers/:id 之前）
         Route::post('teachers/batch-delete', 'admin.Teacher/batchDelete');  // 批量删除
         Route::post('teachers/batch-update-status', 'admin.Teacher/batchUpdateStatus');  // 批量更新状态
@@ -237,6 +237,24 @@ Route::group('admin/api', function () {
         // 网站基础配置管理
         Route::get('site-config', 'admin.SiteConfig/getConfig');
         Route::post('site-config', 'admin.SiteConfig/updateConfig');
+
+        // 企业微信（同城家教群）
+        Route::get('wecom/config', 'admin.WecomGroup/getConfig');
+        Route::post('wecom/config', 'admin.WecomGroup/saveConfig');
+        // 根据手机号查询成员 userid
+        Route::get('wecom/userid', 'admin.WecomGroup/userid');
+        // 注意：route_complete_match=false 时，前缀路由可能“吞掉”更具体的路由。
+        // 这里必须先注册更具体的路由（/:id/xxx），再注册通用的 POST /city-groups 保存路由。
+        Route::post('wecom/city-groups/:id/generate-qr', 'admin.WecomGroup/generateQr');
+        Route::post('wecom/city-groups/:id/refresh-stats', 'admin.WecomGroup/refreshStats');
+        Route::post('wecom/city-groups/:id/test-group-send', 'admin.WecomGroup/testGroupSend');
+        Route::put('wecom/city-groups/:id', 'admin.WecomGroup/update');
+        Route::delete('wecom/city-groups/:id', 'admin.WecomGroup/delete');
+        Route::get('wecom/city-groups', 'admin.WecomGroup/index');
+        Route::post('wecom/city-groups', 'admin.WecomGroup/save');
+        // 拉取客户群列表（用于选择 chat_id_list）
+        Route::get('wecom/groupchats', 'admin.WecomGroup/groupChats');
+        // （已移除）内部群测试接口：wecom/internal-chat/create
         
         // 网站横幅管理
         Route::post('site-banners/batch-sort', 'admin.SiteBanner/batchUpdateSort');
@@ -300,6 +318,13 @@ Route::group('admin/api', function () {
         Route::put('mini-program-configs/:id', 'admin.MiniProgramConfig/update');
         Route::put('mini-program-configs/:id/toggle', 'admin.MiniProgramConfig/toggle');
         Route::put('mini-program-configs/:id/default', 'admin.MiniProgramConfig/setDefault');
+
+        // 小程序问题反馈
+        Route::get('mini-feedbacks', 'admin.MiniProgramFeedback/index');
+        Route::get('mini-feedbacks/messages', 'admin.MiniProgramFeedback/messages');
+        // 兼容部分反向代理/路由配置把「/mini-feedbacks/messages」错误转发成列表接口的情况
+        Route::get('mini-feedbacks-messages', 'admin.MiniProgramFeedback/messages');
+        Route::post('mini-feedbacks/reply', 'admin.MiniProgramFeedback/reply');
         
         // 支付配置管理
         // 测试接口必须最先定义
@@ -326,6 +351,55 @@ Route::group('admin/api', function () {
         Route::get('subscribe-message-log/detail/:id', 'admin.SubscribeMessageLog/detail');
         Route::delete('subscribe-message-log/delete/:id', 'admin.SubscribeMessageLog/delete');
         Route::post('subscribe-message-log/batch-delete', 'admin.SubscribeMessageLog/batchDelete');
+        
+        // 企业管理 - 企业配置
+        Route::get('enterprise-config', 'admin.EnterpriseConfig/getConfig');
+        Route::post('enterprise-config', 'admin.EnterpriseConfig/saveConfig');
+        Route::post('enterprise-config/test', 'admin.EnterpriseConfig/testConnection');
+        Route::post('enterprise-config/sync', 'admin.EnterpriseConfig/syncContacts');
+        
+        // 企业管理 - 人员管理
+        Route::get('personnel/departments', 'admin.Personnel/departments');
+        Route::get('personnel/statistics', 'admin.Personnel/statistics');
+        Route::get('personnel/:userid', 'admin.Personnel/read');
+        Route::get('personnel', 'admin.Personnel/index');
+        Route::post('personnel', 'admin.Personnel/save');
+        Route::put('personnel/:id', 'admin.Personnel/update');
+        Route::delete('personnel/:id', 'admin.Personnel/delete');
+        
+        // 企业管理 - 薪酬管理（费用支出管理）
+        // 注意：具体路由必须放在通用路由之前
+        Route::post('salary/uploadAttachment', 'admin.Salary/uploadAttachment');
+        Route::get('salary/statistics', 'admin.Salary/statistics');
+        Route::get('salary/data-panel', 'admin.Salary/dataPanel');  // 数据面板
+        Route::get('salary/receipt-methods', 'admin.Salary/getReceiptMethods');
+        Route::get('salary/payment-methods', 'admin.Salary/getPaymentMethods');
+        Route::get('salary', 'admin.Salary/index');
+        Route::post('salary', 'admin.Salary/save');
+        Route::put('salary/:id', 'admin.Salary/update');
+        Route::delete('salary/:id', 'admin.Salary/delete');
+        
+        // 企业管理 - 费用类型管理
+        Route::get('expense-types/enabled', 'admin.ExpenseType/getEnabled');
+        Route::get('expense-types', 'admin.ExpenseType/index');
+        Route::post('expense-types', 'admin.ExpenseType/create');
+        Route::put('expense-types/:id', 'admin.ExpenseType/update');
+        Route::delete('expense-types/:id', 'admin.ExpenseType/delete');
+        
+        // 企业管理 - 收款单位和支付方式配置
+        Route::get('receipt-methods/config', 'admin.ReceiptPaymentConfig/getReceiptMethods');
+        Route::get('receipt-methods/options', 'admin.ReceiptPaymentConfig/getReceiptMethodOptions');
+        Route::post('receipt-methods', 'admin.ReceiptPaymentConfig/createReceiptMethod');
+        Route::post('receipt-methods/auto-add', 'admin.ReceiptPaymentConfig/autoAddReceiptMethod');
+        Route::put('receipt-methods/:id', 'admin.ReceiptPaymentConfig/updateReceiptMethod');
+        Route::delete('receipt-methods/:id', 'admin.ReceiptPaymentConfig/deleteReceiptMethod');
+        
+        Route::get('payment-methods/config', 'admin.ReceiptPaymentConfig/getPaymentMethods');
+        Route::get('payment-methods/options', 'admin.ReceiptPaymentConfig/getPaymentMethodOptions');
+        Route::post('payment-methods', 'admin.ReceiptPaymentConfig/createPaymentMethod');
+        Route::post('payment-methods/auto-add', 'admin.ReceiptPaymentConfig/autoAddPaymentMethod');
+        Route::put('payment-methods/:id', 'admin.ReceiptPaymentConfig/updatePaymentMethod');
+        Route::delete('payment-methods/:id', 'admin.ReceiptPaymentConfig/deletePaymentMethod');
         
     })->middleware(\app\middleware\Auth::class);
     

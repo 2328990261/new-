@@ -16,7 +16,7 @@
 			<!-- 教师信息卡片 -->
 			<view class="teacher-card" v-if="teacherInfo.name">
 				<view class="teacher-header">
-					<image :src="teacherInfo.avatar || '/static/ai-avatar.png'" class="teacher-avatar"></image>
+					<image :src="teacherInfo.avatar || 'https://t.jiajiao91.com/public/miniprogram/images/ai-avatar.png'" class="teacher-avatar"></image>
 					<view class="teacher-info">
 						<text class="teacher-name">{{ teacherInfo.name }}</text>
 						<text class="teacher-desc">{{ getTeacherTypeLabel(teacherInfo.teacher_type) }} · {{ teacherInfo.gender }}</text>
@@ -375,7 +375,6 @@ export default {
 					this.formData.longitude = longitude
 				},
 				fail: (err) => {
-					console.log('选择位置失败:', err)
 					uni.showToast({
 						title: '选择位置失败',
 						icon: 'none'
@@ -532,7 +531,7 @@ export default {
 				}
 			} catch (error) {
 				uni.hideLoading()
-				console.log('预约提交错误:', error)
+				console.error('预约提交错误:', error)
 				uni.showToast({
 					title: error?.message || '网络错误，请重试',
 					icon: 'none'

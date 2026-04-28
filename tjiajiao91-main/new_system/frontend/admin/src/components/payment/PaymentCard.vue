@@ -38,7 +38,7 @@
       </div>
       <div class="info-row time-row">
         <el-icon><Clock /></el-icon>
-        <span class="value">{{ payment.paid_time }}</span>
+        <span class="value">{{ payment.paid_time || payment.create_time || '—' }}</span>
       </div>
     </div>
 

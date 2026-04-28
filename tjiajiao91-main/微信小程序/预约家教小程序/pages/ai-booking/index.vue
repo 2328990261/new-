@@ -13,7 +13,7 @@
 			</view>
 			<view class="ai-avatar">
 				<view class="avatar-inner">
-					<image src="/static/ai-avatar.png" mode="aspectFit" class="avatar-img"></image>
+					<image src="https://t.jiajiao91.com/public/miniprogram/images/ai-avatar.png" mode="aspectFit" class="avatar-img"></image>
 				</view>
 			</view>
 		</view>
@@ -38,7 +38,7 @@
 					<view v-if="msg.type === 'ai'" class="ai-message">
 						<view class="avatar-box">
 							<view class="small-avatar-icon">
-								<image src="/static/ai-avatar.png" mode="aspectFit" class="small-avatar-img"></image>
+								<image src="https://t.jiajiao91.com/public/miniprogram/images/ai-avatar.png" mode="aspectFit" class="small-avatar-img"></image>
 							</view>
 							<text class="ai-name">小萌家教助手</text>
 						</view>
@@ -125,7 +125,7 @@
 				<view v-if="isTyping" class="typing-indicator">
 					<view class="avatar-box">
 						<view class="small-avatar-icon">
-							<image src="/static/ai-avatar.png" mode="aspectFit" class="small-avatar-img"></image>
+							<image src="https://t.jiajiao91.com/public/miniprogram/images/ai-avatar.png" mode="aspectFit" class="small-avatar-img"></image>
 						</view>
 						<text class="ai-name">小萌家教助手</text>
 					</view>
@@ -215,7 +215,7 @@
 					<!-- 二维码区域 -->
 					<view class="wechat-modal-body">
 						<view class="wechat-qrcode-wrapper">
-							<image src="/static/customer-qrcode.jpg" mode="aspectFit" class="wechat-qrcode-img" show-menu-by-longpress="{{true}}"></image>
+							<image src="https://t.jiajiao91.com/public/miniprogram/images/customer-qrcode.jpg" mode="aspectFit" class="wechat-qrcode-img" show-menu-by-longpress="{{true}}"></image>
 						</view>
 						<!-- 底部提示 -->
 						<text class="wechat-modal-tip">长按识别添加</text>

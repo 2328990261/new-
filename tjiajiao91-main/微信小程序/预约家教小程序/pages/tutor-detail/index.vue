@@ -1235,7 +1235,6 @@ export default {
 							quality: 1,
 							success: (res) => {
 								this.posterImage = res.tempFilePath
-								console.log('简洁版分享图生成成功')
 								// 隐藏Canvas
 								this.showPoster = false
 								resolve()

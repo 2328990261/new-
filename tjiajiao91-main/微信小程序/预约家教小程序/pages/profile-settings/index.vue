@@ -45,7 +45,17 @@
 
 			<view class="tips">修改后会自动保存到云端，并用于下次下单/展示。</view>
 
-			<!-- “其他”区块已移除 -->
+			<view class="section-title">身份与端</view>
+			<view class="card">
+				<view class="row switch-role-row" @click="switchRole">
+					<text class="label">切换身份</text>
+					<view class="right">
+						<text class="role-action-text">{{ userRole === 'teacher' ? '切换至家长端' : '切换至老师端' }}</text>
+						<uni-icons type="right" size="18" color="#C0C4CC" />
+					</view>
+				</view>
+			</view>
+			<view class="tips">在个人中心无法切换身份，仅在此修改；切换后将进入对应首页。</view>
 		</view>
 	</view>
 </template>
@@ -54,14 +64,22 @@
 import envConfig from '@/config/env.js'
 import auth from '@/utils/auth.js'
 import uniIcons from '@/uni_modules/uni-icons/components/uni-icons/uni-icons.vue'
+import { wechatLogin } from '@/utils/api.js'
 
 export default {
 	components: { uniIcons },
 	data() {
+		let initialRole = 'teacher'
+		try {
+			const r = uni.getStorageSync('userRole')
+			if (r === 'parent' || r === 'teacher') initialRole = r
+		} catch (e) {}
+
 		return {
 			statusBarHeight: 0,
 			/** 主内容区顶部留白（避开 fixed 导航栏 + 状态栏/胶囊），单位 px */
 			contentPadTop: 0,
+			userRole: initialRole,
 			form: {
 				name: '',
 				avatar: ''
@@ -81,8 +99,18 @@ export default {
 		const userInfo = auth.getUserInfo() || {}
 		this.form.name = userInfo.name || userInfo.nickname || ''
 		this.form.avatar = userInfo.avatar || userInfo.avatarUrl || ''
+		this.refreshUserRole()
+	},
+	onShow() {
+		this.refreshUserRole()
 	},
 	methods: {
+		refreshUserRole() {
+			try {
+				const r = uni.getStorageSync('userRole')
+				if (r === 'parent' || r === 'teacher') this.userRole = r
+			} catch (e) {}
+		},
 		/** 计算内容区 padding-top：避免被自定义导航栏挡住（微信用胶囊 bottom 最准） */
 		initContentPadTop() {
 			const statusBar = this.statusBarHeight || 0
@@ -191,7 +219,39 @@ export default {
 				}
 			})
 		},
-		// handleLogout 已移除（设置页不提供退出登录）
+		switchRole() {
+			const newRole = this.userRole === 'teacher' ? 'parent' : 'teacher'
+			const roleText = newRole === 'teacher' ? '老师端' : '家长端'
+
+			uni.showModal({
+				title: '切换角色',
+				content: `确定要切换到${roleText}吗？`,
+				success: (res) => {
+					if (!res.confirm) return
+
+					uni.setStorageSync('userRole', newRole)
+					this.userRole = newRole
+
+					const token = uni.getStorageSync('token')
+					if (token) {
+						wechatLogin.updateUserType(newRole).catch(() => {})
+					}
+
+					uni.showToast({
+						title: `已切换到${roleText}`,
+						icon: 'success'
+					})
+
+					setTimeout(() => {
+						if (newRole === 'parent') {
+							uni.reLaunch({ url: '/pages/parent-home/index' })
+						} else {
+							uni.reLaunch({ url: '/pages/tutor-list/index' })
+						}
+					}, 1500)
+				}
+			})
+		}
 	}
 }
 </script>
@@ -324,6 +384,15 @@ export default {
 	height: 1rpx;
 	background: #f1f2f6;
 	margin-left: 24rpx;
+}
+
+.switch-role-row:active {
+	background: #f9fafb;
+}
+
+.role-action-text {
+	font-size: 26rpx;
+	color: #52c9a6;
 }
 
 .tips {

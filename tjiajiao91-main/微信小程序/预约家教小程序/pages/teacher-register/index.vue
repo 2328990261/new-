@@ -925,15 +925,9 @@ export default {
 	methods: {
 		// 预览简历
 		async previewResume() {
-			console.log('[注册页面] 点击预览简历按钮')
-			console.log('[注册页面] isEditMode:', this.isEditMode)
-			console.log('[注册页面] teacherId:', this.teacherId)
-			console.log('[注册页面] fromPreview:', this.fromPreview)
-			console.log('[注册页面] 当前表单数据:', JSON.stringify(this.formData).substring(0, 200))
 			
 			// 如果是编辑模式，先保存到数据库再预览
 			if (this.isEditMode && this.teacherId) {
-				console.log('[注册页面] 编辑模式，先保存到数据库')
 				uni.showLoading({ title: '保存中...' })
 				
 				try {
@@ -946,19 +940,15 @@ export default {
 						wechat_nickname: userInfo.nickname || userInfo.wechat_nickname || ''
 					}
 					
-					console.log('[注册页面] 调用update API，数据:', JSON.stringify(updateData).substring(0, 300))
 					
 					// 调用更新API保存
 					const res = await teacherRegisterApi.update(updateData)
 					uni.hideLoading()
 					
-					console.log('[注册页面] update API响应:', res)
 					
 					if (res.success) {
 						// 保存成功，跳转到预览页面（从数据库加载）
 						const url = `/pages/teacher-resume-preview/index?teacher_id=${this.teacherId}`
-						console.log('[注册页面] 保存成功，跳转到预览页面:', url)
-						console.log('[注册页面] 使用', this.fromPreview ? 'redirectTo' : 'navigateTo')
 						
 						// 如果是从预览页面来的，使用redirectTo替换
 						if (this.fromPreview) {
@@ -985,10 +975,8 @@ export default {
 			}
 			
 			// 非编辑模式，使用URL传递数据
-			console.log('[注册页面] 非编辑模式，使用URL传递数据')
 			const data = encodeURIComponent(JSON.stringify(this.formData))
 			const url = `/pages/teacher-resume-preview/index?data=${data}`
-			console.log('[注册页面] URL长度:', url.length)
 			uni.navigateTo({ url })
 		},
 		
@@ -1702,15 +1690,12 @@ export default {
 		// 加载城市数据
 		async loadCities() {
 			try {
-				console.log('开始加载城市数据...')
 				const res = await regionApi.getCities()
-				console.log('城市数据响应:', res)
 				
 				// 后端返回格式：{code: 200, msg: '', data: []}
 				if (res.code === 200 && res.data) {
 					this.cities = res.data
 					// 籍贯不再默认加载所有城市，而是根据选择的省份加载
-					console.log('城市数据加载成功，共', res.data.length, '个城市')
 				} else {
 					console.error('城市数据格式错误:', res)
 					uni.showToast({
@@ -1730,15 +1715,12 @@ export default {
 		// 加载省份数据
 		async loadProvinces() {
 			try {
-				console.log('开始加载省份数据...')
 				const res = await regionApi.getProvinces()
-				console.log('省份数据响应:', res)
 				
 				if (res.code === 200 && res.data) {
 					this.provinces = res.data
 					// 初始化picker的第一列（省份）
 					this.locationPickerRange[0] = res.data
-					console.log('省份数据加载成功，共', res.data.length, '个省份')
 					
 					// 如果有省份数据，加载第一个省份的城市
 					if (res.data.length > 0) {
@@ -1755,14 +1737,12 @@ export default {
 		// 根据省份ID加载城市（用于picker）
 		async loadCitiesByProvinceForPicker(provinceId, provinceIndex) {
 			try {
-				console.log('加载省份下的城市，省份ID:', provinceId)
 				const res = await regionApi.getCities()
 				
 				if (res.code === 200 && res.data) {
 					// 过滤出该省份下的城市
 					const cities = res.data.filter(city => city.province_id === provinceId)
 					this.locationPickerRange[1] = cities
-					console.log('城市数据加载成功，共', cities.length, '个城市')
 					
 					// 如果有城市数据，加载第一个城市的区县
 					if (cities.length > 0) {
@@ -1779,12 +1759,10 @@ export default {
 		// 加载区县数据（用于picker）
 		async loadDistrictsForPicker(cityId, cityIndex) {
 			try {
-				console.log('加载城市下的区县，城市ID:', cityId)
 				const res = await regionApi.getDistricts(cityId)
 				
 				if (res.code === 200 && res.data) {
 					this.locationPickerRange[2] = res.data
-					console.log('区县数据加载成功，共', res.data.length, '个区县')
 				}
 			} catch (e) {
 				console.error('加载区县数据失败', e)
@@ -1796,7 +1774,6 @@ export default {
 			const column = e.detail.column // 哪一列变化了
 			const value = e.detail.value // 变化后的值
 			
-			console.log('picker列变化:', column, value)
 			
 			if (column === 0) {
 				// 省份变化，重新加载城市和区县
@@ -1819,7 +1796,6 @@ export default {
 		// picker确认选择
 		onLocationPickerChange(e) {
 			const values = e.detail.value
-			console.log('picker选择完成:', values)
 			
 			const province = this.locationPickerRange[0][values[0]]
 			const city = this.locationPickerRange[1][values[1]]
@@ -1831,21 +1807,17 @@ export default {
 				this.formData.location_district = district.name
 				this.locationPickerValue = values
 				
-				console.log('已选择:', province.name, city.name, district.name)
 			}
 		},
 		
 		// 加载区县数据
 		async loadDistricts(cityId) {
 			try {
-				console.log('开始加载区县数据，城市ID:', cityId)
 				const res = await regionApi.getDistricts(cityId)
-				console.log('区县数据响应:', res)
 				
 				// 后端返回格式：{code: 200, msg: '', data: []}
 				if (res.code === 200 && res.data) {
 					this.districts = res.data
-					console.log('区县数据加载成功，共', res.data.length, '个区县')
 				} else {
 					console.error('区县数据格式错误:', res)
 					uni.showToast({
@@ -1930,7 +1902,6 @@ export default {
 					})
 				})
 				
-				console.log('位置选择成功:', location)
 				uni.hideLoading()
 				
 				// location包含：name, address, latitude, longitude
@@ -1945,12 +1916,6 @@ export default {
 						title: '地址已设置',
 						icon: 'success',
 						duration: 1500
-					})
-					
-					console.log('已设置地址和经纬度:', {
-						address: location.address,
-						latitude: location.latitude,
-						longitude: location.longitude
 					})
 				}
 			} catch (e) {
@@ -1972,11 +1937,9 @@ export default {
 		// 通过后端API解析地址
 		async parseAddressViaAPI(address, latitude, longitude) {
 			try {
-				console.log('调用后端API解析地址:', address)
 				
 				// 调用后端逆地理编码API
 				const res = await regionApi.reverseGeocode(latitude, longitude)
-				console.log('后端API响应:', res)
 				
 				if (res.code === 200 && res.data) {
 					return {
@@ -1997,7 +1960,6 @@ export default {
 		// 前端字符串解析地址
 		parseAddressFromString(address) {
 			try {
-				console.log('使用前端字符串解析地址:', address)
 				
 				let province = '', city = '', district = ''
 				
@@ -2039,7 +2001,6 @@ export default {
 				city = city.trim()
 				district = district.trim()
 				
-				console.log('字符串解析结果:', { province, city, district, originalAddress: address })
 				
 				// 验证解析结果
 				if (province && city) {
@@ -2062,7 +2023,6 @@ export default {
 		// 简单地址解析（备用方案）
 		parseAddressSimple(address) {
 			try {
-				console.log('使用简单模式解析地址:', address)
 				
 				// 常见省份列表
 				const provinces = [
@@ -2111,7 +2071,6 @@ export default {
 					}
 				}
 				
-				console.log('简单解析结果:', { province, city, district })
 				
 				if (province) {
 					return {
@@ -2209,10 +2168,8 @@ export default {
 		// 逆地理编码（通过后端调用腾讯地图API）
 		async reverseGeocode(latitude, longitude) {
 			try {
-				console.log('开始逆地理编码，经纬度:', latitude, longitude)
 				
 				const res = await regionApi.reverseGeocode(latitude, longitude)
-				console.log('逆地理编码响应:', res)
 				
 				if (res.code === 200 && res.data && res.data.province && res.data.city) {
 					// 查找匹配的省份

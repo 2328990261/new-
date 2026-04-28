@@ -69,6 +69,14 @@ class SiteBanner extends BaseController
             // 避免数据库脏数据导致 JSON 编码失败
             $banners = $this->utf8Clean($banners);
 
+            // 归一化图片路径：uploads/...、https://t.jiajiao91.com/uploads/... -> /uploads/...
+            foreach ($banners as &$b) {
+                if (isset($b['image_url'])) {
+                    $b['image_url'] = normalize_public_media_url($b['image_url']);
+                }
+            }
+            unset($b);
+
             return json([
                 'success' => true,
                 'data' => $banners

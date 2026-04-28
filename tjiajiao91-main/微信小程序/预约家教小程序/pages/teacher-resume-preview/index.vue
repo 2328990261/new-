@@ -282,7 +282,6 @@ export default {
 		}
 	},
 	onLoad(options) {
-		console.log('简历预览页面参数:', options)
 		
 		this.readonly = options.readonly === 'true'
 		this.reviewStatus = options.status || ''
@@ -293,7 +292,6 @@ export default {
 			try {
 				const data = JSON.parse(decodeURIComponent(options.data))
 				this.resumeData = { ...this.resumeData, ...data }
-				console.log('加载的简历数据(来自URL):', this.resumeData)
 				return // 使用URL数据后直接返回，不再从其他地方加载
 			} catch (e) {
 				console.error('解析URL数据失败', e)
@@ -306,8 +304,6 @@ export default {
 				const data = uni.getStorageSync('preview_resume_data')
 				if (data) {
 					this.resumeData = { ...this.resumeData, ...data }
-					console.log('加载的简历数据(来自注册页面):', this.resumeData)
-					console.log('教学风采照片数量:', this.resumeData.teaching_photos?.length || 0)
 					// 清除存储的数据
 					uni.removeStorageSync('preview_resume_data')
 					return // 直接返回,不再从后端加载
@@ -328,12 +324,8 @@ export default {
 		this.stopOfficialBindPolling()
 	},
 	methods: {
-		logOfficialBindDebug(stage, payload = {}) {
-			const now = new Date().toISOString()
-			console.log('[服务号绑定调试]', stage, {
-				time: now,
-				...payload
-			})
+		logOfficialBindDebug() {
+			/* 服务号绑定调试日志已关闭 */
 		},
 
 		openOfficialBindLink(url) {
@@ -496,7 +488,6 @@ export default {
 		},
 
 		async loadTeacherData(teacherId) {
-			console.log('开始加载教师数据, teacherId:', teacherId)
 			this.loading = true
 			this.loadError = ''
 			
@@ -520,7 +511,6 @@ export default {
 					res = await teacherRegisterApi.getTeacherDetail(teacherId)
 				}
 				
-				console.log('教师数据响应:', res)
 				
 				if (res.success && res.data) {
 					const teacher = res.data
@@ -559,7 +549,6 @@ export default {
 						teacher_certificate: teacher.teacher_certificate || '',
 						review_note: teacher.review_note || '' // 审核备注
 					}
-					console.log('简历数据已加载:', this.resumeData)
 				} else {
 					console.error('加载失败:', res.error)
 					this.loadError = res.error || '加载失败'
@@ -592,13 +581,9 @@ export default {
 		},
 		
 		goToEdit() {
-			console.log('[预览页面] 点击修改简历按钮')
-			console.log('[预览页面] teacherId:', this.teacherId)
-			console.log('[预览页面] 当前简历数据:', JSON.stringify(this.resumeData).substring(0, 200))
 			
 			// 如果没有teacherId，跳转到注册页面新建
 			if (!this.teacherId) {
-				console.log('[预览页面] 没有teacherId，跳转到新建页面')
 				uni.navigateTo({
 					url: '/pages/teacher-register/index'
 				})
@@ -606,7 +591,6 @@ export default {
 			}
 			// 有teacherId，跳转到编辑模式，并标记来自预览页面
 			const url = `/pages/teacher-register/index?mode=edit&teacher_id=${this.teacherId}&step=1&fromPreview=true`
-			console.log('[预览页面] 跳转到编辑页面:', url)
 			uni.navigateTo({ url })
 		},
 		
@@ -716,9 +700,6 @@ export default {
 		},
 		
 		async submitTeacherInfo() {
-			console.log('[预览页面] 点击提交按钮')
-			console.log('[预览页面] teacherId:', this.teacherId)
-			console.log('[预览页面] 当前简历数据:', JSON.stringify(this.resumeData).substring(0, 300))
 			
 			const certNote = '请在认证材料中身份证，学历证明，教师资格证三项中至少上传一项'
 			const userInfo = uni.getStorageSync('userInfo') || {}
@@ -765,12 +746,10 @@ export default {
 					submit_for_review: true
 				}
 				
-				console.log('[预览页面] 提交数据:', JSON.stringify(submitData).substring(0, 300))
 				// 根据是否有teacherId选择API
 // 编辑模式（有teacherId）：使用update API
 // 新建模式（无teacherId）：使用submit API
 const apiName = this.teacherId ? 'update' : 'submit'
-console.log('[预览页面] 使用API:', apiName)
 
 const res = this.teacherId 
 ? await teacherRegisterApi.update(submitData)
@@ -778,7 +757,6 @@ const res = this.teacherId
 				
 				uni.hideLoading()
 				
-				console.log('[预览页面] 提交响应:', res)
 				
 				if (res.success) {
 					await this.showSubmitSuccessWithSubscribe(userInfo)

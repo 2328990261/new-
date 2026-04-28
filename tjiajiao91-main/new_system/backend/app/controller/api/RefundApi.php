@@ -234,6 +234,14 @@ class RefundApi extends BaseController
      */
     public function applyRefund()
     {
+        // 添加调试日志
+        Log::info('收到H5退款申请', [
+            'params' => $this->request->param(),
+            'method' => $this->request->method(),
+            'url' => $this->request->url(),
+            'ip' => $this->request->ip()
+        ]);
+        
         try {
             $orderNo = trim((string)$this->request->param('order_no', ''));
             $refundAmount = (float)$this->request->param('refund_amount', 0);
@@ -269,22 +277,12 @@ class RefundApi extends BaseController
                 ]);
             }
 
-            // 收到课酬：非必填；有值时做基础数值校验
-            $receivedAmount = null;
-            if ($receivedAmountRaw !== '') {
-                if (!is_numeric($receivedAmountRaw)) {
-                    return json([
-                        'success' => false,
-                        'message' => '收到课酬金额格式不正确'
-                    ]);
-                }
-                $receivedAmount = (float)$receivedAmountRaw;
-                if ($receivedAmount < 0) {
-                    return json([
-                        'success' => false,
-                        'message' => '收到课酬金额不能小于0'
-                    ]);
-                }
+            // 收到课酬：非必填；有值时仅校验为数字（不做上下限比较，由客服结合描述核实）
+            if ($receivedAmountRaw !== '' && !is_numeric($receivedAmountRaw)) {
+                return json([
+                    'success' => false,
+                    'message' => '收到课酬金额格式不正确'
+                ]);
             }
             
             // 查询支付记录
@@ -347,18 +345,13 @@ class RefundApi extends BaseController
                 ]);
             }
 
-            if ($receivedAmount !== null && $receivedAmount > (float)$payment->amount) {
-                return json([
-                    'success' => false,
-                    'message' => '收到课酬金额不能超过信息费金额：¥' . $payment->amount
-                ]);
-            }
-            
             // 更新退款信息
             $payment->refund_status = 'pending';
             $payment->refund_apply_amount = $refundAmount;
             $payment->refund_apply_time = date('Y-m-d H:i:s');
             $payment->refund_reason = $refundReason;
+            // 记录收到课酬（管理端字段：deposit_amount）
+            $payment->deposit_amount = ($receivedAmountRaw === '') ? null : (float) $receivedAmountRaw;
             
             // 保存退款凭证
             if ($refundVoucher) {

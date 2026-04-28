@@ -1,7 +1,7 @@
 <template>
   <div class="refund-success-page">
     <div class="success-header">
-      <h1>退费处理中</h1>
+      <h1>退费提交成功</h1>
       <p>测试页面</p>
     </div>
     <div class="content">

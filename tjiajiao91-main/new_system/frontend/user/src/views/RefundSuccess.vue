@@ -1,9 +1,5 @@
 <template>
   <div class="refund-voucher-page">
-    <header class="app-bar">
-      <h1 class="app-bar-title">退费凭证</h1>
-    </header>
-
     <section class="hero">
       <div class="hero-icon">
         <svg class="hero-icon-svg" viewBox="0 0 24 24" width="36" height="36" aria-hidden="true">
@@ -18,7 +14,7 @@
           />
         </svg>
       </div>
-      <h2 class="hero-title">退费处理中</h2>
+      <h2 class="hero-title">退费提交成功</h2>
       <p class="hero-sub">请点击下方按钮复制文字凭证</p>
     </section>
 
@@ -64,8 +60,7 @@
         </div>
 
         <div class="card-footer">
-          <img v-if="qrUrl" :src="qrUrl" alt="公众号二维码" class="qr-img" />
-          <div v-else class="qr-placeholder" />
+          <div class="qr-placeholder" />
         </div>
       </div>
 
@@ -99,7 +94,6 @@ const orderInfo = ref({
   reason: ''
 })
 
-const qrUrl = ref('')
 const toastVisible = ref(false)
 
 const cardHeadline = computed(() => {
@@ -126,32 +120,23 @@ const showCopyToast = () => {
 }
 
 onMounted(async () => {
-  document.title = '退费凭证'
+  document.title = '退费提交成功'
 
   try {
     await initWechatShare()
     setWechatShare({
-      title: '退费处理中',
+      title: '退费提交成功',
       desc: '退费申请已提交，请复制凭证发送给对接客服。',
       link: window.location.href.split('#')[0],
       imgUrl: resolveUserH5Url('static/images/share-logo.png')
     })
   } catch {
     setWechatShare({
-      title: '退费处理中',
+      title: '退费提交成功',
       desc: '退费申请已提交，请复制凭证发送给对接客服。',
       link: window.location.href.split('#')[0],
       imgUrl: resolveUserH5Url('static/images/share-logo.png')
     })
-  }
-
-  try {
-    const gc = await request.get('/refund/gate-config')
-    if (gc?.success && gc.data?.qrcode_url) {
-      qrUrl.value = gc.data.qrcode_url
-    }
-  } catch {
-    qrUrl.value = ''
   }
 
   try {
