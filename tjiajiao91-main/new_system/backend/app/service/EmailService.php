@@ -830,5 +830,570 @@ class EmailService
         }
     }
     
+    /**
+     * 发送简历投递提交通知：仅发给该家教单录入管理员（tutor_orders_new.admin_id 对应后台账号邮箱）
+     */
+    public static function sendApplicationSubmitNotification($application)
+    {
+        try {
+            // 获取家教订单信息
+            $tutor = Db::name('tutor_orders_new')->alias('o')
+                ->leftJoin('cities c', 'o.city_id = c.id')
+                ->leftJoin('districts d', 'o.district_id = d.id')
+                ->leftJoin('subjects s', 'o.subject_id = s.id')
+                ->field('o.*, c.name as city_name, d.name as district_name, s.name as subject_name')
+                ->where('o.id', $application->tutor_id)
+                ->find();
+            
+            if (!$tutor) {
+                trace('家教订单不存在，无法发送邮件通知: tutor_id=' . $application->tutor_id, 'warning');
+                return;
+            }
+            
+            // 获取教师信息
+            $teacher = Db::name('teachers')->where('id', $application->teacher_id)->find();
+            if (!$teacher) {
+                trace('教师不存在，无法发送邮件通知: teacher_id=' . $application->teacher_id, 'warning');
+                return;
+            }
+            
+            $orderAdminId = (int)($tutor['admin_id'] ?? 0);
+            $orderAdmin = $orderAdminId > 0
+                ? Db::name('admin')->where('id', $orderAdminId)->find()
+                : null;
+            
+            $recipients = [];
+            if ($orderAdmin && !empty($orderAdmin['email'])) {
+                $recipients[] = [
+                    'email' => $orderAdmin['email'],
+                    'name' => $orderAdmin['nickname'] ?? $orderAdmin['username'] ?? '管理员',
+                    'role' => '订单录入管理员',
+                ];
+            }
+            
+            $uniqueRecipients = $recipients;
+            
+            if (empty($uniqueRecipients)) {
+                trace(
+                    '跳过投递邮件：家教单 admin_id 无效或录入管理员未配置邮箱, tutor_id=' . ($application->tutor_id ?? '')
+                    . ', admin_id=' . $orderAdminId,
+                    'info'
+                );
+                return;
+            }
+            
+            // 获取邮件配置
+            $config = Db::name('notification_config')->find(1);
+            
+            if (!$config || !$config['smtp_host']) {
+                trace('邮件配置未设置，跳过邮件通知', 'info');
+                return;
+            }
+            
+            if (!$config['email_enabled']) {
+                trace('邮件通知未启用，跳过邮件通知', 'info');
+                return;
+            }
+            
+            // 构建邮件内容
+            $subject = "新的简历投递通知 - {$teacher['name']}";
+            $body = self::renderApplicationSubmitEmailHtml($application, $teacher, $tutor);
+            
+            // 批量发送邮件
+            $successCount = 0;
+            $failCount = 0;
+            
+            foreach ($uniqueRecipients as $recipient) {
+                try {
+                    $mail = new PHPMailer(true);
+                    self::configureSMTP($mail, $config);
+                    
+                    $mail->addAddress($recipient['email'], $recipient['name']);
+                    $mail->isHTML(true);
+                    $mail->Subject = $subject;
+                    $mail->Body = $body;
+                    
+                    $mail->send();
+                    $successCount++;
+                    
+                    // 记录成功日志
+                    EmailLog::log([
+                        'email_type' => EmailLog::TYPE_APPLICATION_SUBMIT,
+                        'recipient_email' => $recipient['email'],
+                        'recipient_name' => $recipient['name'],
+                        'subject' => $subject,
+                        'body' => $body,
+                        'related_id' => $application->id,
+                        'status' => EmailLog::STATUS_SENT,
+                        'send_time' => date('Y-m-d H:i:s')
+                    ]);
+                    
+                    trace("投递提交邮件发送成功: {$recipient['email']} ({$recipient['role']})", 'info');
+                    
+                } catch (Exception $e) {
+                    $failCount++;
+                    
+                    // 记录失败日志
+                    EmailLog::log([
+                        'email_type' => EmailLog::TYPE_APPLICATION_SUBMIT,
+                        'recipient_email' => $recipient['email'],
+                        'recipient_name' => $recipient['name'],
+                        'subject' => $subject,
+                        'related_id' => $application->id,
+                        'status' => EmailLog::STATUS_FAILED,
+                        'error_msg' => $e->getMessage(),
+                        'send_time' => date('Y-m-d H:i:s')
+                    ]);
+                    
+                    trace("投递提交邮件发送失败: {$recipient['email']} - " . $e->getMessage(), 'error');
+                }
+            }
+            
+            trace("投递提交邮件发送完成: 成功{$successCount}封，失败{$failCount}封", 'info');
+            
+        } catch (\Exception $e) {
+            trace('发送投递提交邮件通知失败: ' . $e->getMessage(), 'error');
+        }
+    }
+    
+    /**
+     * 渲染投递提交邮件HTML
+     */
+    private static function renderApplicationSubmitEmailHtml($application, $teacher, $tutor)
+    {
+        // 构建家教信息摘要
+        $tutorInfo = ($tutor['grade'] ?? '') . ' ' . ($tutor['subject_name'] ?? '') . ' ' . 
+                    ($tutor['city_name'] ?? '') . ($tutor['district_name'] ? ' ' . $tutor['district_name'] : '');
+        
+        // 获取管理后台地址
+        $adminUrl = env('ADMIN_URL', 'http://localhost:5174');
+        $applicationDetailUrl = $adminUrl . '/#/applications';
+        
+        $html = '<div style="font-family: Arial, \'PingFang SC\', \'Microsoft YaHei\', sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">';
+        $html .= '<h2 style="color: #333; border-bottom: 2px solid #667eea; padding-bottom: 10px;">新的简历投递通知</h2>';
+        
+        // 提醒信息
+        $html .= '<div style="background: #fff3cd; padding: 15px; border-radius: 5px; margin: 20px 0; border-left: 4px solid #ffc107;">';
+        $html .= '<p style="margin: 0; color: #856404; font-size: 16px;"><strong>⏰ 有教师投递了简历，请及时审核</strong></p>';
+        $html .= '</div>';
+        
+        // 教师信息
+        $html .= '<div style="background: #f5f5f5; padding: 15px; border-radius: 5px; margin: 20px 0;">';
+        $html .= '<h3 style="color: #666; margin-top: 0;">教师信息</h3>';
+        $html .= '<p style="margin: 5px 0;"><strong>姓名：</strong>' . htmlspecialchars($teacher['name'] ?? '') . '</p>';
+        $html .= '<p style="margin: 5px 0;"><strong>手机号：</strong>' . htmlspecialchars($teacher['phone'] ?? '') . '</p>';
+        $html .= '<p style="margin: 5px 0;"><strong>学历：</strong>' . htmlspecialchars($teacher['education'] ?? '') . '</p>';
+        $html .= '<p style="margin: 5px 0;"><strong>学校：</strong>' . htmlspecialchars($teacher['school'] ?? '') . '</p>';
+        if (!empty($teacher['subject_names'])) {
+            $html .= '<p style="margin: 5px 0;"><strong>可教科目：</strong>' . htmlspecialchars($teacher['subject_names']) . '</p>';
+        }
+        $html .= '</div>';
+        
+        // 家教订单信息
+        $html .= '<div style="background: #fff; border: 1px solid #ddd; padding: 15px; border-radius: 5px; margin: 20px 0;">';
+        $html .= '<h3 style="color: #666; margin-top: 0;">投递的家教订单</h3>';
+        $html .= '<p style="margin: 5px 0;"><strong>标题：</strong>' . htmlspecialchars($tutor['content'] ?? '') . '</p>';
+        $html .= '<p style="margin: 5px 0;"><strong>年级：</strong>' . htmlspecialchars($tutor['grade'] ?? '') . '</p>';
+        $html .= '<p style="margin: 5px 0;"><strong>科目：</strong>' . htmlspecialchars($tutor['subject_name'] ?? '') . '</p>';
+        $html .= '<p style="margin: 5px 0;"><strong>地区：</strong>' . htmlspecialchars($tutorInfo) . '</p>';
+        $html .= '<p style="margin: 5px 0;"><strong>时薪：</strong>' . htmlspecialchars($tutor['salary'] ?? '') . '</p>';
+        $html .= '</div>';
+        
+        // 投递信息
+        $html .= '<div style="background: #f0f9ff; padding: 15px; border-radius: 5px; margin: 20px 0;">';
+        $html .= '<h3 style="color: #666; margin-top: 0;">投递信息</h3>';
+        $html .= '<p style="margin: 5px 0;"><strong>投递时间：</strong>' . ($application->apply_time ?? date('Y-m-d H:i:s')) . '</p>';
+        $html .= '<p style="margin: 5px 0;"><strong>投递ID：</strong>' . $application->id . '</p>';
+        $html .= '</div>';
+        
+        // 操作按钮
+        $html .= '<div style="text-align: center; margin: 30px 0;">';
+        $html .= '<a href="' . $applicationDetailUrl . '" style="display: inline-block; padding: 12px 30px; background: #667eea; color: white; text-decoration: none; border-radius: 5px; font-weight: bold; font-size: 16px;">👉 立即查看并审核</a>';
+        $html .= '</div>';
+        
+        $html .= '<div style="margin-top: 20px; text-align: center; color: #999; font-size: 12px;">';
+        $html .= '<p>此邮件由系统自动发送，请勿回复。</p>';
+        $html .= '<p style="margin: 5px 0 0 0;">如无法点击按钮，请复制以下链接到浏览器：</p>';
+        $html .= '<p style="margin: 5px 0 0 0; word-break: break-all;">' . $applicationDetailUrl . '</p>';
+        $html .= '</div>';
+        $html .= '</div>';
+        
+        return $html;
+    }
+    
+    /**
+     * 发送简历投递审核通知：仅发给该家教单录入管理员（tutor_orders_new.admin_id 对应后台账号邮箱）
+     */
+    public static function sendApplicationReviewNotification($application, $status, $remark = '')
+    {
+        try {
+            // 获取家教订单信息
+            $tutor = Db::name('tutor_orders_new')->alias('o')
+                ->leftJoin('cities c', 'o.city_id = c.id')
+                ->leftJoin('districts d', 'o.district_id = d.id')
+                ->leftJoin('subjects s', 'o.subject_id = s.id')
+                ->field('o.*, c.name as city_name, d.name as district_name, s.name as subject_name')
+                ->where('o.id', $application->tutor_id)
+                ->find();
+            
+            if (!$tutor) {
+                trace('家教订单不存在，无法发送邮件通知: tutor_id=' . $application->tutor_id, 'warning');
+                return;
+            }
+            
+            // 获取教师信息
+            $teacher = Db::name('teachers')->where('id', $application->teacher_id)->find();
+            if (!$teacher) {
+                trace('教师不存在，无法发送邮件通知: teacher_id=' . $application->teacher_id, 'warning');
+                return;
+            }
+            
+            $orderAdminId = (int)($tutor['admin_id'] ?? 0);
+            $orderAdmin = $orderAdminId > 0
+                ? Db::name('admin')->where('id', $orderAdminId)->find()
+                : null;
+            
+            $recipients = [];
+            if ($orderAdmin && !empty($orderAdmin['email'])) {
+                $recipients[] = [
+                    'email' => $orderAdmin['email'],
+                    'name' => $orderAdmin['nickname'] ?? $orderAdmin['username'] ?? '管理员',
+                    'role' => '订单录入管理员',
+                ];
+            }
+            
+            $uniqueRecipients = $recipients;
+            
+            if (empty($uniqueRecipients)) {
+                trace(
+                    '跳过审核结果邮件：家教单 admin_id 无效或录入管理员未配置邮箱, tutor_id=' . ($application->tutor_id ?? '')
+                    . ', admin_id=' . $orderAdminId,
+                    'info'
+                );
+                return;
+            }
+            
+            // 获取邮件配置
+            $config = Db::name('notification_config')->find(1);
+            
+            if (!$config || !$config['smtp_host']) {
+                trace('邮件配置未设置，跳过邮件通知', 'info');
+                return;
+            }
+            
+            if (!$config['email_enabled']) {
+                trace('邮件通知未启用，跳过邮件通知', 'info');
+                return;
+            }
+            
+            // 构建邮件内容
+            $statusText = $status === 'approved' ? '通过' : '拒绝';
+            $subject = "简历投递审核通知 - {$statusText} - {$teacher['name']}";
+            $body = self::renderApplicationReviewEmailHtml($application, $teacher, $tutor, $status, $remark);
+            
+            // 批量发送邮件
+            $successCount = 0;
+            $failCount = 0;
+            
+            foreach ($uniqueRecipients as $recipient) {
+                try {
+                    $mail = new PHPMailer(true);
+                    self::configureSMTP($mail, $config);
+                    
+                    $mail->addAddress($recipient['email'], $recipient['name']);
+                    $mail->isHTML(true);
+                    $mail->Subject = $subject;
+                    $mail->Body = $body;
+                    
+                    $mail->send();
+                    $successCount++;
+                    
+                    // 记录成功日志
+                    EmailLog::log([
+                        'email_type' => EmailLog::TYPE_APPLICATION_REVIEW,
+                        'recipient_email' => $recipient['email'],
+                        'recipient_name' => $recipient['name'],
+                        'subject' => $subject,
+                        'body' => $body,
+                        'related_id' => $application->id,
+                        'status' => EmailLog::STATUS_SENT,
+                        'send_time' => date('Y-m-d H:i:s')
+                    ]);
+                    
+                    trace("投递审核邮件发送成功: {$recipient['email']} ({$recipient['role']})", 'info');
+                    
+                } catch (Exception $e) {
+                    $failCount++;
+                    
+                    // 记录失败日志
+                    EmailLog::log([
+                        'email_type' => EmailLog::TYPE_APPLICATION_REVIEW,
+                        'recipient_email' => $recipient['email'],
+                        'recipient_name' => $recipient['name'],
+                        'subject' => $subject,
+                        'related_id' => $application->id,
+                        'status' => EmailLog::STATUS_FAILED,
+                        'error_msg' => $e->getMessage(),
+                        'send_time' => date('Y-m-d H:i:s')
+                    ]);
+                    
+                    trace("投递审核邮件发送失败: {$recipient['email']} - " . $e->getMessage(), 'error');
+                }
+            }
+            
+            trace("投递审核邮件发送完成: 成功{$successCount}封，失败{$failCount}封", 'info');
+            
+        } catch (\Exception $e) {
+            trace('发送投递审核邮件通知失败: ' . $e->getMessage(), 'error');
+        }
+    }
+    
+    /**
+     * 渲染投递审核邮件HTML
+     */
+    private static function renderApplicationReviewEmailHtml($application, $teacher, $tutor, $status, $remark)
+    {
+        $statusText = $status === 'approved' ? '通过' : '拒绝';
+        $statusColor = $status === 'approved' ? '#67c23a' : '#f56c6c';
+        
+        // 构建家教信息摘要
+        $tutorInfo = ($tutor['grade'] ?? '') . ' ' . ($tutor['subject_name'] ?? '') . ' ' . 
+                    ($tutor['city_name'] ?? '') . ($tutor['district_name'] ? ' ' . $tutor['district_name'] : '');
+        
+        $html = '<div style="font-family: Arial, \'PingFang SC\', \'Microsoft YaHei\', sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">';
+        $html .= '<h2 style="color: #333; border-bottom: 2px solid #667eea; padding-bottom: 10px;">简历投递审核通知</h2>';
+        
+        // 审核结果
+        $html .= '<div style="background: ' . $statusColor . '; color: white; padding: 15px; border-radius: 5px; margin: 20px 0; text-align: center;">';
+        $html .= '<h3 style="margin: 0; font-size: 20px;">审核结果：' . $statusText . '</h3>';
+        $html .= '</div>';
+        
+        // 教师信息
+        $html .= '<div style="background: #f5f5f5; padding: 15px; border-radius: 5px; margin: 20px 0;">';
+        $html .= '<h3 style="color: #666; margin-top: 0;">教师信息</h3>';
+        $html .= '<p style="margin: 5px 0;"><strong>姓名：</strong>' . htmlspecialchars($teacher['name'] ?? '') . '</p>';
+        $html .= '<p style="margin: 5px 0;"><strong>手机号：</strong>' . htmlspecialchars($teacher['phone'] ?? '') . '</p>';
+        $html .= '<p style="margin: 5px 0;"><strong>学历：</strong>' . htmlspecialchars($teacher['education'] ?? '') . '</p>';
+        $html .= '<p style="margin: 5px 0;"><strong>学校：</strong>' . htmlspecialchars($teacher['school'] ?? '') . '</p>';
+        $html .= '</div>';
+        
+        // 家教订单信息
+        $html .= '<div style="background: #fff; border: 1px solid #ddd; padding: 15px; border-radius: 5px; margin: 20px 0;">';
+        $html .= '<h3 style="color: #666; margin-top: 0;">家教订单信息</h3>';
+        $html .= '<p style="margin: 5px 0;"><strong>标题：</strong>' . htmlspecialchars($tutor['content'] ?? '') . '</p>';
+        $html .= '<p style="margin: 5px 0;"><strong>年级：</strong>' . htmlspecialchars($tutor['grade'] ?? '') . '</p>';
+        $html .= '<p style="margin: 5px 0;"><strong>科目：</strong>' . htmlspecialchars($tutor['subject_name'] ?? '') . '</p>';
+        $html .= '<p style="margin: 5px 0;"><strong>地区：</strong>' . htmlspecialchars($tutorInfo) . '</p>';
+        $html .= '<p style="margin: 5px 0;"><strong>时薪：</strong>' . htmlspecialchars($tutor['salary'] ?? '') . '</p>';
+        $html .= '</div>';
+        
+        // 审核信息
+        $html .= '<div style="background: #f0f9ff; padding: 15px; border-radius: 5px; margin: 20px 0;">';
+        $html .= '<h3 style="color: #666; margin-top: 0;">审核信息</h3>';
+        $html .= '<p style="margin: 5px 0;"><strong>投递时间：</strong>' . ($application->apply_time ?? '') . '</p>';
+        $html .= '<p style="margin: 5px 0;"><strong>审核时间：</strong>' . ($application->review_time ?? date('Y-m-d H:i:s')) . '</p>';
+        if (!empty($remark)) {
+            $html .= '<p style="margin: 5px 0;"><strong>审核备注：</strong>' . nl2br(htmlspecialchars($remark)) . '</p>';
+        }
+        $html .= '</div>';
+        
+        $html .= '<div style="margin-top: 20px; text-align: center; color: #999; font-size: 12px;">';
+        $html .= '<p>此邮件由系统自动发送，请勿回复。</p>';
+        $html .= '</div>';
+        $html .= '</div>';
+        
+        return $html;
+    }
+    
+    /**
+     * 发送线索跟进提醒通知给客服
+     */
+    public static function sendLeadReminderNotification($admin, $lead)
+    {
+        try {
+            // 检查管理员是否有邮箱
+            if (empty($admin->email)) {
+                throw new \Exception('管理员邮箱未设置');
+            }
+            
+            // 获取邮件配置
+            $config = Db::name('notification_config')->find(1);
+            
+            if (!$config || !$config['smtp_host']) {
+                throw new \Exception('邮件配置未设置');
+            }
+            
+            if (!$config['email_enabled']) {
+                throw new \Exception('邮件通知未启用');
+            }
+            
+            $mail = new PHPMailer(true);
+            
+            // 使用统一配置方法
+            self::configureSMTP($mail, $config);
+            
+            // 收件人
+            $mail->addAddress($admin->email, $admin->nickname);
+            
+            // 邮件内容
+            $mail->isHTML(true);
+            $mail->Subject = '线索跟进提醒 - ' . $lead->lead_no;
+            
+            // 构建邮件内容
+            $body = self::renderLeadReminderTemplate($lead, $admin);
+            $mail->Body = $body;
+            
+            $mail->send();
+            
+            // 记录成功日志
+            EmailLog::log([
+                'email_type' => EmailLog::TYPE_LEAD_REMINDER,
+                'recipient_email' => $admin->email,
+                'recipient_name' => isset($admin->nickname) ? $admin->nickname : null,
+                'subject' => $mail->Subject,
+                'body' => $body,
+                'related_id' => $lead->id,
+                'status' => EmailLog::STATUS_SENT,
+                'send_time' => date('Y-m-d H:i:s')
+            ]);
+            
+            trace('线索提醒邮件发送成功: ' . $admin->email . ', lead_id=' . $lead->id, 'info');
+            return true;
+            
+        } catch (Exception $e) {
+            // 记录失败日志
+            EmailLog::log([
+                'email_type' => EmailLog::TYPE_LEAD_REMINDER,
+                'recipient_email' => isset($admin->email) ? $admin->email : null,
+                'recipient_name' => isset($admin->nickname) ? $admin->nickname : null,
+                'subject' => '线索跟进提醒 - ' . $lead->lead_no,
+                'related_id' => $lead->id,
+                'status' => EmailLog::STATUS_FAILED,
+                'error_msg' => $e->getMessage(),
+                'send_time' => date('Y-m-d H:i:s')
+            ]);
+            
+            trace('线索提醒邮件发送失败: ' . $e->getMessage(), 'error');
+            throw $e;
+        }
+    }
+    
+    /**
+     * 渲染线索跟进提醒邮件模板
+     */
+    private static function renderLeadReminderTemplate($lead, $admin)
+    {
+        $cityName = $lead->city ? $lead->city->name : '';
+        $districtName = $lead->district ? $lead->district->name : '';
+        
+        // 获取系统配置中的管理后台地址
+        $adminUrl = env('ADMIN_URL', 'http://localhost:5174');
+        $leadDetailUrl = $adminUrl . '/#/leads';
+        
+        // 获取最近的跟进记录
+        $latestFollowLog = Db::name('lead_follow_logs')
+            ->where('lead_id', $lead->id)
+            ->order('create_time', 'desc')
+            ->find();
+        
+        $html = '<div style="font-family: Arial, \'PingFang SC\', \'Microsoft YaHei\', sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">';
+        $html .= '<div style="background: #ff6b6b; color: white; padding: 20px; text-align: center; border-radius: 8px 8px 0 0;">';
+        $html .= '<h2 style="margin: 0;">⏰ 线索跟进提醒</h2>';
+        $html .= '</div>';
+        
+        // 紧急提醒
+        $html .= '<div style="padding: 20px; background: #f9f9f9;">';
+        $html .= '<div style="margin-bottom: 15px; padding: 20px; background: #fff3cd; border-left: 4px solid #ffc107; border-radius: 3px; text-align: center;">';
+        $html .= '<p style="margin: 0 0 15px 0; color: #856404; font-size: 18px; font-weight: bold;">';
+        $html .= '您好，' . htmlspecialchars($admin->nickname ?? $admin->username) . '！';
+        $html .= '</p>';
+        $html .= '<p style="margin: 0 0 15px 0; color: #856404; font-size: 16px;">';
+        $html .= '以下线索已到达提醒时间，请及时跟进处理';
+        $html .= '</p>';
+        $html .= '<p style="margin: 0 0 15px 0;">';
+        $html .= '<a href="' . $leadDetailUrl . '" style="display: inline-block; padding: 12px 30px; background: #ff6b6b; color: white; text-decoration: none; border-radius: 5px; font-weight: bold; font-size: 16px;">👉 立即跟进此线索</a>';
+        $html .= '</p>';
+        $html .= '</div>';
+        
+        // 线索基本信息
+        $html .= '<div style="background: white; padding: 20px; border-radius: 5px; margin-bottom: 15px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">';
+        $html .= '<h3 style="color: #333; margin-top: 0; border-bottom: 2px solid #667eea; padding-bottom: 10px;">线索信息</h3>';
+        $html .= '<p style="margin: 10px 0;"><strong>线索编号：</strong>' . htmlspecialchars($lead->lead_no) . '</p>';
+        $html .= '<p style="margin: 10px 0;"><strong>当前状态：</strong><span style="color: #ff6b6b; font-weight: bold;">' . htmlspecialchars($lead->status) . '</span></p>';
+        
+        if ($lead->contact_name || $lead->phone) {
+            $html .= '<p style="margin: 10px 0;"><strong>客户信息：</strong>';
+            if ($lead->contact_name) {
+                $html .= htmlspecialchars($lead->contact_name) . ' ';
+            }
+            if ($lead->phone) {
+                $phone = htmlspecialchars($lead->phone);
+                $html .= '<a href="tel:' . $phone . '" style="color: #667eea; text-decoration: none;">' . $phone . '</a>';
+            }
+            $html .= '</p>';
+        }
+        
+        if ($cityName || $districtName) {
+            $html .= '<p style="margin: 10px 0;"><strong>城市区域：</strong>' . htmlspecialchars($cityName . ' ' . $districtName) . '</p>';
+        }
+        
+        if ($lead->grade) {
+            $html .= '<p style="margin: 10px 0;"><strong>年级：</strong>' . htmlspecialchars($lead->grade) . '</p>';
+        }
+        
+        if ($lead->subject) {
+            $html .= '<p style="margin: 10px 0;"><strong>科目：</strong>' . htmlspecialchars($lead->subject) . '</p>';
+        }
+        
+        if ($lead->channel) {
+            $html .= '<p style="margin: 10px 0;"><strong>线索渠道：</strong>' . htmlspecialchars($lead->channel) . '</p>';
+        }
+        
+        $html .= '<p style="margin: 10px 0;"><strong>创建时间：</strong>' . htmlspecialchars($lead->create_time) . '</p>';
+        
+        if ($lead->reminder_time) {
+            $html .= '<p style="margin: 10px 0;"><strong>提醒时间：</strong><span style="color: #ff6b6b; font-weight: bold;">' . htmlspecialchars($lead->reminder_time) . '</span></p>';
+        }
+        
+        $html .= '</div>';
+        
+        // 需求详情
+        if ($lead->raw_content) {
+            $html .= '<div style="background: white; padding: 20px; border-radius: 5px; margin-bottom: 15px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">';
+            $html .= '<h3 style="color: #333; margin-top: 0; border-bottom: 2px solid #667eea; padding-bottom: 10px;">需求详情</h3>';
+            $html .= '<div style="background: #f8f9fa; padding: 15px; border-left: 4px solid #667eea; line-height: 1.6; border-radius: 3px;">';
+            $html .= nl2br(htmlspecialchars($lead->raw_content));
+            $html .= '</div>';
+            $html .= '</div>';
+        }
+        
+        // 最近跟进记录
+        if ($latestFollowLog) {
+            $html .= '<div style="background: white; padding: 20px; border-radius: 5px; margin-bottom: 15px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">';
+            $html .= '<h3 style="color: #333; margin-top: 0; border-bottom: 2px solid #667eea; padding-bottom: 10px;">最近跟进记录</h3>';
+            $html .= '<div style="background: #f0f9ff; padding: 15px; border-radius: 3px;">';
+            $html .= '<p style="margin: 5px 0;"><strong>跟进时间：</strong>' . htmlspecialchars($latestFollowLog['create_time']) . '</p>';
+            $html .= '<p style="margin: 5px 0;"><strong>状态变更：</strong>' . htmlspecialchars($latestFollowLog['old_status']) . ' → ' . htmlspecialchars($latestFollowLog['new_status']) . '</p>';
+            if ($latestFollowLog['remark']) {
+                $html .= '<p style="margin: 5px 0;"><strong>跟进备注：</strong>' . nl2br(htmlspecialchars($latestFollowLog['remark'])) . '</p>';
+            }
+            $html .= '</div>';
+            $html .= '</div>';
+        }
+        
+        $html .= '</div>';
+        
+        // 页脚
+        $html .= '<div style="text-align: center; padding: 20px; color: #999; font-size: 12px; background: #f5f5f5; border-radius: 0 0 8px 8px;">';
+        $html .= '<p style="margin: 0;">此邮件由系统自动发送，请勿直接回复。</p>';
+        $html .= '<p style="margin: 5px 0 0 0;">如无法点击按钮，请复制以下链接到浏览器：</p>';
+        $html .= '<p style="margin: 5px 0 0 0; word-break: break-all;">' . $leadDetailUrl . '</p>';
+        $html .= '</div>';
+        
+        $html .= '</div>';
+        
+        return $html;
+    }
+    
 }
 

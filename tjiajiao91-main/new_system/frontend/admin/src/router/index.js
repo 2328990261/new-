@@ -33,6 +33,7 @@ const EnterpriseManage = () => import('@/views/admin/EnterpriseManage.vue')
 const SalaryDataPanel = () => import('@/views/admin/SalaryDataPanel.vue')
 const Login = () => import('@/views/Login.vue')
 const ParentBooking = () => import('@/views/ParentBooking.vue')
+const AiImage = () => import('@/views/AiImage.vue')
 
 const routes = [
   {
@@ -51,6 +52,12 @@ const routes = [
         name: 'Dashboard',
         component: Dashboard,
         meta: { title: '工作台', keepAlive: true }
+      },
+      {
+        path: 'ai-image',
+        name: 'AiImage',
+        component: AiImage,
+        meta: { title: 'AI画图', keepAlive: true }
       },
       {
         path: 'tutor',

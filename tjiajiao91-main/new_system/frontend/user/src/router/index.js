@@ -183,6 +183,20 @@ const routes = [
     name: 'PrivacyPolicy',
     component: () => import('@/views/PrivacyPolicy.vue'),
     meta: { title: '隐私政策' }
+  },
+  // 入职登记（扫码落地页）
+  {
+    path: '/personnel-register',
+    name: 'PersonnelRegister',
+    component: () => import('@/views/PersonnelRegister.vue'),
+    meta: { title: '入职登记', hideNavbar: true }
+  },
+  // 入职登记提交成功页面
+  {
+    path: '/personnel-register-success',
+    name: 'PersonnelRegisterSuccess',
+    component: () => import('@/views/PersonnelRegisterSuccess.vue'),
+    meta: { title: '提交成功', hideNavbar: true }
   }
 ]
 
@@ -193,6 +207,12 @@ const router = createRouter({
 
 // 路由守卫 - 设置页面标题和导航栏显示
 router.beforeEach((to, from, next) => {
+  // 兼容二维码/落地页：跳转到指定业务页，但避免依赖线上静态资源对深链路由的回退配置
+  if (to?.query?.to === 'personnel-register') {
+    next({ name: 'PersonnelRegister', replace: true })
+    return
+  }
+
   // 设置页面标题
   if (to.meta.title) {
     document.title = to.meta.title

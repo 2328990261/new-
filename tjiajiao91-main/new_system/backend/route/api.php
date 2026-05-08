@@ -219,6 +219,10 @@ Route::group('api', function () {
     Route::post('invitation/use-coupon', 'api.Invitation/useCoupon');
     Route::get('invitation/check-status', 'api.Invitation/checkStatus');
     Route::post('invitation/verify-callback', 'api.Invitation/verifyCallback');
+
+    // 入职登记（扫码落地页：公共提交）
+    Route::post('personnel/register/submit', 'api.PersonnelRegister/submit');
+    Route::post('personnel/register/uploadAttachment', 'api.PersonnelRegister/uploadAttachment');
     
 })->middleware(\app\middleware\Cors::class);
 

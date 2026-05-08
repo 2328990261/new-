@@ -134,7 +134,7 @@ const loadData = async () => {
     
     // 获取用户信息
     const userInfo = uni.getStorageSync('userInfo')
-    if (!userInfo || !userInfo.phone) {
+    if (!userInfo || !userInfo.openid) {
       uni.showToast({
         title: '请先登录',
         icon: 'none'
@@ -146,7 +146,8 @@ const loadData = async () => {
     }
     
     const params = {
-      phone: userInfo.phone  // 只传递手机号
+      openid: userInfo.openid,  // 优先使用 openid
+      phone: userInfo.phone     // 兼容旧数据
     }
     if (activeTab.value !== 'all') {
       params.status = activeTab.value

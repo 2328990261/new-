@@ -67,15 +67,14 @@ class Payment extends BaseController
                 $query->orderRaw('pinned_at IS NULL ASC, pinned_at DESC');
             }
             // 列表分组优先级：
-            // 1) 退款待处理 2) 待支付 3) 已支付(无退款流) 4) 退款驳回 5) 已退费 6) 其他
+            // 1) 退款待处理 2) 已支付(无退款流) 3) 退款驳回 4) 已退费 5) 其他
             $query->orderRaw("
                 CASE
                     WHEN refund_status = 'pending' THEN 1
-                    WHEN status = 'pending' THEN 2
-                    WHEN status IN ('paid', 'success') AND (refund_status IS NULL OR refund_status = '') THEN 3
-                    WHEN refund_status = 'rejected' THEN 4
-                    WHEN refund_status = 'completed' THEN 5
-                    ELSE 6
+                    WHEN status IN ('paid', 'success') AND (refund_status IS NULL OR refund_status = '') THEN 2
+                    WHEN refund_status = 'rejected' THEN 3
+                    WHEN refund_status = 'completed' THEN 4
+                    ELSE 5
                 END ASC
             ");
             $query->order('paid_time', 'desc');
@@ -126,6 +125,9 @@ class Payment extends BaseController
             $status = $this->request->param('status');
             if ($status) {
                 $query->where('status', $status);
+            } else {
+                // 默认排除待支付状态
+                $query->where('status', '<>', 'pending');
             }
             
             // 退款状态筛选

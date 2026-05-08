@@ -3,51 +3,69 @@ namespace app\model;
 
 use think\Model;
 
+/**
+ * 人员主表模型（入职登记）
+ * 对应表：fa_personnel
+ */
 class Personnel extends Model
 {
     protected $name = 'personnel';
-    
-    // 设置字段信息
+
     protected $schema = [
-        'id'                => 'int',
-        'name'              => 'string',
-        'phone'             => 'string',
-        'id_card'           => 'string',
-        'employment_status' => 'string',
-        'employment_type'   => 'string',
-        'entry_date'        => 'string',
-        'departure_date'    => 'string',
-        'department'        => 'string',
-        'position'          => 'string',
-        'remark'            => 'string',
-        'create_time'       => 'int',
-        'update_time'       => 'int',
-        'delete_time'       => 'int',
+        'id'               => 'int',
+        // 基本信息
+        'name'             => 'string',
+        'phone'            => 'string',
+        'gender'           => 'string',
+        'birth_date'       => 'date',
+        'native_place'     => 'string',
+        'ethnicity'        => 'string',
+        'political_status' => 'string',
+        'id_card'          => 'string',
+        'email'            => 'string',
+        'current_address'  => 'string',
+        'wechat_account'   => 'string',
+        // 在职信息
+        'dept_name'        => 'string',
+        'position_name'    => 'string',
+        'position_type'    => 'string',
+        // 银行卡
+        'bank_name'        => 'string',
+        'bank_card_no'     => 'string',
+        // 材料附件
+        'photo_url'        => 'string',
+        'id_card_front'    => 'string',
+        'id_card_back'     => 'string',
+        'degree_cert'      => 'string',
+        'graduation_cert'  => 'string',
+        'resignation_cert' => 'string',
+        'health_report'    => 'string',
+        'xuexin_report'    => 'string',
+        // 系统字段
+        'create_time'      => 'int',
+        'update_time'      => 'int',
+        'delete_time'      => 'int',
     ];
-    
-    // 自动时间戳
+
     protected $autoWriteTimestamp = true;
-    
-    // 软删除
+
     use \think\model\concern\SoftDelete;
     protected $deleteTime = 'delete_time';
     protected $defaultSoftDelete = 0;
-    
-    // 关联薪酬记录
-    public function salaries()
+
+    /**
+     * 关联：教育经历（一对多）
+     */
+    public function educations()
     {
-        return $this->hasMany(Salary::class, 'personnel_id');
+        return $this->hasMany(PersonnelEducation::class, 'personnel_id', 'id')->order('sort', 'asc');
     }
-    
-    // 获取在职人员数量
-    public static function getOnJobCount()
+
+    /**
+     * 关联：紧急联系人（一对多）
+     */
+    public function emergencies()
     {
-        return self::where('employment_status', '在职')->count();
-    }
-    
-    // 获取离职人员数量
-    public static function getOffJobCount()
-    {
-        return self::where('employment_status', '离职')->count();
+        return $this->hasMany(PersonnelEmergency::class, 'personnel_id', 'id')->order('sort', 'asc');
     }
 }

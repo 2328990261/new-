@@ -2,276 +2,359 @@
 namespace app\controller\admin;
 
 use app\BaseController;
-use app\service\WecomEnterpriseService;
+use app\model\Personnel as PersonnelModel;
+use app\model\PersonnelEducation;
+use app\model\PersonnelEmergency;
+use app\service\UploadService;
+use think\facade\Db;
 
+/**
+ * 人员管理（本地表）
+ *
+ * 已弃用：原企业微信 API 同步方案；现改为本地数据库 CRUD。
+ * 路由前缀：/admin/api/personnel
+ */
 class Personnel extends BaseController
 {
-    // 获取人员列表（从企业微信API）
+    /**
+     * 列表 GET /personnel
+     */
     public function index()
     {
-        // 权限检查
-        // $this->checkEnterprisePermission(); // 已取消权限验证
-        
-        $page = input('page', 1);
-        $pageSize = input('pageSize', 20);
-        $employmentStatus = input('employment_status', '');
-        $employmentType = input('employment_type', '');
-        $keyword = input('keyword', '');
-        $departmentId = input('department_id', 1); // 部门ID，默认根部门
-        
-        try {
-            $wecomService = new WecomEnterpriseService();
-            
-            // 调用企业微信API获取部门成员详情
-            $response = $wecomService->getUserDetailList($departmentId, true);
-            
-            if ($response['errcode'] != 0) {
-                return json([
-                    'success' => false,
-                    'message' => '获取企业微信人员失败：' . ($response['errmsg'] ?? '未知错误')
-                ]);
+        $page          = (int)input('page', 1);
+        $pageSize      = (int)input('pageSize', 20);
+        $keyword       = trim((string)input('keyword', ''));
+        $deptName      = trim((string)input('dept_name', ''));
+        $positionType  = trim((string)input('position_type', ''));
+
+        $buildQuery = function () use ($keyword, $deptName, $positionType) {
+            $q = PersonnelModel::order('id', 'desc');
+            if ($keyword !== '') {
+                $like = '%' . $keyword . '%';
+                $q->where(function ($w) use ($like) {
+                    $w->where('name', 'like', $like)
+                        ->whereOr('phone', 'like', $like)
+                        ->whereOr('id_card', 'like', $like);
+                });
             }
-            
-            $allUsers = $response['userlist'] ?? [];
-            
-            // 前端筛选
-            $filteredUsers = array_filter($allUsers, function($user) use ($employmentStatus, $employmentType, $keyword) {
-                // 在职状态筛选
-                if ($employmentStatus && $user['employment_status'] != $employmentStatus) {
-                    return false;
-                }
-                
-                // 雇佣类型筛选
-                if ($employmentType && $user['employment_type'] != $employmentType) {
-                    return false;
-                }
-                
-                // 关键词搜索（姓名或手机号）
-                if ($keyword) {
-                    $match = stripos($user['name'], $keyword) !== false || 
-                             stripos($user['phone'], $keyword) !== false;
-                    if (!$match) {
-                        return false;
-                    }
-                }
-                
-                return true;
-            });
-            
-            // 重新索引数组
-            $filteredUsers = array_values($filteredUsers);
-            $total = count($filteredUsers);
-            
-            // 分页
-            $offset = ($page - 1) * $pageSize;
-            $listData = array_slice($filteredUsers, $offset, $pageSize);
-            
-            return json([
-                'success' => true,
-                'data' => [
-                    'list' => $listData,
-                    'total' => $total
-                ]
-            ]);
-            
-        } catch (\Exception $e) {
-            return json([
-                'success' => false,
-                'message' => '获取人员列表失败：' . $e->getMessage()
-            ]);
-        }
+            if ($deptName !== '') {
+                $q->where('dept_name', 'like', '%' . $deptName . '%');
+            }
+            if ($positionType !== '') {
+                $q->where('position_type', $positionType);
+            }
+            return $q;
+        };
+
+        $total = $buildQuery()->count();
+        $list  = $buildQuery()->page($page, $pageSize)->select()->toArray();
+
+        return json([
+            'success' => true,
+            'data'    => [
+                'list'  => $list,
+                'total' => $total,
+            ],
+        ]);
     }
-    
-    // 获取部门列表（用于筛选）
-    public function departments()
+
+    /**
+     * 详情 GET /personnel/:id
+     */
+    public function read($id)
     {
-        // 权限检查
-        // $this->checkEnterprisePermission(); // 已取消权限验证
-        
-        try {
-            $wecomService = new WecomEnterpriseService();
-            $response = $wecomService->getDepartmentList();
-            
-            if ($response['errcode'] != 0) {
-                return json([
-                    'success' => false,
-                    'message' => '获取部门列表失败：' . ($response['errmsg'] ?? '未知错误')
-                ]);
-            }
-            
-            return json([
-                'success' => true,
-                'data' => $response['department'] ?? []
-            ]);
-            
-        } catch (\Exception $e) {
-            return json([
-                'success' => false,
-                'message' => '获取部门列表失败：' . $e->getMessage()
-            ]);
+        $id = (int)$id;
+        if ($id <= 0) {
+            return json(['success' => false, 'message' => '参数错误']);
         }
+        $personnel = PersonnelModel::with(['educations', 'emergencies'])->find($id);
+        if (!$personnel) {
+            return json(['success' => false, 'message' => '人员不存在']);
+        }
+        return json([
+            'success' => true,
+            'data'    => $personnel->toArray(),
+        ]);
     }
-    
-    // 获取单个人员详情
-    public function read()
-    {
-        // 权限检查
-        // $this->checkEnterprisePermission(); // 已取消权限验证
-        
-        $userid = input('userid', '');
-        if (!$userid) {
-            return json(['success' => false, 'message' => '缺少userid参数']);
-        }
-        
-        try {
-            $wecomService = new WecomEnterpriseService();
-            $response = $wecomService->getUser($userid);
-            
-            if ($response['errcode'] != 0) {
-                return json([
-                    'success' => false,
-                    'message' => '获取人员详情失败：' . ($response['errmsg'] ?? '未知错误')
-                ]);
-            }
-            
-            return json([
-                'success' => true,
-                'data' => $response['user'] ?? null
-            ]);
-            
-        } catch (\Exception $e) {
-            return json([
-                'success' => false,
-                'message' => '获取人员详情失败：' . $e->getMessage()
-            ]);
-        }
-    }
-    
-    // 创建人员（企业微信不支持通过API创建，返回提示）
+
+    /**
+     * 新增 POST /personnel
+     */
     public function save()
     {
-        // 权限检查
-        // $this->checkEnterprisePermission(); // 已取消权限验证
-        
-        return json([
-            'success' => false,
-            'message' => '请在企业微信管理后台添加成员'
-        ]);
-    }
-    
-    // 更新人员（企业微信不支持通过API更新，返回提示）
-    public function update()
-    {
-        // 权限检查
-        // $this->checkEnterprisePermission(); // 已取消权限验证
-        
-        return json([
-            'success' => false,
-            'message' => '请在企业微信管理后台修改成员信息'
-        ]);
-    }
-    
-    // 删除人员（企业微信不支持通过API删除，返回提示）
-    public function delete()
-    {
-        // 权限检查
-        // $this->checkEnterprisePermission(); // 已取消权限验证
-        
-        return json([
-            'success' => false,
-            'message' => '请在企业微信管理后台删除成员'
-        ]);
-    }
-    
-    // 获取统计信息
-    public function statistics()
-    {
-        // 权限检查
-        // $this->checkEnterprisePermission(); // 已取消权限验证
-        
+        $data = $this->request->post();
+        $check = $this->validateMain($data);
+        if ($check !== true) {
+            return json(['success' => false, 'message' => $check]);
+        }
+
         try {
-            $wecomService = new WecomEnterpriseService();
-            $response = $wecomService->getUserDetailList(1, true);
-            
-            if ($response['errcode'] != 0) {
+            $newId = 0;
+            Db::transaction(function () use ($data, &$newId) {
+                $main = $this->extractMainFields($data);
+                $personnel = PersonnelModel::create($main);
+                $newId = (int)$personnel->id;
+
+                $this->saveChildren($newId, $data);
+            });
+            return json(['success' => true, 'message' => '创建成功', 'data' => ['id' => $newId]]);
+        } catch (\Exception $e) {
+            return json(['success' => false, 'message' => '创建失败：' . $e->getMessage()]);
+        }
+    }
+
+    /**
+     * 更新 PUT /personnel/:id
+     */
+    public function update($id)
+    {
+        $id = (int)$id;
+        if ($id <= 0) {
+            return json(['success' => false, 'message' => '参数错误']);
+        }
+        $personnel = PersonnelModel::find($id);
+        if (!$personnel) {
+            return json(['success' => false, 'message' => '人员不存在']);
+        }
+
+        $data = $this->request->put();
+        if (empty($data)) {
+            $data = $this->request->post();
+        }
+        $check = $this->validateMain($data);
+        if ($check !== true) {
+            return json(['success' => false, 'message' => $check]);
+        }
+
+        try {
+            Db::transaction(function () use ($id, $data, $personnel) {
+                $main = $this->extractMainFields($data);
+                $personnel->save($main);
+
+                // 子表先全删再插入
+                PersonnelEducation::where('personnel_id', $id)->delete();
+                PersonnelEmergency::where('personnel_id', $id)->delete();
+                $this->saveChildren($id, $data);
+            });
+            return json(['success' => true, 'message' => '更新成功']);
+        } catch (\Exception $e) {
+            return json(['success' => false, 'message' => '更新失败：' . $e->getMessage()]);
+        }
+    }
+
+    /**
+     * 删除 DELETE /personnel/:id
+     */
+    public function delete($id)
+    {
+        $id = (int)$id;
+        if ($id <= 0) {
+            return json(['success' => false, 'message' => '参数错误']);
+        }
+        $personnel = PersonnelModel::find($id);
+        if (!$personnel) {
+            return json(['success' => false, 'message' => '人员不存在']);
+        }
+        try {
+            Db::transaction(function () use ($id, $personnel) {
+                // 主表软删；子表物理删
+                $personnel->delete();
+                PersonnelEducation::where('personnel_id', $id)->delete();
+                PersonnelEmergency::where('personnel_id', $id)->delete();
+            });
+            return json(['success' => true, 'message' => '删除成功']);
+        } catch (\Exception $e) {
+            return json(['success' => false, 'message' => '删除失败：' . $e->getMessage()]);
+        }
+    }
+
+    /**
+     * 上传附件 POST /personnel/uploadAttachment
+     * 支持 jpg/jpeg/png/gif/webp/pdf/doc/docx/xls/xlsx/ppt/pptx，限制 10MB
+     */
+    public function uploadAttachment()
+    {
+        try {
+            $file = $this->request->file('file');
+            if (!$file) {
+                return json(['success' => false, 'message' => '请选择文件']);
+            }
+
+            // 复用通用上传服务（避免依赖 think\\facade\\Filesystem）
+            $allowed = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'pdf', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx'];
+            $service = new UploadService();
+            $stored = $service->storeToPublicUploads($file, 'personnel', $allowed, 10 * 1024 * 1024);
+
+            if (empty($stored['success'])) {
                 return json([
                     'success' => false,
-                    'message' => '获取统计信息失败'
+                    'message' => $stored['message'] ?? '上传失败',
                 ]);
             }
-            
-            $allUsers = $response['userlist'] ?? [];
-            
-            $onJobCount = 0;
-            $offJobCount = 0;
-            $fullTimeCount = 0;
-            $partTimeCount = 0;
-            
-            foreach ($allUsers as $user) {
-                if ($user['employment_status'] === '在职') {
-                    $onJobCount++;
-                } else {
-                    $offJobCount++;
-                }
-                
-                if ($user['employment_type'] === '全职') {
-                    $fullTimeCount++;
-                } else {
-                    $partTimeCount++;
-                }
-            }
-            
+
             return json([
                 'success' => true,
-                'data' => [
-                    'on_job_count' => $onJobCount,
-                    'off_job_count' => $offJobCount,
-                    'full_time_count' => $fullTimeCount,
-                    'part_time_count' => $partTimeCount,
-                    'total_count' => count($allUsers)
-                ]
+                'message' => '上传成功',
+                'data'    => [
+                    'url' => $stored['data']['url'] ?? '',
+                ],
             ]);
-            
-        } catch (\Exception $e) {
-            return json([
-                'success' => false,
-                'message' => '获取统计信息失败：' . $e->getMessage()
-            ]);
+        } catch (\Throwable $e) {
+            return json(['success' => false, 'message' => '上传失败：' . $e->getMessage()]);
         }
     }
-    
-    // 检查企业管理权限
-    private function checkEnterprisePermission()
+
+    // ===========================================================
+    // 内部方法
+    // ===========================================================
+
+    /**
+     * 主表字段白名单提取
+     */
+    private function extractMainFields(array $data): array
     {
-        // 启动session（如果尚未启动）
-        if (session_status() === PHP_SESSION_NONE) {
-            session_start();
+        $fields = [
+            'name', 'phone', 'gender', 'birth_date', 'native_place', 'ethnicity',
+            'political_status', 'id_card', 'email', 'current_address', 'wechat_account',
+            'dept_name', 'position_name', 'position_type',
+            'bank_name', 'bank_card_no',
+            'photo_url', 'id_card_front', 'id_card_back',
+            'degree_cert', 'graduation_cert', 'resignation_cert',
+            'health_report', 'xuexin_report',
+        ];
+        $result = [];
+        foreach ($fields as $f) {
+            if (array_key_exists($f, $data)) {
+                $value = $data[$f];
+                // 空日期转 null，避免严格模式下 '' 报错
+                if (in_array($f, ['birth_date'], true) && $value === '') {
+                    $value = null;
+                }
+                $result[$f] = is_string($value) ? trim($value) : $value;
+            }
         }
-        
-        // 使用与Auth中间件一致的方式获取session
-        $adminId = $_SESSION['admin_id'] ?? null;
-        if (!$adminId) {
-            return json(['success' => false, 'message' => '未登录'])->send();
-            exit;
+        return $result;
+    }
+
+    /**
+     * 主表字段校验
+     */
+    private function validateMain(array $data)
+    {
+        $required = [
+            'name'           => '姓名',
+            'phone'          => '手机',
+            'id_card'        => '身份证号码',
+            'wechat_account' => '员工账号微信名称',
+            'position_name'  => '岗位名称',
+            'position_type'  => '岗位类型',
+            'bank_name'      => '开户行',
+            'bank_card_no'   => '银行卡号',
+            'id_card_front'  => '身份证人像面',
+            'id_card_back'   => '身份证国徽面',
+            'xuexin_report'  => '学信网电子验证报告',
+        ];
+        foreach ($required as $key => $label) {
+            $val = isset($data[$key]) ? trim((string)$data[$key]) : '';
+            if ($val === '') {
+                return $label . '不能为空';
+            }
         }
-        
-        $admin = \app\model\Admin::find($adminId);
-        if (!$admin) {
-            return json(['success' => false, 'message' => '管理员不存在'])->send();
-            exit;
+
+        // 验证手机号格式
+        $phone = isset($data['phone']) ? trim((string)$data['phone']) : '';
+        if ($phone !== '' && !preg_match('/^1[3-9]\d{9}$/', $phone)) {
+            return '手机号格式不正确';
         }
-        
-        // 超级管理员直接通过
-        if ($admin->role === 'super_admin') {
-            return true;
+
+        // 验证身份证号格式
+        $idCard = isset($data['id_card']) ? trim((string)$data['id_card']) : '';
+        if ($idCard !== '') {
+            if (!preg_match('/^[1-9]\d{5}(18|19|20)\d{2}(0[1-9]|1[0-2])(0[1-9]|[12]\d|3[01])\d{3}[\dXx]$/', $idCard)) {
+                return '身份证号格式不正确';
+            }
         }
-        
-        // 检查是否有企业管理权限
-        if (!$admin->can_access_enterprise) {
-            return json(['success' => false, 'message' => '无权访问企业管理模块'])->send();
-            exit;
+
+        // 验证邮箱格式
+        $email = isset($data['email']) ? trim((string)$data['email']) : '';
+        if ($email !== '' && !filter_var($email, FILTER_VALIDATE_EMAIL)) {
+            return '邮箱格式不正确';
         }
+
+        // 验证教育经历中的学历（必须是大专以上）
+        $educations = isset($data['educations']) && is_array($data['educations']) ? $data['educations'] : [];
+        $validDegrees = ['大专', '本科', '硕士', '博士'];
+        $hasValidEducation = false;
         
+        foreach ($educations as $edu) {
+            if (!is_array($edu)) continue;
+            $degree = isset($edu['degree']) ? trim((string)$edu['degree']) : '';
+            if ($degree !== '') {
+                if (!in_array($degree, $validDegrees)) {
+                    return '学历必须是大专及以上（大专、本科、硕士、博士）';
+                }
+                $hasValidEducation = true;
+            }
+        }
+
+        if (!$hasValidEducation) {
+            return '请至少填写一条大专及以上的教育经历';
+        }
+
         return true;
+    }
+
+    /**
+     * 写入子表（教育经历 + 紧急联系人）
+     */
+    private function saveChildren(int $personnelId, array $data): void
+    {
+        $educations = isset($data['educations']) && is_array($data['educations']) ? $data['educations'] : [];
+        foreach ($educations as $i => $edu) {
+            if (!is_array($edu)) {
+                continue;
+            }
+            // 整条都为空则跳过
+            $hasContent = false;
+            foreach (['degree', 'school', 'major', 'academic_degree', 'enroll_date', 'graduate_date'] as $f) {
+                if (!empty($edu[$f])) {
+                    $hasContent = true;
+                    break;
+                }
+            }
+            if (!$hasContent) {
+                continue;
+            }
+            PersonnelEducation::create([
+                'personnel_id'    => $personnelId,
+                'degree'          => (string)($edu['degree'] ?? ''),
+                'school'          => (string)($edu['school'] ?? ''),
+                'enroll_date'     => !empty($edu['enroll_date']) ? $edu['enroll_date'] : null,
+                'graduate_date'   => !empty($edu['graduate_date']) ? $edu['graduate_date'] : null,
+                'major'           => (string)($edu['major'] ?? ''),
+                'academic_degree' => (string)($edu['academic_degree'] ?? ''),
+                'sort'            => (int)$i,
+            ]);
+        }
+
+        $emergencies = isset($data['emergencies']) && is_array($data['emergencies']) ? $data['emergencies'] : [];
+        foreach ($emergencies as $i => $em) {
+            if (!is_array($em)) {
+                continue;
+            }
+            $phone = trim((string)($em['phone'] ?? ''));
+            if ($phone === '') {
+                // 紧急联系人手机为必填，无电话视为空条
+                continue;
+            }
+            PersonnelEmergency::create([
+                'personnel_id' => $personnelId,
+                'name'         => (string)($em['name'] ?? ''),
+                'relation'     => (string)($em['relation'] ?? ''),
+                'phone'        => $phone,
+                'address'      => (string)($em['address'] ?? ''),
+                'sort'         => (int)$i,
+            ]);
+        }
     }
 }

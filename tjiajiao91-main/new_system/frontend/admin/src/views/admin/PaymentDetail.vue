@@ -321,14 +321,9 @@ const handleApprove = () => {
 
   approveLoading.value = false
 
-  // 当申请应退为 0 时，输入框置空让管理员手工填写（避免 0 值占满导致“看不到占位符”）
-  if (apply <= 0) {
-    approveDefaultAmount.value = null
-    approveForm.refundAmount = null
-  } else {
-    approveDefaultAmount.value = Number(Math.max(0, defaultAmt).toFixed(2))
-    approveForm.refundAmount = approveDefaultAmount.value
-  }
+  // 默认退款金额为 0，管理员手工填写
+  approveDefaultAmount.value = Number(Math.max(0, defaultAmt).toFixed(2))
+  approveForm.refundAmount = 0
   approveDialogVisible.value = true
 }
 

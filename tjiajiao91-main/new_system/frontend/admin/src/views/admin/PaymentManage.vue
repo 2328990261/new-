@@ -35,7 +35,6 @@
       <div class="tabs-header">
         <el-tabs v-model="activeTab" @tab-click="handleTabClick" class="status-tabs">
           <el-tab-pane label="全部" name="all"></el-tab-pane>
-          <el-tab-pane label="待支付" name="unpaid"></el-tab-pane>
           <el-tab-pane label="已支付" name="paid"></el-tab-pane>
           <el-tab-pane label="退费待处理" name="pending"></el-tab-pane>
           <el-tab-pane label="退费驳回" name="rejected"></el-tab-pane>
@@ -243,42 +242,38 @@
         v-loading="loading"
         stripe
         border
+        :tooltip-options="{ enterable: true, showAfter: 400 }"
         @selection-change="handleSelectionChange"
       >
         <!-- 最左侧勾选 -->
         <el-table-column type="selection" width="48" align="center" fixed="left" />
-        <el-table-column v-if="isColumnVisible('id')" prop="id" label="ID" min-width="70" align="center" />
-        <el-table-column v-if="isColumnVisible('order_no')" prop="order_no" label="订单编号" min-width="180" show-overflow-tooltip />
-        <el-table-column v-if="isColumnVisible('paid_time')" prop="paid_time" label="支付时间" min-width="170">
-          <template #default="{ row }">
-            <el-tooltip
-              v-if="!row.paid_time && row.create_time"
-              :content="row.status === 'pending' ? '尚未支付，为下单时间' : '未记录支付时间，为创建时间'"
-              placement="top"
-            >
-              <span>{{ formatListPayTime(row) }}</span>
-            </el-tooltip>
-            <span v-else>{{ formatListPayTime(row) }}</span>
-          </template>
+        <el-table-column v-if="isColumnVisible('id')" prop="id" label="ID" min-width="70" align="center" show-overflow-tooltip />
+        <el-table-column v-if="isColumnVisible('order_no')" label="订单编号" min-width="180" show-overflow-tooltip>
+          <template #default="{ row }">{{ row.order_no }}</template>
         </el-table-column>
-        <el-table-column v-if="isColumnVisible('tutor_name')" prop="tutor_name" label="家教标题" min-width="180" show-overflow-tooltip />
-        <el-table-column v-if="isColumnVisible('payer_name')" prop="payer_name" label="老师姓名" min-width="90">
-          <template #default="{ row }">
-            {{ row.teacher_name || row.payer_name || '' }}
-          </template>
+        <el-table-column v-if="isColumnVisible('paid_time')" label="支付时间" min-width="170" show-overflow-tooltip>
+          <template #default="{ row }">{{ formatListPayTime(row) }}</template>
+        </el-table-column>
+        <el-table-column v-if="isColumnVisible('tutor_name')" label="家教标题" min-width="180" show-overflow-tooltip>
+          <template #default="{ row }">{{ row.tutor_name }}</template>
+        </el-table-column>
+        <el-table-column v-if="isColumnVisible('payer_name')" label="老师姓名" min-width="90" show-overflow-tooltip>
+          <template #default="{ row }">{{ row.teacher_name || row.payer_name || '' }}</template>
         </el-table-column>
         <el-table-column
           v-if="isColumnVisible('openid')"
-          prop="openid"
           label="openid"
           min-width="220"
           show-overflow-tooltip
-        />
+        >
+          <template #default="{ row }">{{ row.openid }}</template>
+        </el-table-column>
         <el-table-column
           v-if="isColumnVisible('status')"
           label="状态"
           min-width="118"
           class-name="col-payment-status"
+          show-overflow-tooltip
         >
           <template #default="{ row }">
             <el-tag v-if="row.status === 'pending'" type="warning">待支付</el-tag>
@@ -289,55 +284,52 @@
             <el-tag v-else type="info">{{ row.status }}</el-tag>
           </template>
         </el-table-column>
-        <el-table-column v-if="isColumnVisible('contact_student')" prop="contact_student" label="对接的同学" min-width="105" show-overflow-tooltip />
-        <el-table-column v-if="isColumnVisible('amount')" prop="amount" label="信息费金额" min-width="95" align="right">
-          <template #default="{ row }">
-            {{ row.amount ? row.amount.toFixed(2) : '0.00' }}
-          </template>
+        <el-table-column v-if="isColumnVisible('contact_student')" label="对接的同学" min-width="140" show-overflow-tooltip>
+          <template #default="{ row }">{{ row.contact_student }}</template>
         </el-table-column>
-        <el-table-column v-if="isColumnVisible('deposit_amount')" prop="deposit_amount" label="收到课酬" min-width="90" align="right">
-          <template #default="{ row }">
-            {{ Number(row.deposit_amount || 0) > 0 ? Number(row.deposit_amount).toFixed(2) : '' }}
-          </template>
+        <el-table-column v-if="isColumnVisible('amount')" label="信息费金额" min-width="95" align="right" show-overflow-tooltip>
+          <template #default="{ row }">{{ row.amount ? row.amount.toFixed(2) : '0.00' }}</template>
         </el-table-column>
-        <el-table-column v-if="isColumnVisible('refund_apply_amount')" prop="refund_apply_amount" label="申请应退" min-width="90" align="right">
-          <template #default="{ row }">
-            {{ Number(row.refund_apply_amount || 0) > 0 ? Number(row.refund_apply_amount).toFixed(2) : '' }}
-          </template>
+        <el-table-column v-if="isColumnVisible('deposit_amount')" label="收到课酬" min-width="90" align="right" show-overflow-tooltip>
+          <template #default="{ row }">{{ Number(row.deposit_amount || 0) > 0 ? Number(row.deposit_amount).toFixed(2) : '' }}</template>
+        </el-table-column>
+        <el-table-column v-if="isColumnVisible('refund_apply_amount')" label="申请应退" min-width="90" align="right" show-overflow-tooltip>
+          <template #default="{ row }">{{ Number(row.refund_apply_amount || 0) > 0 ? Number(row.refund_apply_amount).toFixed(2) : '' }}</template>
         </el-table-column>
         <el-table-column
           v-if="isColumnVisible('remark')"
-          prop="remark"
           label="订单备注"
           min-width="180"
           show-overflow-tooltip
-        />
+        >
+          <template #default="{ row }">{{ row.remark }}</template>
+        </el-table-column>
         <el-table-column
           v-if="isColumnVisible('refund_reason')"
-          prop="refund_reason"
           label="申请说明"
           min-width="180"
           show-overflow-tooltip
-        />
+        >
+          <template #default="{ row }">{{ row.refund_reason }}</template>
+        </el-table-column>
         <el-table-column
           v-if="isColumnVisible('pay_remark')"
-          prop="pay_remark"
           label="支付备注"
           min-width="180"
           show-overflow-tooltip
-        />
-        <el-table-column v-if="isColumnVisible('refunded_amount')" prop="refunded_amount" label="已退金额" min-width="90" align="right">
-          <template #default="{ row }">
-            {{ Number(row.refunded_amount || 0) > 0 ? Number(row.refunded_amount).toFixed(2) : '' }}
-          </template>
+        >
+          <template #default="{ row }">{{ row.pay_remark }}</template>
         </el-table-column>
-        <el-table-column v-if="isColumnVisible('refund_time')" prop="refund_time" label="退款时间" min-width="150" />
-        <el-table-column v-if="isColumnVisible('actual_amount')" prop="actual_amount" label="实收金额" min-width="95" align="right">
-          <template #default="{ row }">
-            {{ row.actual_amount ? row.actual_amount.toFixed(2) : '0.00' }}
-          </template>
+        <el-table-column v-if="isColumnVisible('refunded_amount')" label="已退金额" min-width="90" align="right" show-overflow-tooltip>
+          <template #default="{ row }">{{ Number(row.refunded_amount || 0) > 0 ? Number(row.refunded_amount).toFixed(2) : '' }}</template>
         </el-table-column>
-        <el-table-column label="操作" min-width="300" fixed="right">
+        <el-table-column v-if="isColumnVisible('refund_time')" label="退款时间" min-width="150" show-overflow-tooltip>
+          <template #default="{ row }">{{ row.refund_time }}</template>
+        </el-table-column>
+        <el-table-column v-if="isColumnVisible('actual_amount')" label="实收金额" min-width="95" align="right" show-overflow-tooltip>
+          <template #default="{ row }">{{ row.actual_amount ? row.actual_amount.toFixed(2) : '0.00' }}</template>
+        </el-table-column>
+        <el-table-column label="操作" min-width="300" fixed="right" class-name="col-payment-actions">
           <template #default="{ row }">
             <div class="operation-actions">
               <el-button type="primary" size="small" @click="handleView(row)">查看</el-button>
@@ -521,7 +513,7 @@
 </template>
 
 <script setup>
-import { ref, reactive, onMounted, computed, watch, onBeforeUnmount } from 'vue'
+import { ref, reactive, onMounted, computed, watch, onBeforeUnmount, nextTick } from 'vue'
 import { ElMessage } from 'element-plus'
 import { RefreshRight, Grid, Download, Search, Picture, DataAnalysis } from '@element-plus/icons-vue'
 import { useRouter } from 'vue-router'
@@ -896,9 +888,6 @@ const handleTabClick = (tab) => {
   // 根据标签页设置筛选条件
   if (tab.props.name === 'all') {
     searchForm.status = undefined
-    searchForm.refund_status = undefined
-  } else if (tab.props.name === 'unpaid') {
-    searchForm.status = 'pending'
     searchForm.refund_status = undefined
   } else if (tab.props.name === 'paid') {
     // 后端支付成功状态使用 success（不是 paid）
@@ -1299,12 +1288,126 @@ onMounted(() => {
   getStatistics()
   checkMobile()
   window.addEventListener('resize', checkMobile)
+  
+  // 使用 nextTick 确保 DOM 已经渲染完成后再添加事件监听
+  nextTick(() => {
+    const tableEl = tableRef.value?.$el
+    if (tableEl) {
+      tableEl.addEventListener('copy', handleTableCopy)
+    }
+  })
 })
 
 // 清理
 onBeforeUnmount(() => {
   window.removeEventListener('resize', checkMobile)
+  // 移除复制事件监听
+  const tableEl = tableRef.value?.$el
+  if (tableEl) {
+    tableEl.removeEventListener('copy', handleTableCopy)
+  }
 })
+
+// 处理表格复制事件 - 自定义格式输出
+const handleTableCopy = (e) => {
+  const selection = window.getSelection()
+  if (!selection || selection.rangeCount === 0) return
+  
+  try {
+    // 获取选中的文本
+    const range = selection.getRangeAt(0)
+    const container = range.commonAncestorContainer
+    
+    // 检查是否在表格内
+    const tableEl = tableRef.value?.$el
+    if (!tableEl || !tableEl.contains(container)) return
+    
+    // 获取表头映射（列索引 -> 列名）
+    const headers = []
+    const thEls = tableEl.querySelectorAll('thead th')
+    thEls.forEach(th => {
+      headers.push(th.innerText.trim())
+    })
+    
+    // 获取选中的所有行
+    const selectedRows = []
+    const trs = tableEl.querySelectorAll('tbody tr')
+    
+    trs.forEach(tr => {
+      if (selection.containsNode(tr, true)) {
+        // 收集该行的所有数据
+        const rowData = {}
+        const tds = tr.querySelectorAll('td')
+        
+        tds.forEach((td, index) => {
+          const cellEl = td.querySelector('.cell')
+          if (!cellEl) return
+          
+          const headerName = headers[index]
+          if (!headerName) return
+          
+          // 跳过操作列
+          if (cellEl.querySelector('.el-button') || cellEl.querySelector('button')) return
+          
+          // 获取纯文本内容
+          let text = cellEl.innerText.trim().replace(/\s+/g, ' ')
+          if (text) {
+            rowData[headerName] = text
+          }
+        })
+        
+        // 按照指定格式组装数据
+        // 格式：【家教标题】 对接的同学 老师姓名 信息费 金额 状态+退款金额
+        const parts = []
+        
+        // 1. 家教标题
+        if (rowData['家教标题']) {
+          parts.push(rowData['家教标题'])
+        }
+        
+        // 2. 对接的同学
+        if (rowData['对接的同学']) {
+          parts.push(rowData['对接的同学'])
+        }
+        
+        // 3. 老师姓名
+        if (rowData['老师姓名']) {
+          parts.push(rowData['老师姓名'])
+        }
+        
+        // 4. 信息费金额（添加"信息费"标签）
+        if (rowData['信息费金额']) {
+          parts.push('信息费 ' + rowData['信息费金额'])
+        }
+        
+        // 5. 状态 + 退款金额（如果是已退费状态）
+        if (rowData['状态']) {
+          const status = rowData['状态']
+          const refundedAmount = rowData['已退金额'] || rowData['收到课酬']
+          
+          if (status === '已退费' && refundedAmount) {
+            parts.push(status + refundedAmount)
+          } else {
+            parts.push(status)
+          }
+        }
+        
+        if (parts.length > 0) {
+          selectedRows.push(parts.join('  '))
+        }
+      }
+    })
+    
+    if (selectedRows.length > 0) {
+      // 阻止默认复制行为
+      e.preventDefault()
+      // 设置自定义的复制内容（每行用换行分隔）
+      e.clipboardData.setData('text/plain', selectedRows.join('\n'))
+    }
+  } catch (err) {
+    console.error('复制处理失败:', err)
+  }
+}
 
 // 移动端检测
 const isMobile = ref(false)
@@ -1611,6 +1714,71 @@ const loadMore = () => {
   font-variant-numeric: tabular-nums;
 }
 
+/* 保持原有的超出隐藏功能 - 提高优先级 */
+.payment-manage :deep(.el-table .cell) {
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+  white-space: nowrap !important;
+}
+
+/* 确保 hover 时也保持省略号 */
+.payment-manage :deep(.el-table tr:hover .cell) {
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+  white-space: nowrap !important;
+}
+
+/* 优化表格复制体验 - 防止复制时出现多余换行 */
+.payment-manage :deep(.el-table td.el-table__cell) {
+  /* 让每个单元格在复制时表现为行内元素 */
+  display: table-cell;
+  vertical-align: middle;
+}
+
+/*
+ * show-overflow-tooltip 依赖触发器在单元格宽度内可测量溢出；
+ * display:inline 会让宽度随内容撑开，省略号与 Tooltip 均失效。
+ * inline-block + max-width:100% 保留单元格内省略，且不影响框选复制（仍为普通文本节点）。
+ */
+.payment-manage :deep(.el-table .el-tooltip__trigger) {
+  display: inline-block !important;
+  max-width: 100%;
+  vertical-align: middle;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.payment-manage :deep(.el-table .el-tooltip__trigger.el-tag) {
+  display: inline-flex !important;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.payment-manage :deep(.el-table .el-tag:not(.el-tooltip__trigger)) {
+  display: inline-flex !important;
+  vertical-align: middle;
+}
+
+/* 保持勾选框的正常显示 */
+.payment-manage :deep(.el-table .el-checkbox) {
+  display: inline-flex !important;
+  vertical-align: middle;
+}
+
+.payment-manage :deep(.el-table .el-checkbox__inner) {
+  display: inline-block !important;
+}
+
+/* 移除可能导致换行的元素间距 */
+.payment-manage :deep(.el-table .cell) {
+  line-height: 1.5;
+}
+
+.payment-manage :deep(.el-table .cell > *:not(:last-child)) {
+  margin-right: 0;
+}
+
 .payment-manage :deep(.el-table__body tr) {
   transition: background-color 0.2s ease;
 }
@@ -1692,8 +1860,21 @@ const loadMore = () => {
 
 /* 状态列：避免列宽过窄时省略号把「退款待处理」截成「..」 */
 .payment-manage :deep(.el-table td.col-payment-status .cell) {
-  overflow: visible;
-  white-space: nowrap;
+  overflow: visible !important;
+  white-space: nowrap !important;
+}
+
+/* 操作列：多按钮换行，不受全局 .cell 单行省略影响 */
+.payment-manage :deep(.el-table td.col-payment-actions .cell) {
+  white-space: normal !important;
+  overflow: visible !important;
+  text-overflow: clip !important;
+}
+.payment-manage :deep(.el-table td.col-payment-actions .el-tooltip__trigger) {
+  max-width: none !important;
+  white-space: normal !important;
+  overflow: visible !important;
+  text-overflow: clip !important;
 }
 
 /* 日期选择器样式优化 */

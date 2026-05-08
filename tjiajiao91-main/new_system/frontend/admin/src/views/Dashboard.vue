@@ -25,13 +25,40 @@
           <div class="tile-title">图片水印</div>
           <div class="tile-subtitle">文字 / Logo</div>
         </button>
+
+        <button class="tool-tile tile-green" type="button" @click="openAiImage">
+          <div class="tile-icon">
+            <el-icon :size="22"><Picture /></el-icon>
+          </div>
+          <div class="tile-title">AI画图</div>
+          <div class="tile-subtitle">中转API文生图</div>
+        </button>
+
+        <button class="tool-tile tile-red" type="button" @click="openXhsVideoTool">
+          <div class="tile-icon">
+            <el-icon :size="22"><VideoCamera /></el-icon>
+          </div>
+          <div class="tile-title">小红书剪辑</div>
+          <div class="tile-subtitle">图文视频下载</div>
+        </button>
+
+        <button class="tool-tile tile-black" type="button" @click="openDouyinVideoTool">
+          <div class="tile-icon">
+            <el-icon :size="22"><Film /></el-icon>
+          </div>
+          <div class="tile-title">抖音提取</div>
+          <div class="tile-subtitle">视频无水印下载</div>
+        </button>
       </div>
     </el-card>
   </div>
 </template>
 
 <script setup>
-import { Grid, PictureFilled, Stamp } from '@element-plus/icons-vue'
+import { Grid, PictureFilled, Stamp, Picture, VideoCamera, Film } from '@element-plus/icons-vue'
+import { useRouter } from 'vue-router'
+
+const router = useRouter()
 
 const iopaintUrl =
   import.meta.env.VITE_IOPAINT_URL || 'https://t.jiajiao91.com/iopaint/'
@@ -40,12 +67,27 @@ const watermarkToolUrl =
   import.meta.env.VITE_WATERMARK_URL ||
   'https://file-converter-free.com/zh/image-tools/add-watermark-to-image-free'
 
+const xhsVideoToolUrl = 'https://dlpanda.com/zh-CN/xhs'
+const douyinVideoToolUrl = 'https://dlpanda.com/douyin'
+
 function openIopaint() {
   window.open(iopaintUrl, '_blank', 'noopener,noreferrer')
 }
 
 function openWatermarkTool() {
   window.open(watermarkToolUrl, '_blank', 'noopener,noreferrer')
+}
+
+function openAiImage() {
+  router.push('/ai-image')
+}
+
+function openXhsVideoTool() {
+  window.open(xhsVideoToolUrl, '_blank', 'noopener,noreferrer')
+}
+
+function openDouyinVideoTool() {
+  window.open(douyinVideoToolUrl, '_blank', 'noopener,noreferrer')
 }
 </script>
 
@@ -123,18 +165,19 @@ color: #909399;
 }
 
 .tool-grid {
-  display: flex;
-  justify-content: flex-start;
-  align-items: flex-start;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(128px, 1fr));
   gap: 16px;
   padding: 8px 4px 16px;
+  max-width: 100%;
 }
 
 .tool-tile {
   appearance: none;
   border: 0;
-  width: 128px;
-  height: 128px;
+  width: 100%;
+  aspect-ratio: 1;
+  min-height: 128px;
   border-radius: 12px;
   padding: 14px 14px 12px;
   display: flex;
@@ -193,6 +236,114 @@ color: #909399;
 
 .tile-purple {
   background: linear-gradient(135deg, #8b5cf6, #6366f1);
+}
+
+.tile-green {
+  background: linear-gradient(135deg, #10b981, #22c55e);
+}
+
+.tile-red {
+  background: linear-gradient(135deg, #ff2442, #ff6b6b);
+}
+
+.tile-black {
+  background: linear-gradient(135deg, #1a1a1a, #333333);
+}
+
+/* 响应式设计 */
+@media (max-width: 1200px) {
+  .tool-grid {
+    grid-template-columns: repeat(auto-fill, minmax(110px, 1fr));
+    gap: 12px;
+  }
+}
+
+@media (max-width: 768px) {
+  .workbench {
+    padding: 12px;
+  }
+  
+  .page-title {
+    font-size: 20px;
+  }
+  
+  .page-subtitle {
+    font-size: 13px;
+  }
+  
+  .tool-grid {
+    grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+    gap: 10px;
+    padding: 4px 2px 12px;
+  }
+  
+  .tool-tile {
+    min-height: 100px;
+    padding: 10px 8px;
+    gap: 4px;
+    border-radius: 10px;
+  }
+  
+  .tile-icon {
+    width: 36px;
+    height: 36px;
+    border-radius: 8px;
+  }
+  
+  .tile-icon .el-icon {
+    font-size: 18px;
+  }
+  
+  .tile-title {
+    font-size: 13px;
+  }
+  
+  .tile-subtitle {
+    font-size: 11px;
+  }
+}
+
+@media (max-width: 480px) {
+  .workbench {
+    padding: 8px;
+  }
+  
+  .page-header {
+    margin-bottom: 16px;
+  }
+  
+  .page-title {
+    font-size: 18px;
+  }
+  
+  .tool-grid {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 8px;
+  }
+  
+  .tool-tile {
+    min-height: 90px;
+    padding: 8px 6px;
+    border-radius: 8px;
+  }
+  
+  .tile-icon {
+    width: 32px;
+    height: 32px;
+    border-radius: 6px;
+  }
+  
+  .tile-icon .el-icon {
+    font-size: 16px;
+  }
+  
+  .tile-title {
+    font-size: 12px;
+  }
+  
+  .tile-subtitle {
+    font-size: 10px;
+  }
 }
 
 </style>

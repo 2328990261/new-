@@ -1085,6 +1085,29 @@ watch(
   }
 )
 
+// 认证信息页面内的前端便捷联动：
+// 当管理员将任一认证开关切为"已认证"时，自动将整体审核状态切到"审核通过"。
+// 该逻辑与审核弹窗保持一致，提供相同的用户体验。
+watch(
+  () => [
+    certForm.value?.real_name_verified,
+    certForm.value?.education_verified,
+    certForm.value?.teacher_verified
+  ],
+  (newValues, oldValues) => {
+    if (!certForm.value) return
+    if (!Array.isArray(oldValues)) return
+
+    const hasAnyCertification = newValues.some(value => Number(value) === 1)
+    const switchedToCertified = newValues.some((value, idx) => Number(value) === 1 && Number(oldValues[idx]) !== 1)
+    if (!hasAnyCertification || !switchedToCertified) return
+
+    if (certForm.value.review_status !== 'approved') {
+      certForm.value.review_status = 'approved'
+    }
+  }
+)
+
 const handleEdit = () => {
   // 仅教师简历 tab 显示编辑按钮，打开教师信息编辑对话框
   editDialogVisible.value = true

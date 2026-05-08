@@ -454,7 +454,8 @@ const formData = ref({
   grade: '',
   subject: '',
   raw_content: '',
-  assigned_admin_id: null
+  assigned_admin_id: null,
+  status: '待联系'  // 添加默认状态
 })
 
 const rules = {
@@ -513,7 +514,8 @@ watch(() => props.lead, (newVal) => {
       grade: '',
       subject: '',
       raw_content: '',
-      assigned_admin_id: defaultAssignedAdminId
+      assigned_admin_id: defaultAssignedAdminId,
+      status: '待联系'  // 添加默认状态
     }
     pendingDistrictId.value = null
   }
@@ -574,7 +576,8 @@ const resetForm = () => {
     grade: '',
     subject: '',
     raw_content: '',
-    assigned_admin_id: defaultAssignedAdminId
+    assigned_admin_id: defaultAssignedAdminId,
+    status: '待联系'  // 添加默认状态
   }
   if (formRef.value) {
     formRef.value.clearValidate()
@@ -926,10 +929,14 @@ const handleSave = async () => {
   try {
     await formRef.value.validate()
     saving.value = true
+    console.log('=== 保存线索数据 ===', formData.value)
+    console.log('status 字段值:', formData.value.status)
+    console.log('status 字段类型:', typeof formData.value.status)
     await emit('save', formData.value)
     visible.value = false
   } catch (error) {
     // 表单验证失败
+    console.error('表单验证失败:', error)
   } finally {
     saving.value = false
   }

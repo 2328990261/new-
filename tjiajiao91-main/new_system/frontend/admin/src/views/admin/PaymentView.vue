@@ -150,7 +150,7 @@
               <div class="manual-section-title">退款金额：</div>
               <el-input-number
                 v-model="manualRefundForm.refundAmount"
-                :min="0.01"
+                :min="0"
                 :max="manualMaxRefundAmount"
                 :precision="2"
                 :step="0.01"
@@ -327,10 +327,8 @@ const onRefundProcessed = async () => {
 }
 
 const openManualRefundDialog = () => {
-  // 重置表单，默认退可退金额
-  manualRefundForm.refundAmount = manualMaxRefundAmount.value > 0
-    ? Number(manualMaxRefundAmount.value.toFixed(2))
-    : null
+  // 默认退款金额为 0，管理员手工填写
+  manualRefundForm.refundAmount = 0
   manualRefundForm.remark = MANUAL_REFUND_DEFAULT_REMARK
   manualRefundDialogVisible.value = true
 }

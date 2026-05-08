@@ -44,6 +44,28 @@
         </div>
       </el-form-item>
 
+      <!-- 跟进中：提醒时间必填 -->
+      <el-form-item label="提醒时间" prop="reminder_time" v-if="formData.new_status === '跟进中'" required>
+        <el-select v-model="reminderOption" placeholder="请选择提醒时间" style="width: 100%" @change="handleReminderOptionChange">
+          <el-option label="2小时后" value="2" />
+          <el-option label="4小时后" value="4" />
+          <el-option label="6小时后" value="6" />
+          <el-option label="12小时后" value="12" />
+          <el-option label="24小时后" value="24" />
+          <el-option label="自定义" value="custom" />
+        </el-select>
+        <el-date-picker
+          v-if="reminderOption === 'custom'"
+          v-model="formData.reminder_time"
+          type="datetime"
+          placeholder="选择日期时间"
+          style="width: 100%; margin-top: 10px"
+          :disabled-date="disabledDate"
+          format="YYYY-MM-DD HH:mm"
+          value-format="YYYY-MM-DD HH:mm:ss"
+        />
+      </el-form-item>
+
       <!-- 已发单：填写家教内容 -->
       <el-form-item label="家教内容" prop="tutor_title" v-if="formData.new_status === '已发单'" class="tutor-content-item">
         <el-input
@@ -211,6 +233,28 @@
           <el-button size="small" @click="addQuickRemark('需要进一步沟通')">需要进一步沟通</el-button>
           <el-button size="small" @click="addQuickRemark('暂时不需要')">暂时不需要</el-button>
         </div>
+      </el-form-item>
+
+      <!-- 跟进中：提醒时间必填 -->
+      <el-form-item label="提醒时间" prop="reminder_time" v-if="formData.new_status === '跟进中'" required>
+        <el-select v-model="reminderOption" placeholder="请选择提醒时间" style="width: 100%" @change="handleReminderOptionChange">
+          <el-option label="2小时后" value="2" />
+          <el-option label="4小时后" value="4" />
+          <el-option label="6小时后" value="6" />
+          <el-option label="12小时后" value="12" />
+          <el-option label="24小时后" value="24" />
+          <el-option label="自定义" value="custom" />
+        </el-select>
+        <el-date-picker
+          v-if="reminderOption === 'custom'"
+          v-model="formData.reminder_time"
+          type="datetime"
+          placeholder="选择日期时间"
+          style="width: 100%; margin-top: 10px"
+          :disabled-date="disabledDate"
+          format="YYYY-MM-DD HH:mm"
+          value-format="YYYY-MM-DD HH:mm:ss"
+        />
       </el-form-item>
 
       <!-- 已发单：填写家教内容 -->
@@ -387,8 +431,12 @@ const formData = ref({
   tutor_title: '',      // 家教内容（已发单时填写）
   info_fee: null,       // 信息费金额（已出单时填写）
   proof_images: [],     // 凭证截图数组（不需要时上传，支持多张）
-  invalid_images: []    // 无效截图数组（无效时上传，支持多张）
+  invalid_images: [],   // 无效截图数组（无效时上传，支持多张）
+  reminder_time: null   // 提醒时间（跟进中时必填）
 })
+
+// 提醒时间选项
+const reminderOption = ref('')
 
 // 动态验证规则
 const rules = computed(() => {
@@ -405,6 +453,20 @@ const rules = computed(() => {
   // 已出单时，信息费金额必填
   if (formData.value.new_status === '已出单') {
     baseRules.info_fee = [{ required: true, message: '请输入信息费金额', trigger: 'blur' }]
+  }
+  
+  // 跟进中时，提醒时间必填
+  if (formData.value.new_status === '跟进中') {
+    baseRules.reminder_time = [{
+      validator: (rule, value, callback) => {
+        if (!value) {
+          callback(new Error('请选择提醒时间'))
+        } else {
+          callback()
+        }
+      },
+      trigger: 'change'
+    }]
   }
   
   // 不需要时，凭证截图必填（至少一张）
@@ -457,8 +519,10 @@ const resetForm = () => {
     tutor_title: '',
     info_fee: null,
     proof_images: [],
-    invalid_images: []
+    invalid_images: [],
+    reminder_time: null
   }
+  reminderOption.value = ''
   if (formRef.value) {
     formRef.value.clearValidate()
   }
@@ -468,6 +532,34 @@ const addQuickRemark = (text) => {
   formData.value.remark = formData.value.remark
     ? formData.value.remark + '；' + text
     : text
+}
+
+// 提醒时间选项变化处理
+const handleReminderOptionChange = (value) => {
+  if (value === 'custom') {
+    // 自定义时间，不自动设置
+    formData.value.reminder_time = null
+  } else {
+    // 计算提醒时间
+    const hours = parseInt(value)
+    const now = new Date()
+    const reminderTime = new Date(now.getTime() + hours * 60 * 60 * 1000)
+    
+    // 格式化为 YYYY-MM-DD HH:mm:ss
+    const year = reminderTime.getFullYear()
+    const month = String(reminderTime.getMonth() + 1).padStart(2, '0')
+    const day = String(reminderTime.getDate()).padStart(2, '0')
+    const hour = String(reminderTime.getHours()).padStart(2, '0')
+    const minute = String(reminderTime.getMinutes()).padStart(2, '0')
+    const second = String(reminderTime.getSeconds()).padStart(2, '0')
+    
+    formData.value.reminder_time = `${year}-${month}-${day} ${hour}:${minute}:${second}`
+  }
+}
+
+// 禁用过去的日期
+const disabledDate = (time) => {
+  return time.getTime() < Date.now() - 24 * 60 * 60 * 1000
 }
 
 // 上传前检查

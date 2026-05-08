@@ -1,5 +1,25 @@
 <template>
   <div class="application-manage">
+    <!-- 移动端视图 -->
+    <ApplicationManageMobile
+      v-if="isMobile"
+      :loading="loading"
+      :statistics="statistics"
+      :applications="applicationList"
+      :active-tab="viewScope"
+      :filters="mobileFilters"
+      :has-more="hasMore"
+      :status-counts="statusCounts"
+      @tab-change="handleMobileTabChange"
+      @filter-change="handleMobileFilterChange"
+      @view="handleView"
+      @review="handleMobileReview"
+      @delete="handleDelete"
+      @load-more="loadMore"
+    />
+
+    <!-- 桌面端视图 -->
+    <div v-else class="desktop-view">
     <!-- 主Tab：我的投递 / 全部投递（样式对齐线索管理） -->
     <div class="scope-tabs">
       <div
@@ -69,7 +89,7 @@
             <span class="tab-label">
               <el-icon><List /></el-icon>
               全部
-              <el-badge :value="viewScope === 'mine' ? statistics.mine : statistics.total" :max="999" class="tab-badge" />
+              <span class="status-tab-badge">{{ allTabCount }}</span>
             </span>
           </template>
         </el-tab-pane>
@@ -78,7 +98,7 @@
             <span class="tab-label">
               <el-icon><Clock /></el-icon>
               待审核
-              <el-badge :value="viewScope === 'mine' ? (statistics.mine_pending || 0) : statistics.pending" :max="999" class="tab-badge" type="warning" />
+              <span class="status-tab-badge status-tab-badge--pending">{{ statusCounts.pending }}</span>
             </span>
           </template>
         </el-tab-pane>
@@ -87,7 +107,7 @@
             <span class="tab-label">
               <el-icon><CircleCheck /></el-icon>
               已通过
-              <el-badge :value="viewScope === 'mine' ? (statistics.mine_approved || 0) : statistics.approved" :max="999" class="tab-badge" type="success" />
+              <span class="status-tab-badge status-tab-badge--success">{{ statusCounts.approved }}</span>
             </span>
           </template>
         </el-tab-pane>
@@ -96,7 +116,7 @@
             <span class="tab-label">
               <el-icon><CircleClose /></el-icon>
               已拒绝
-              <el-badge :value="viewScope === 'mine' ? (statistics.mine_rejected || 0) : statistics.rejected" :max="999" class="tab-badge" type="danger" />
+              <span class="status-tab-badge status-tab-badge--danger">{{ statusCounts.rejected }}</span>
             </span>
           </template>
         </el-tab-pane>
@@ -872,8 +892,14 @@
       </template>
     </el-dialog>
 
-    <!-- 审核弹窗 -->
-    <el-dialog v-model="reviewVisible" title="审核投递" width="520px">
+    <!-- 审核弹窗 - 桌面端 -->
+    <el-dialog 
+      v-if="!isMobile"
+      v-model="reviewVisible" 
+      title="审核投递" 
+      width="520px"
+      :append-to-body="true"
+    >
       <el-form :model="reviewForm" label-width="100px">
         <el-form-item label="审核结果">
           <el-radio-group v-model="reviewForm.status">
@@ -905,8 +931,50 @@
       </template>
     </el-dialog>
 
-    <!-- 批量审核弹窗 -->
-    <el-dialog v-model="batchReviewVisible" title="批量审核" width="520px">
+    <!-- 审核抽屉 - 移动端 -->
+    <el-drawer
+      v-else
+      v-model="reviewVisible"
+      title="审核投递"
+      direction="btt"
+      size="auto"
+      :append-to-body="true"
+    >
+      <div style="padding: 0 16px 20px;">
+        <el-form :model="reviewForm" label-width="80px">
+          <el-form-item label="审核结果">
+            <el-radio-group v-model="reviewForm.status">
+              <el-radio label="approved">通过</el-radio>
+              <el-radio label="rejected">拒绝</el-radio>
+            </el-radio-group>
+          </el-form-item>
+          <el-form-item label="备注">
+            <el-input
+              v-model="reviewForm.remark"
+              type="textarea"
+              :rows="4"
+              placeholder="请输入审核备注（小程序端会展示拒绝原因）"
+              maxlength="200"
+              show-word-limit
+            />
+          </el-form-item>
+        </el-form>
+        
+        <div style="display: flex; gap: 12px; margin-top: 20px;">
+          <el-button style="flex: 1;" @click="reviewVisible = false">取消</el-button>
+          <el-button style="flex: 1;" type="primary" @click="confirmReview">确定</el-button>
+        </div>
+      </div>
+    </el-drawer>
+
+    <!-- 批量审核弹窗 - 桌面端 -->
+    <el-dialog 
+      v-if="!isMobile"
+      v-model="batchReviewVisible" 
+      title="批量审核" 
+      width="520px"
+      :append-to-body="true"
+    >
       <el-form :model="batchReviewForm" label-width="100px">
         <el-form-item label="审核结果">
           <el-radio-group v-model="batchReviewForm.status">
@@ -936,11 +1004,48 @@
         </div>
       </template>
     </el-dialog>
+
+    <!-- 批量审核抽屉 - 移动端 -->
+    <el-drawer
+      v-else
+      v-model="batchReviewVisible"
+      title="批量审核"
+      direction="btt"
+      size="auto"
+      :append-to-body="true"
+    >
+      <div style="padding: 0 16px 20px;">
+        <el-form :model="batchReviewForm" label-width="80px">
+          <el-form-item label="审核结果">
+            <el-radio-group v-model="batchReviewForm.status">
+              <el-radio label="approved">通过</el-radio>
+              <el-radio label="rejected">拒绝</el-radio>
+            </el-radio-group>
+          </el-form-item>
+          <el-form-item label="备注">
+            <el-input
+              v-model="batchReviewForm.remark"
+              type="textarea"
+              :rows="4"
+              placeholder="请输入审核备注（选填）"
+              maxlength="200"
+              show-word-limit
+            />
+          </el-form-item>
+        </el-form>
+        
+        <div style="display: flex; gap: 12px; margin-top: 20px;">
+          <el-button style="flex: 1;" @click="batchReviewVisible = false">取消</el-button>
+          <el-button style="flex: 1;" type="primary" @click="confirmBatchReview">确定</el-button>
+        </div>
+      </div>
+    </el-drawer>
+    </div>
   </div>
 </template>
 
 <script setup>
-import { ref, reactive, onMounted } from 'vue'
+import { ref, reactive, onMounted, computed, onBeforeUnmount } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Search, RefreshLeft, Lock, Location, Plus, Close, List, User, Clock, CircleCheck, CircleClose } from '@element-plus/icons-vue'
@@ -953,6 +1058,7 @@ import {
   deleteApplication 
 } from '@/api/application'
 import { getTeacherDetail, updateTeacher } from '@/api/teacher'
+import ApplicationManageMobile from '@/components/application/ApplicationManageMobile.vue'
 
 const router = useRouter()
 
@@ -976,6 +1082,128 @@ const statistics = reactive({
   mine_approved: 0,
   mine_rejected: 0
 })
+
+// 移动端检测
+const isMobile = ref(false)
+const checkMobile = () => {
+  isMobile.value = window.innerWidth <= 768
+}
+
+// 已查看的投递ID集合（PC端和移动端共享）
+const viewedApplicationIds = ref(new Set())
+
+// 从localStorage加载已查看的投递ID
+const loadViewedIds = () => {
+  try {
+    const stored = localStorage.getItem('viewed_application_ids')
+    if (stored) {
+      viewedApplicationIds.value = new Set(JSON.parse(stored))
+    }
+  } catch (e) {
+    console.error('加载已查看投递ID失败:', e)
+  }
+}
+
+// 保存已查看的投递ID到localStorage
+const saveViewedIds = () => {
+  try {
+    localStorage.setItem('viewed_application_ids', JSON.stringify([...viewedApplicationIds.value]))
+  } catch (e) {
+    console.error('保存已查看投递ID失败:', e)
+  }
+}
+
+// 标记投递为已查看
+const markAsViewed = (applicationId) => {
+  viewedApplicationIds.value.add(applicationId)
+  saveViewedIds()
+}
+
+// 移动端筛选条件
+const mobileFilters = ref({
+  status: '',
+  teacher_name: '',
+  tutor_title: '',
+  timeRange: '',
+  customDateRange: null,
+  dateRange: null
+})
+
+// 移动端状态计数
+const statusCounts = computed(() => {
+  if (viewScope.value === 'mine') {
+    return {
+      pending: statistics.mine_pending || 0,
+      approved: statistics.mine_approved || 0,
+      rejected: statistics.mine_rejected || 0
+    }
+  } else {
+    return {
+      pending: statistics.pending || 0,
+      approved: statistics.approved || 0,
+      rejected: statistics.rejected || 0
+    }
+  }
+})
+
+/** 与顶部「我的投递 / 全部投递」一致：当前范围下的投递总数 */
+const allTabCount = computed(() =>
+  viewScope.value === 'mine' ? (statistics.mine || 0) : (statistics.total || 0)
+)
+
+// 是否有更多数据
+const hasMore = computed(() => {
+  return currentPage.value * pageSize.value < total.value
+})
+
+// 移动端Tab切换
+const handleMobileTabChange = (tab) => {
+  viewScope.value = tab
+  handleScopeClick(tab)
+}
+
+// 移动端筛选变化
+const handleMobileFilterChange = (filters) => {
+  mobileFilters.value = filters
+  
+  // 更新桌面端筛选条件
+  searchForm.teacher_name = filters.teacher_name || ''
+  searchForm.tutor_title = filters.tutor_title || ''
+  searchForm.status = filters.status || undefined
+  searchForm.dateRange = filters.dateRange || null
+  
+  currentPage.value = 1
+  loadData()
+}
+
+// 加载更多
+const loadMore = () => {
+  currentPage.value++
+  loadData({ append: true })
+}
+
+// 处理移动端审核（直接提交，不打开弹窗）
+const handleMobileReview = async (reviewData) => {
+  try {
+    const res = await reviewApplication({
+      id: reviewData.id,
+      status: reviewData.status,
+      remark: reviewData.remark
+    })
+    
+    if (res.success || res.code === 200) {
+      ElMessage.success(res.message || '审核成功')
+      loadData()
+      loadStatistics()
+    } else {
+      ElMessage.error(res.message || '审核失败')
+    }
+  } catch (error) {
+    console.error('审核失败:', error)
+    ElMessage.error('审核失败')
+  }
+}
+
 
 const searchForm = reactive({
   teacher_name: '',
@@ -1017,6 +1245,8 @@ const loadData = async (override = {}) => {
     loading.value = true
     const resolvedPage = override.page ?? currentPage.value
     const resolvedPageSize = override.pageSize ?? pageSize.value
+    const append = override.append || false
+    
     const params = {
       page: resolvedPage,
       page_size: resolvedPageSize,
@@ -1039,7 +1269,14 @@ const loadData = async (override = {}) => {
     if (res.success || res.code === 200) {
       // 兼容两种返回格式
       const data = res.data || res
-      applicationList.value = data.list || []
+      
+      // 如果是追加模式（移动端加载更多），则追加数据
+      if (append) {
+        applicationList.value = [...applicationList.value, ...(data.list || [])]
+      } else {
+        applicationList.value = data.list || []
+      }
+      
       total.value = data.total || 0
     }
   } catch (error) {
@@ -1556,14 +1793,31 @@ const getEducationLevelLabel = (level) => {
 }
 
 onMounted(() => {
+  checkMobile()
+  window.addEventListener('resize', checkMobile)
   loadData()
   loadStatistics()
+})
+
+onBeforeUnmount(() => {
+  window.removeEventListener('resize', checkMobile)
 })
 </script>
 
 <style scoped>
 .application-manage {
   padding: 20px;
+}
+
+/* 移动端/桌面端视图切换 */
+@media (max-width: 768px) {
+  .application-manage {
+    padding: 0;
+  }
+  
+  .desktop-view {
+    display: none !important;
+  }
 }
 
 /* 主Tab：我的投递/全部投递（与线索管理 我的线索/全部线索 同款样式） */
@@ -1650,9 +1904,61 @@ onMounted(() => {
 }
 
 .tab-label {
-  display: flex;
+  display: inline-flex;
   align-items: center;
   gap: 6px;
+  position: relative;
+}
+
+.status-tab-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 22px;
+  padding: 0 7px;
+  height: 22px;
+  margin-left: 2px;
+  border-radius: 11px;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1;
+  background: #ebeef5;
+  color: #606266;
+}
+
+.status-tab-badge--pending {
+  background: #fdf6ec;
+  color: #e6a23c;
+}
+
+.status-tab-badge--success {
+  background: #f0f9eb;
+  color: #67c23a;
+}
+
+.status-tab-badge--danger {
+  background: #fef0f0;
+  color: #f56c6c;
+}
+
+:deep(.el-tabs__item.is-active) .status-tab-badge {
+  background: rgba(64, 158, 255, 0.12);
+  color: #409eff;
+}
+
+:deep(.el-tabs__item.is-active) .status-tab-badge--pending {
+  background: rgba(230, 162, 60, 0.2);
+  color: #b88230;
+}
+
+:deep(.el-tabs__item.is-active) .status-tab-badge--success {
+  background: rgba(103, 194, 58, 0.18);
+  color: #529b2e;
+}
+
+:deep(.el-tabs__item.is-active) .status-tab-badge--danger {
+  background: rgba(245, 108, 108, 0.15);
+  color: #c45656;
 }
 
 .tab-badge {
@@ -1711,5 +2017,25 @@ onMounted(() => {
 
 :deep(.el-upload:hover .upload-overlay) {
   opacity: 1;
+}
+
+/* 移动端抽屉样式优化 */
+:deep(.el-drawer__body) {
+  padding: 0;
+}
+
+:deep(.el-drawer__header) {
+  margin-bottom: 16px;
+  padding: 16px;
+  border-bottom: 1px solid #f0f0f0;
+}
+
+:deep(.el-drawer.btt) {
+  border-radius: 16px 16px 0 0;
+}
+
+
+.tab-label {
+  position: relative;
 }
 </style>

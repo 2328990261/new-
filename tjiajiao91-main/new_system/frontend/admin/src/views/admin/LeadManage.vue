@@ -1558,6 +1558,10 @@ const handleRecognize = async (content) => {
 // 保存
 const handleSave = async (formData) => {
   try {
+    console.log('=== LeadManage handleSave 接收到的数据 ===', formData)
+    console.log('status 字段值:', formData.status)
+    console.log('status 字段类型:', typeof formData.status)
+    
     const res = formData.id
       ? await updateLead(formData.id, formData)
       : await createLead(formData)

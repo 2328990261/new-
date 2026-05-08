@@ -1,6 +1,6 @@
-// 组件预加载工�?
+// 组件预加载工�?
 export const preloadComponents = () => {
-  // 预加载主要组�?
+  // 预加载主要组�?
   const components = [
     () => import('@/views/Dashboard.vue'),
     () => import('@/views/admin/TutorManage.vue'),
@@ -19,7 +19,7 @@ export const preloadComponents = () => {
     requestIdleCallback(() => {
       components.forEach(component => {
         component().catch(err => {
-          console.warn('组件预加载失�?', err)
+          console.warn('组件预加载失�?', err)
         })
       })
     })
@@ -28,14 +28,14 @@ export const preloadComponents = () => {
     setTimeout(() => {
       components.forEach(component => {
         component().catch(err => {
-          console.warn('组件预加载失�?', err)
+          console.warn('组件预加载失�?', err)
         })
       })
     }, 100)
   }
 }
 
-// 路由预加�?
+// 路由预加�?
 export const preloadRoute = (routeName) => {
   const routeMap = {
     'Dashboard': () => import('@/views/Dashboard.vue'),
@@ -48,11 +48,12 @@ export const preloadRoute = (routeName) => {
     'PaymentManage': () => import('@/views/admin/PaymentManage.vue'),
     'PaymentStats': () => import('@/views/admin/PaymentStats.vue'),
     'CityLightManage': () => import('@/views/admin/CityLightManage.vue')
+    
   }
 
   if (routeMap[routeName]) {
     routeMap[routeName]().catch(err => {
-      console.warn(`路由 ${routeName} 预加载失�?`, err)
+      console.warn(`路由 ${routeName} 预加载失�?`, err)
     })
   }
 }

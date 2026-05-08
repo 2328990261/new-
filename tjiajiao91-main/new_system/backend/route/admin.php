@@ -43,6 +43,7 @@ Route::group('admin/api', function () {
         Route::get('dashboard/hot-cities', 'admin.Dashboard/hotCities');
         Route::get('dashboard/hot-subjects', 'admin.Dashboard/hotSubjects');
         Route::get('dashboard/admin-ranking', 'admin.Dashboard/adminRanking');
+        Route::get('dashboard/todo-stats', 'admin.Dashboard/todoStats');  // 待办事项统计
         
         // 省份管理
         Route::get('provinces/all', 'admin.Province/all');
@@ -358,10 +359,10 @@ Route::group('admin/api', function () {
         Route::post('enterprise-config/test', 'admin.EnterpriseConfig/testConnection');
         Route::post('enterprise-config/sync', 'admin.EnterpriseConfig/syncContacts');
         
-        // 企业管理 - 人员管理
-        Route::get('personnel/departments', 'admin.Personnel/departments');
-        Route::get('personnel/statistics', 'admin.Personnel/statistics');
-        Route::get('personnel/:userid', 'admin.Personnel/read');
+        // 企业管理 - 人员管理（本地表，已弃用企业微信同步）
+        // 注意：具体路由必须放在通用路由之前
+        Route::post('personnel/uploadAttachment', 'admin.Personnel/uploadAttachment');
+        Route::get('personnel/:id', 'admin.Personnel/read');
         Route::get('personnel', 'admin.Personnel/index');
         Route::post('personnel', 'admin.Personnel/save');
         Route::put('personnel/:id', 'admin.Personnel/update');
@@ -379,12 +380,35 @@ Route::group('admin/api', function () {
         Route::put('salary/:id', 'admin.Salary/update');
         Route::delete('salary/:id', 'admin.Salary/delete');
         
+        // 企业管理 - 人员薪酬管理
+        // 注意：具体路由必须放在通用路由之前
+        Route::get('personnel-salary/statistics', 'admin.PersonnelSalary/statistics');
+        Route::get('personnel-salary/personnel-options', 'admin.PersonnelSalary/getPersonnelOptions');
+        Route::get('personnel-salary/current/<personnelId>', 'admin.PersonnelSalary/getCurrentByPersonnel');
+        Route::get('personnel-salary/<id>', 'admin.PersonnelSalary/read')->pattern(['id' => '\d+']);
+        Route::get('personnel-salary', 'admin.PersonnelSalary/index');
+        Route::post('personnel-salary', 'admin.PersonnelSalary/save');
+        Route::put('personnel-salary/<id>', 'admin.PersonnelSalary/update')->pattern(['id' => '\d+']);
+        Route::delete('personnel-salary/<id>', 'admin.PersonnelSalary/delete')->pattern(['id' => '\d+']);
+        
+        // 测试路由
+        Route::get('test-personnel-salary', 'admin.TestPersonnelSalary/test');
+        
         // 企业管理 - 费用类型管理
         Route::get('expense-types/enabled', 'admin.ExpenseType/getEnabled');
         Route::get('expense-types', 'admin.ExpenseType/index');
         Route::post('expense-types', 'admin.ExpenseType/create');
         Route::put('expense-types/:id', 'admin.ExpenseType/update');
         Route::delete('expense-types/:id', 'admin.ExpenseType/delete');
+
+        // AI 画图（快跑中转）
+        Route::post('kuaipao/image', 'admin.KuaipaoImage/generate');
+        Route::post('kuaipao/image-to-image', 'admin.KuaipaoImage/imageToImage');
+        Route::get('kuaipao/debug-config', 'admin.KuaipaoImage/debugConfig');
+
+        // AI 配置（API Key / 中转地址，存数据库）
+        Route::get('ai-config', 'admin.AiConfig/getConfig');
+        Route::post('ai-config', 'admin.AiConfig/saveConfig');
         
         // 企业管理 - 收款单位和支付方式配置
         Route::get('receipt-methods/config', 'admin.ReceiptPaymentConfig/getReceiptMethods');

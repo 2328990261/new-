@@ -22,20 +22,27 @@
               <el-icon style="margin-right: 4px;"><View /></el-icon>
               查看老师小程序
             </el-button>
-            <el-button 
-              v-if="currentApplication && currentApplication.status === 'pending'" 
-              type="success" 
-              @click="handleReview('approved')"
-            >
-              通过
-            </el-button>
-            <el-button 
-              v-if="currentApplication && currentApplication.status === 'pending'" 
-              type="danger" 
-              @click="handleReview('rejected')"
-            >
-              拒绝
-            </el-button>
+            <!-- 待审核状态：显示通过和拒绝按钮 -->
+            <template v-if="currentApplication && currentApplication.status === 'pending'">
+              <el-button type="success" @click="handleReview('approved')">
+                通过
+              </el-button>
+              <el-button type="danger" @click="handleReview('rejected')">
+                拒绝
+              </el-button>
+            </template>
+            <!-- 已通过状态：显示拒绝按钮 -->
+            <template v-else-if="currentApplication && currentApplication.status === 'approved'">
+              <el-button type="danger" @click="handleReview('rejected')">
+                改为拒绝
+              </el-button>
+            </template>
+            <!-- 已拒绝状态：显示通过按钮 -->
+            <template v-else-if="currentApplication && currentApplication.status === 'rejected'">
+              <el-button type="success" @click="handleReview('approved')">
+                改为通过
+              </el-button>
+            </template>
           </div>
         </div>
       </div>
@@ -602,5 +609,55 @@ onMounted(() => {
 /* 防止标签文字换行 */
 :deep(.no-wrap-label) {
   white-space: nowrap;
+}
+
+/* 移动端适配 */
+@media (max-width: 768px) {
+  .content-wrapper {
+    padding: 12px;
+  }
+  
+  .page-header {
+    padding: 16px 12px;
+  }
+  
+  .page-header > div {
+    flex-direction: column !important;
+    gap: 12px !important;
+  }
+  
+  .page-header > div > div {
+    width: 100%;
+    flex-wrap: wrap;
+  }
+  
+  .page-header .el-button {
+    flex: 1;
+    min-width: 0;
+  }
+  
+  /* 简历头部区域 */
+  .detail-content > :deep(.el-card) .el-avatar {
+    width: 80px !important;
+    height: 80px !important;
+  }
+  
+  /* 描述列表在移动端改为单列 */
+  :deep(.el-descriptions) {
+    font-size: 14px;
+  }
+  
+  :deep(.el-descriptions__label) {
+    width: 80px !important;
+  }
+  
+  /* 卡片内边距调整 */
+  :deep(.el-card__body) {
+    padding: 16px 12px;
+  }
+  
+  :deep(.el-card__header) {
+    padding: 12px;
+  }
 }
 </style>

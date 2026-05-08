@@ -8,10 +8,13 @@ import { getBaseUrl } from './request.js'
 // 本地兜底（接口失败或未配置表时使用）
 const TEMPLATE_ID = 'szFjrvi1RabxvzvKV-zxkAHyb2aeu3wT46IzM3t8fHo'
 const RESUME_REVIEW_TEMPLATE_ID = 'TGeivjshmTSB45SgtaLUORhwkDifcz9rsrdDZjy_aAU'
+// 简历投递审核通知模板ID（统一模板，通过和驳回都用这个）
+const APPLICATION_AUDIT_TEMPLATE_ID = 'TEmKXser2gK_mSrwcs_sFJveBWP9wN5UV8dtUGUKXNk'
 
 const FALLBACK_TEMPLATES = {
 	tutor_recommend: TEMPLATE_ID,
-	resume_review: RESUME_REVIEW_TEMPLATE_ID
+	resume_review: RESUME_REVIEW_TEMPLATE_ID,
+	tutor_order_audit_notify: APPLICATION_AUDIT_TEMPLATE_ID
 }
 
 let templatesCache = null
@@ -149,15 +152,16 @@ function silentRecordSubscribe(userInfo, templateId) {
 }
 
 /**
- * 请求「简历审核结果」订阅授权
+ * 请求「简历投递审核」订阅授权（统一模板）
  */
 export function requestResumeReviewSubscribe(options = {}) {
 	return fetchMiniTemplatesMap().then((templates) => {
-		const tmplId = templates.resume_review || RESUME_REVIEW_TEMPLATE_ID
+		const auditId = templates.tutor_order_audit_notify || APPLICATION_AUDIT_TEMPLATE_ID
+		
 		return new Promise((resolve, reject) => {
 			const userInfo = auth.getUserInfo()
 			log('requestResumeReviewSubscribe:start', {
-				templateId: tmplId,
+				auditTemplateId: auditId,
 				baseUrl: getBaseUrl(),
 				userId: userInfo?.id || null,
 				openidPrefix: (userInfo?.openid || '').slice(0, 8)
@@ -169,28 +173,28 @@ export function requestResumeReviewSubscribe(options = {}) {
 			}
 
 			uni.requestSubscribeMessage({
-				tmplIds: [tmplId],
+				tmplIds: [auditId],
 				success: async (res) => {
-					log('requestResumeReviewSubscribe:wx_success', res)
-					if (res[tmplId] === 'accept') {
+					log('requestResumeReviewSubscribe:result', res)
+					
+					if (res[auditId] === 'accept') {
 						log('requestResumeReviewSubscribe:accepted')
-						silentRecordSubscribe(userInfo, tmplId)
+						silentRecordSubscribe(userInfo, auditId)
+						uni.showToast({ title: '订阅成功', icon: 'success' })
 						if (options.success) options.success(res)
 						resolve(res)
-						return
-					}
-					if (res[tmplId] === 'reject') {
-						log('requestResumeReviewSubscribe:rejected')
+					} else if (res[auditId] === 'reject') {
+						uni.showToast({ title: '您拒绝了订阅', icon: 'none' })
 						if (options.fail) options.fail(new Error('用户拒绝'))
 						reject(new Error('用户拒绝'))
-						return
+					} else {
+						if (options.fail) options.fail(new Error('订阅取消'))
+						reject(new Error('订阅取消'))
 					}
-					log('requestResumeReviewSubscribe:cancel_or_other')
-					if (options.fail) options.fail(new Error('订阅取消'))
-					reject(new Error('订阅取消'))
 				},
 				fail: (err) => {
-					log('requestResumeReviewSubscribe:wx_fail', err)
+					log('requestResumeReviewSubscribe:fail', err)
+					uni.showToast({ title: '订阅失败', icon: 'none' })
 					if (options.fail) options.fail(err)
 					reject(err)
 				}
@@ -242,5 +246,6 @@ export default {
 	subscribeOnTeacherRegister,
 	fetchMiniTemplatesMap,
 	TEMPLATE_ID,
-	RESUME_REVIEW_TEMPLATE_ID
+	RESUME_REVIEW_TEMPLATE_ID,
+	APPLICATION_AUDIT_TEMPLATE_ID
 }

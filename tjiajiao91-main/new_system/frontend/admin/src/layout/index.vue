@@ -360,6 +360,13 @@
         </el-timeline>
       </div>
     </el-dialog>
+    
+    <!-- 待办提醒弹窗 -->
+    <TodoReminderDialog
+      v-model="todoReminderVisible"
+      :todo-stats="todoStats"
+      @close="handleTodoReminderClose"
+    />
   </el-container>
 </template>
 
@@ -397,6 +404,8 @@ import {
 } from '@element-plus/icons-vue'
 import { useTabsStore } from '@/store/modules/tabs'
 import Sortable from 'sortablejs'
+import TodoReminderDialog from '@/components/common/TodoReminderDialog.vue'
+import { getTodoStats } from '@/api/dashboard'
 
 const route = useRoute()
 const router = useRouter()
@@ -539,6 +548,14 @@ const updateLogVisible = ref(false)
 // 是否有未读更新
 const hasUnreadUpdates = ref(false)
 
+// 待办提醒弹窗
+const todoReminderVisible = ref(false)
+const todoStats = ref({
+  pendingLeads: 0,
+  pendingApplications: 0,
+  pendingSubmissions: 0
+})
+
 // 最新版本号（用于判断是否已读）
 const LATEST_VERSION = 'v1.2.0'
 
@@ -600,7 +617,61 @@ const getLogType = (type) => {
   return typeMap[type] || 'info'
 }
 
-// 监听路由变化，管理标签页（使用 fullPath 保留 query）
+// 加载待办事项统计
+const loadTodoStats = async () => {
+  try {
+    console.log('=== 开始加载待办事项统计 ===')
+    console.log('当前用户角色:', userStore.role)
+    
+    const res = await getTodoStats()
+    console.log('待办事项 API 响应:', res)
+    
+    if (res.success) {
+      todoStats.value = res.data
+      console.log('待办事项数据:', todoStats.value)
+      
+      // 检查是否需要显示提醒
+      const hasTodos = res.data.pendingLeads > 0 || 
+                       res.data.pendingApplications > 0 || 
+                       res.data.pendingSubmissions > 0
+      
+      console.log('是否有待办事项:', hasTodos)
+      
+      if (hasTodos) {
+        // 检查今日是否已提醒过
+        const today = new Date().toDateString()
+        const hiddenDate = localStorage.getItem('todo_reminder_hidden_date')
+        
+        console.log('今日日期:', today)
+        console.log('隐藏日期:', hiddenDate)
+        console.log('是否需要显示弹窗:', hiddenDate !== today)
+        
+        if (hiddenDate !== today) {
+          // 延迟显示，避免与其他弹窗冲突
+          setTimeout(() => {
+            console.log('显示待办提醒弹窗')
+            todoReminderVisible.value = true
+          }, 1000)
+        } else {
+          console.log('今日已提醒过，不再显示')
+        }
+      } else {
+        console.log('没有待办事项，不显示弹窗')
+      }
+    } else {
+      console.error('API 返回失败:', res.error)
+    }
+  } catch (error) {
+    console.error('加载待办事项失败:', error)
+  }
+}
+
+// 关闭待办提醒
+const handleTodoReminderClose = () => {
+  todoReminderVisible.value = false
+}
+
+// 监听路由变化,管理标签页（使用 fullPath 保留 query）
 watch(() => route.fullPath, (newFullPath) => {
   if (newFullPath) {
     const title = tabsStore.getPageTitle(newFullPath)
@@ -683,6 +754,12 @@ onMounted(() => {
   setTimeout(() => {
     initSortable()
   }, 500)
+  
+  // 加载待办事项（仅客服组和组长）
+  const role = userStore.role
+  if (role === 'customer_service' || role === 'team_leader' || role === 'super_admin') {
+    loadTodoStats()
+  }
 })
 
 // 组件卸载时清理

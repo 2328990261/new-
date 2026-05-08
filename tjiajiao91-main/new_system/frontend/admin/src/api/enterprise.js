@@ -1,41 +1,6 @@
 import request from '@/utils/request'
 
-// ========== 企业配置 ==========
-
-// 获取企业配置
-export function getEnterpriseConfig() {
-  return request({
-    url: '/enterprise-config',
-    method: 'get'
-  })
-}
-
-// 保存企业配置
-export function saveEnterpriseConfig(data) {
-  return request({
-    url: '/enterprise-config',
-    method: 'post',
-    data
-  })
-}
-
-// 测试企业微信连接
-export function testEnterpriseConnection() {
-  return request({
-    url: '/enterprise-config/test',
-    method: 'post'
-  })
-}
-
-// 同步企业微信通讯录
-export function syncEnterpriseContacts() {
-  return request({
-    url: '/enterprise-config/sync',
-    method: 'post'
-  })
-}
-
-// ========== 人员管理 ==========
+// ========== 人员管理（本地表，已弃用企业微信同步） ==========
 
 // 获取人员列表
 export function getPersonnelList(params) {
@@ -43,6 +8,14 @@ export function getPersonnelList(params) {
     url: '/personnel',
     method: 'get',
     params
+  })
+}
+
+// 获取人员详情（含教育经历 / 紧急联系人）
+export function getPersonnelDetail(id) {
+  return request({
+    url: `/personnel/${id}`,
+    method: 'get'
   })
 }
 
@@ -72,17 +45,78 @@ export function deletePersonnel(id) {
   })
 }
 
-// 获取人员统计
-export function getPersonnelStatistics() {
+// ========== 人员薪酬管理 ==========
+
+// 获取人员薪酬列表
+export function getPersonnelSalaryList(params) {
   return request({
-    url: '/personnel/statistics',
+    url: '/personnel-salary',
+    method: 'get',
+    params
+  })
+}
+
+// 获取人员薪酬详情
+export function getPersonnelSalaryDetail(id) {
+  return request({
+    url: `/personnel-salary/${id}`,
     method: 'get'
   })
 }
 
-// ========== 薪酬管理 ==========
+// 根据人员ID获取当前有效薪酬
+export function getCurrentSalaryByPersonnel(personnelId) {
+  return request({
+    url: `/personnel-salary/current/${personnelId}`,
+    method: 'get'
+  })
+}
 
-// 获取薪酬列表
+// 创建人员薪酬记录
+export function createPersonnelSalary(data) {
+  return request({
+    url: '/personnel-salary',
+    method: 'post',
+    data
+  })
+}
+
+// 更新人员薪酬记录
+export function updatePersonnelSalary(id, data) {
+  return request({
+    url: `/personnel-salary/${id}`,
+    method: 'put',
+    data
+  })
+}
+
+// 删除人员薪酬记录
+export function deletePersonnelSalary(id) {
+  return request({
+    url: `/personnel-salary/${id}`,
+    method: 'delete'
+  })
+}
+
+// 获取人员选项（用于下拉选择）
+export function getPersonnelOptions() {
+  return request({
+    url: '/personnel-salary/personnel-options',
+    method: 'get'
+  })
+}
+
+// 获取薪酬统计
+export function getPersonnelSalaryStatistics() {
+  return request({
+    url: '/personnel-salary/statistics',
+    method: 'get'
+  })
+}
+
+// ========== 支出管理 ==========
+
+// 获取支出列表
 export function getSalaryList(params) {
   return request({
     url: '/salary',

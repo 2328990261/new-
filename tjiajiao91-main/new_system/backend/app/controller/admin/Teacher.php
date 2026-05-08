@@ -48,6 +48,7 @@ class Teacher extends BaseController
                     $query->where('name', 'like', '%' . $keyword . '%')
                           ->whereOr('phone', 'like', '%' . $keyword . '%')
                           ->whereOr('wechat_id', 'like', '%' . $keyword . '%')
+                          ->whereOr('openid', 'like', '%' . $keyword . '%')
                           ->whereOr('teacher_no', 'like', '%' . $keyword . '%')
                           ->whereOr('school', 'like', '%' . $keyword . '%')
                           ->whereOr('hometown', 'like', '%' . $keyword . '%')

@@ -191,7 +191,7 @@
             <template #default="scope">
               <template v-if="scope?.row">
                 <div>{{ scope.row.invitee_name || '-' }}</div>
-                <div style="color: #999; font-size: 12px;">{{ maskPhone(scope.row.invitee_phone) }}</div>
+                <div style="color: #999; font-size: 12px;">{{ scope.row.invitee_phone || '-' }}</div>
               </template>
             </template>
           </el-table-column>

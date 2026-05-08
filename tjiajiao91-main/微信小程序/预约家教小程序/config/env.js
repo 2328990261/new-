@@ -7,7 +7,7 @@ console.log('=== 环境配置文件已加载 ===')
 // 设为 true 时始终使用下方 FORCE_ENV；设为 false 时按小程序版本自动判断
 const USE_FORCE_ENV = true
 // 强制环境：'development' = 本地/开发，'production' = 线上
-const FORCE_ENV ='production'
+const FORCE_ENV ='development'
 // ====================================================
 
 /**

@@ -19,46 +19,105 @@
         <el-tab-pane label="人员管理" name="personnel">
           <div class="toolbar">
             <div class="left">
-              <el-select v-model="personnelQuery.department_id" placeholder="选择部门" clearable style="width: 180px;" @change="fetchPersonnelList">
-                <el-option label="全部部门" :value="1" />
-                <el-option
-                  v-for="dept in departmentList"
-                  :key="dept.id"
-                  :label="dept.name"
-                  :value="dept.id"
-                />
-              </el-select>
-              <el-select v-model="personnelQuery.employment_status" placeholder="在职状态" clearable style="width: 140px;">
-                <el-option label="在职" value="在职" />
-                <el-option label="离职" value="离职" />
-              </el-select>
-              <el-select v-model="personnelQuery.employment_type" placeholder="雇佣类型" clearable style="width: 140px;">
+              <el-input
+                v-model="personnelQuery.keyword"
+                placeholder="姓名 / 手机 / 身份证"
+                clearable
+                style="width: 220px;"
+                @keyup.enter="fetchPersonnelList"
+                @clear="fetchPersonnelList"
+              />
+              <el-input
+                v-model="personnelQuery.dept_name"
+                placeholder="所在部门"
+                clearable
+                style="width: 160px;"
+                @keyup.enter="fetchPersonnelList"
+                @clear="fetchPersonnelList"
+              />
+              <el-select
+                v-model="personnelQuery.position_type"
+                placeholder="岗位类型"
+                clearable
+                style="width: 140px;"
+              >
                 <el-option label="管理层" value="管理层" />
-                <el-option label="员工" value="员工" />
+                <el-option label="全职" value="全职" />
+                <el-option label="兼职" value="兼职" />
+                <el-option label="实习生" value="实习生" />
               </el-select>
-              <el-input v-model="personnelQuery.keyword" placeholder="搜索姓名/手机号" clearable style="width: 200px;" />
               <el-button type="primary" @click="fetchPersonnelList">查询</el-button>
               <el-button @click="resetPersonnelQuery">重置</el-button>
             </div>
-            <el-button type="primary" @click="openPersonnelCreate">新增人员</el-button>
+            <div class="right">
+              <el-popover placement="bottom" :width="200" trigger="click">
+                <template #reference>
+                  <el-button :icon="Grid" circle title="列设置" />
+                </template>
+                <div class="column-settings">
+                  <div class="column-settings-header">
+                    <span>列显示</span>
+                    <el-button text size="small" @click="resetPersonnelColumns">重置</el-button>
+                  </div>
+                  <el-checkbox-group v-model="visiblePersonnelColumns" class="column-checkbox-group">
+                    <el-checkbox
+                      v-for="col in allPersonnelColumns"
+                      :key="col.prop"
+                      :label="col.prop"
+                      :disabled="col.required"
+                    >
+                      {{ col.label }}
+                    </el-checkbox>
+                  </el-checkbox-group>
+                </div>
+              </el-popover>
+
+              <el-button type="primary" @click="openPersonnelCreate">新增人员</el-button>
+              <el-button
+                type="success"
+                plain
+                :icon="Grid"
+                style="margin-left: 10px;"
+                @click="openPersonnelRegisterQr"
+              >
+                生成入职登记二维码
+              </el-button>
+            </div>
           </div>
 
           <el-table :data="personnelList" border v-loading="personnelLoading" style="margin-top: 16px;">
-            <el-table-column prop="name" label="姓名" width="120" />
-            <el-table-column prop="phone" label="手机号" width="130" />
-            <el-table-column prop="employment_status" label="在职状态" width="100">
+            <el-table-column v-if="isPersonnelColumnVisible('name')" prop="name" label="姓名" width="120" />
+            <el-table-column v-if="isPersonnelColumnVisible('phone')" prop="phone" label="手机" width="130" />
+            <el-table-column v-if="isPersonnelColumnVisible('gender')" prop="gender" label="性别" width="70" />
+            <el-table-column v-if="isPersonnelColumnVisible('birth_date')" prop="birth_date" label="出生日期" width="120" />
+            <el-table-column v-if="isPersonnelColumnVisible('native_place')" prop="native_place" label="籍贯" min-width="140" show-overflow-tooltip />
+            <el-table-column v-if="isPersonnelColumnVisible('ethnicity')" prop="ethnicity" label="民族" width="90" />
+            <el-table-column v-if="isPersonnelColumnVisible('political_status')" prop="political_status" label="政治面貌" min-width="140" show-overflow-tooltip />
+            <el-table-column v-if="isPersonnelColumnVisible('id_card')" prop="id_card" label="身份证号" min-width="180" show-overflow-tooltip />
+            <el-table-column v-if="isPersonnelColumnVisible('email')" prop="email" label="邮箱" min-width="160" show-overflow-tooltip />
+            <el-table-column v-if="isPersonnelColumnVisible('wechat_account')" prop="wechat_account" label="微信名称" min-width="160" show-overflow-tooltip />
+            <el-table-column v-if="isPersonnelColumnVisible('current_address')" prop="current_address" label="现居住地址" min-width="200" show-overflow-tooltip />
+
+            <el-table-column v-if="isPersonnelColumnVisible('dept_name')" prop="dept_name" label="所在部门" min-width="140" show-overflow-tooltip />
+            <el-table-column v-if="isPersonnelColumnVisible('position_name')" prop="position_name" label="岗位名称" min-width="140" show-overflow-tooltip />
+            <el-table-column v-if="isPersonnelColumnVisible('position_type')" prop="position_type" label="岗位类型" width="110">
               <template #default="{ row }">
-                <el-tag :type="row.employment_status === '在职' ? 'success' : 'info'">
-                  {{ row.employment_status }}
-                </el-tag>
+                <el-tag v-if="row.position_type" type="info">{{ row.position_type }}</el-tag>
               </template>
             </el-table-column>
-            <el-table-column prop="employment_type" label="雇佣类型" width="100" />
-            <el-table-column prop="department" label="部门" min-width="120" show-overflow-tooltip />
-            <el-table-column prop="position" label="职位" min-width="120" show-overflow-tooltip />
-            <el-table-column prop="entry_date" label="入职日期" width="120" />
-            <el-table-column label="操作" width="100" fixed="right">
+
+            <el-table-column v-if="isPersonnelColumnVisible('bank_name')" prop="bank_name" label="开户行" min-width="140" show-overflow-tooltip />
+            <el-table-column v-if="isPersonnelColumnVisible('bank_card_no')" prop="bank_card_no" label="银行卡号" min-width="180" show-overflow-tooltip />
+
+            <el-table-column v-if="isPersonnelColumnVisible('create_time')" label="创建时间" width="160">
               <template #default="{ row }">
+                {{ formatPersonnelTime(row.create_time) }}
+              </template>
+            </el-table-column>
+
+            <el-table-column label="操作" width="190" fixed="right">
+              <template #default="{ row }">
+                <el-button type="info" link @click="openPersonnelView(row)">查看</el-button>
                 <el-button type="primary" link @click="openPersonnelEdit(row)">编辑</el-button>
                 <el-button type="danger" link @click="deletePersonnel(row)">删除</el-button>
               </template>
@@ -333,70 +392,44 @@
             />
           </div>
         </el-tab-pane>
+
+        <el-tab-pane label="薪酬管理" name="personnelSalary">
+          <PersonnelSalaryManage />
+        </el-tab-pane>
       </el-tabs>
     </el-card>
 
-    <!-- 人员编辑弹窗 -->
-    <el-dialog
+    <!-- 人员编辑弹窗（分步表单） -->
+    <PersonnelStepFormDialog
       v-model="personnelDialogVisible"
-      :title="personnelIsEdit ? '编辑人员' : '新增人员'"
-      width="620px"
+      :mode="personnelDialogMode"
+      :personnel-id="personnelEditingId"
+      @success="onPersonnelSaved"
+    />
+
+    <!-- 人员扫码入职登记二维码 -->
+    <el-dialog
+      v-model="personnelRegisterQrDialogVisible"
+      title="入职登记二维码"
+      width="360px"
+      :close-on-click-modal="false"
+      destroy-on-close
     >
-      <el-form ref="personnelFormRef" :model="personnelForm" :rules="personnelRules" label-width="100px">
-        <el-form-item label="姓名" prop="name">
-          <el-input v-model.trim="personnelForm.name" placeholder="请输入姓名" />
-        </el-form-item>
-        <el-form-item label="手机号" prop="phone">
-          <el-input v-model.trim="personnelForm.phone" placeholder="请输入手机号" />
-        </el-form-item>
-        <el-form-item label="身份证号" prop="id_card">
-          <el-input v-model.trim="personnelForm.id_card" placeholder="请输入身份证号" />
-        </el-form-item>
-        <el-form-item label="在职状态" prop="employment_status">
-          <el-select v-model="personnelForm.employment_status" style="width: 100%;">
-            <el-option label="在职" value="在职" />
-            <el-option label="离职" value="离职" />
-          </el-select>
-        </el-form-item>
-        <el-form-item label="雇佣类型" prop="employment_type">
-          <el-select v-model="personnelForm.employment_type" style="width: 100%;">
-            <el-option label="全职" value="全职" />
-            <el-option label="兼职" value="兼职" />
-          </el-select>
-        </el-form-item>
-        <el-form-item label="部门">
-          <el-input v-model.trim="personnelForm.department" placeholder="请输入部门" />
-        </el-form-item>
-        <el-form-item label="职位">
-          <el-input v-model.trim="personnelForm.position" placeholder="请输入职位" />
-        </el-form-item>
-        <el-form-item label="入职日期">
-          <el-date-picker
-            v-model="personnelForm.entry_date"
-            type="date"
-            placeholder="选择入职日期"
-            format="YYYY-MM-DD"
-            value-format="YYYY-MM-DD"
-            style="width: 100%;"
-          />
-        </el-form-item>
-        <el-form-item label="离职日期" v-if="personnelForm.employment_status === '离职'">
-          <el-date-picker
-            v-model="personnelForm.departure_date"
-            type="date"
-            placeholder="选择离职日期"
-            format="YYYY-MM-DD"
-            value-format="YYYY-MM-DD"
-            style="width: 100%;"
-          />
-        </el-form-item>
-        <el-form-item label="备注">
-          <el-input v-model.trim="personnelForm.remark" type="textarea" :rows="3" maxlength="500" show-word-limit />
-        </el-form-item>
-      </el-form>
+      <div class="personnel-qr-dialog-body">
+        <img
+          v-if="personnelRegisterQrImgUrl"
+          :src="personnelRegisterQrImgUrl"
+          alt="入职登记二维码"
+          class="personnel-qr-img"
+        />
+        <div class="personnel-qr-link">
+          <div class="personnel-qr-link-title">扫码填写页面：</div>
+          <div class="personnel-qr-link-url">{{ personnelRegisterPageUrl }}</div>
+        </div>
+      </div>
       <template #footer>
-        <el-button @click="personnelDialogVisible = false">取消</el-button>
-        <el-button type="primary" :loading="personnelSubmitLoading" @click="submitPersonnelForm">保存</el-button>
+        <el-button type="primary" text @click="copyPersonnelRegisterLink">复制链接</el-button>
+        <el-button @click="personnelRegisterQrDialogVisible = false">关闭</el-button>
       </template>
     </el-dialog>
 
@@ -817,13 +850,7 @@ import Sortable from 'sortablejs'
 // import { useUserStore } from '@/store'  // 已取消权限验证
 import { useUserStore } from '@/store'
 import {
-  getEnterpriseConfig,
-  saveEnterpriseConfig,
-  testEnterpriseConnection,
-  syncEnterpriseContacts,
   getPersonnelList,
-  createPersonnel,
-  updatePersonnel,
   deletePersonnel as deletePersonnelApi,
   getSalaryList,
   createSalary,
@@ -831,12 +858,9 @@ import {
   deleteSalary as deleteSalaryApi,
   getSalaryStatistics,
   getExpenseTypeList,
-  getEnabledExpenseTypes,
   createExpenseType,
   updateExpenseType,
   deleteExpenseType,
-  getReceiptMethods,
-  getPaymentMethods,
   getReceiptMethodConfigList,
   getReceiptMethodOptions,
   createReceiptMethod,
@@ -850,6 +874,8 @@ import {
   deletePaymentMethod,
   autoAddPaymentMethod
 } from '@/api/enterprise'
+import PersonnelStepFormDialog from '@/components/personnel/PersonnelStepFormDialog.vue'
+import PersonnelSalaryManage from '@/components/personnel/PersonnelSalaryManage.vue'
 
 const router = useRouter()
 // const userStore = useUserStore()  // 已取消权限验证
@@ -865,174 +891,172 @@ const activeTab = ref('personnel')
 // 搜索框展开状态（默认展开）
 const searchExpanded = ref(true)
 
-// ========== 企业配置 ==========
-const configFormRef = ref()
-const configSubmitLoading = ref(false)
-const testConnectionLoading = ref(false)
-const syncContactsLoading = ref(false)
-const showSecretVisible = ref(false)
-
-const emptyConfigForm = () => ({
-  corp_id: '',
-  agent_id: '',
-  agent_secret: '',
-  contacts_secret: '',
-  visible_users: [],
-  two_factor_enabled: 0,
-  userid_mapping: 'userid',
-  remark: ''
-})
-
-const configForm = reactive(emptyConfigForm())
-const visibleUsersText = ref('')
-
-const configRules = {
-  corp_id: [{ required: true, message: '请输入企业ID', trigger: 'blur' }],
-  agent_id: [{ required: true, message: '请输入应用AgentId', trigger: 'blur' }]
-}
-
-// 加载企业配置
-const loadEnterpriseConfig = async () => {
-  try {
-    const res = await getEnterpriseConfig()
-    if (res.code === 0 && res.data) {
-      Object.assign(configForm, res.data)
-      // 处理可见成员列表
-      if (res.data.visible_users) {
-        visibleUsersText.value = JSON.stringify(res.data.visible_users)
-      }
-    }
-  } catch (error) {
-    // 静默处理错误，不显示错误提示
-    console.log('企业配置加载失败（可忽略）:', error.message)
-  }
-}
-
-// 提交企业配置
-const submitConfigForm = async () => {
-  try {
-    await configFormRef.value.validate()
-  } catch (error) {
-    // 验证失败
-    return
-  }
-  
-  configSubmitLoading.value = true
-  try {
-    // 处理可见成员列表
-    if (visibleUsersText.value) {
-      try {
-        configForm.visible_users = JSON.parse(visibleUsersText.value)
-      } catch (e) {
-        ElMessage.error('可见成员列表格式错误，请使用JSON数组格式')
-        configSubmitLoading.value = false
-        return
-      }
-    } else {
-      configForm.visible_users = []
-    }
-
-    const res = await saveEnterpriseConfig(configForm)
-    if (res.code === 0) {
-      ElMessage.success('保存成功')
-      // 清除验证状态
-      configFormRef.value?.clearValidate()
-      // 重新加载配置
-      await loadEnterpriseConfig()
-    } else {
-      ElMessage.error(res.msg || '保存失败')
-    }
-  } catch (error) {
-    console.error('保存配置失败:', error)
-    ElMessage.error('保存失败')
-  } finally {
-    configSubmitLoading.value = false
-  }
-}
-
-// 测试连接
-const testConnection = async () => {
-  testConnectionLoading.value = true
-  try {
-    const res = await testEnterpriseConnection()
-    if (res.code === 0) {
-      ElMessage.success('连接成功！Token有效期：' + res.data.expires_in + '秒')
-    } else {
-      ElMessage.error(res.msg || '连接失败')
-    }
-  } catch (error) {
-    ElMessage.error('测试失败')
-  } finally {
-    testConnectionLoading.value = false
-  }
-}
-
-// 同步通讯录
-const syncContacts = async () => {
-  try {
-    await ElMessageBox.confirm('确定要同步企业微信通讯录吗？这将更新人员管理中的数据。', '提示', {
-      type: 'warning'
-    })
-    
-    syncContactsLoading.value = true
-    const res = await syncEnterpriseContacts()
-    if (res.code === 0) {
-      ElMessage.success(`同步成功！新增 ${res.data.new} 人，更新 ${res.data.updated} 人`)
-      // 切换到人员管理标签页并刷新
-      activeTab.value = 'personnel'
-      fetchPersonnelList()
-    } else {
-      ElMessage.error(res.msg || '同步失败')
-    }
-  } catch (error) {
-    if (error !== 'cancel') {
-      ElMessage.error('同步失败')
-    }
-  } finally {
-    syncContactsLoading.value = false
-  }
-}
-
-// ========== 人员管理 ==========
+// ========== 人员管理（本地表，已弃用企业微信 API） ==========
 const personnelLoading = ref(false)
 const personnelList = ref([])
 const personnelTotal = ref(0)
-const departmentList = ref([])
 const personnelQuery = reactive({
   page: 1,
   pageSize: 20,
-  department_id: 1,
-  employment_status: '',
-  employment_type: '',
-  keyword: ''
+  keyword: '',
+  dept_name: '',
+  position_type: ''
 })
+
+// 入职登记（扫码落地页）二维码
+const personnelRegisterQrDialogVisible = ref(false)
+const personnelRegisterPageUrl = computed(() => {
+  /**
+   * 用户端落地页地址（用于二维码跳转）
+   * - 优先读取环境变量 VITE_USER_H5_BASE_URL（可填完整域名/端口，如 https://xxx.com/user 或 http://127.0.0.1:3001）
+   * - 否则自动推断：
+   *   1) 本地开发：admin 通常在 3002，user 在 3001
+   *   2) 生产域名：t.jiajiao91.com -> /user/
+   *   3) 兜底：同域 /user/
+   *
+   * 这里始终指向 /user/，避免二维码在开发环境误跳到管理端根路径。
+   */
+  const configured = import.meta.env.VITE_USER_H5_BASE_URL
+  let baseUrl = ''
+
+  if (configured) {
+    const userBase = String(configured)
+    baseUrl = userBase.startsWith('http://') || userBase.startsWith('https://')
+      ? userBase.replace(/\/$/, '')
+      : `${window.location.origin}${userBase}`.replace(/\/$/, '')
+  } else {
+    const host = window.location.hostname || ''
+    // 本地：admin(3002) -> user(3001)
+    if (host === 'localhost' || host === '127.0.0.1') {
+      baseUrl = 'http://localhost:3001'
+    } else if (host === 't.jiajiao91.com') {
+      baseUrl = 'https://t.jiajiao91.com/user'
+    } else {
+      baseUrl = `${window.location.origin}/user`.replace(/\/$/, '')
+    }
+  }
+
+  // 避免线上服务器未配置深链路由回退：先进首页，由前端根据 query 自动跳 PersonnelRegister。
+  return `${baseUrl}/?to=personnel-register`
+})
+const personnelRegisterQrImgUrl = computed(() => {
+  const url = personnelRegisterPageUrl.value
+  return `https://api.qrserver.com/v1/create-qr-code/?size=260x260&data=${encodeURIComponent(url)}`
+})
+
+const openPersonnelRegisterQr = () => {
+  personnelRegisterQrDialogVisible.value = true
+}
+
+const copyPersonnelRegisterLink = async () => {
+  const text = personnelRegisterPageUrl.value
+  try {
+    await navigator.clipboard.writeText(text)
+    ElMessage.success('链接已复制到剪贴板')
+  } catch (e) {
+    // 降级：兼容部分浏览器
+    const textarea = document.createElement('textarea')
+    textarea.value = text
+    textarea.style.position = 'fixed'
+    textarea.style.left = '-9999px'
+    document.body.appendChild(textarea)
+    textarea.select()
+    document.execCommand('copy')
+    document.body.removeChild(textarea)
+    ElMessage.success('链接已复制到剪贴板')
+  }
+}
 
 const personnelDialogVisible = ref(false)
-const personnelIsEdit = ref(false)
-const personnelSubmitLoading = ref(false)
-const personnelFormRef = ref()
+const personnelDialogMode = ref('create')
 const personnelEditingId = ref(null)
 
-const emptyPersonnelForm = () => ({
-  name: '',
-  phone: '',
-  id_card: '',
-  employment_status: '在职',
-  employment_type: '全职',
-  department: '',
-  position: '',
-  entry_date: '',
-  departure_date: '',
-  remark: ''
-})
-
-const personnelForm = reactive(emptyPersonnelForm())
-
-const personnelRules = {
-  name: [{ required: true, message: '请输入姓名', trigger: 'blur' }],
-  employment_status: [{ required: true, message: '请选择在职状态', trigger: 'change' }],
-  employment_type: [{ required: true, message: '请选择雇佣类型', trigger: 'change' }]
+// 创建时间格式化（后端返回的是 unix 秒）
+const formatPersonnelTime = (ts) => {
+  if (!ts) return ''
+  const t = Number(ts)
+  if (!Number.isFinite(t) || t <= 0) return String(ts)
+  const d = new Date(t * 1000)
+  if (Number.isNaN(d.getTime())) return ''
+  const pad = (n) => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`
 }
+
+// 人员列配置（列设置）
+const allPersonnelColumns = ref([
+  { prop: 'name', label: '姓名', visible: true, required: true },
+  { prop: 'phone', label: '手机', visible: true, required: true },
+  { prop: 'gender', label: '性别', visible: true, required: false },
+  { prop: 'birth_date', label: '出生日期', visible: false, required: false },
+  { prop: 'native_place', label: '籍贯', visible: false, required: false },
+  { prop: 'ethnicity', label: '民族', visible: false, required: false },
+  { prop: 'political_status', label: '政治面貌', visible: false, required: false },
+  { prop: 'id_card', label: '身份证号', visible: true, required: false },
+  { prop: 'email', label: '邮箱', visible: false, required: false },
+  { prop: 'wechat_account', label: '微信名称', visible: true, required: false },
+  { prop: 'current_address', label: '现居住地址', visible: false, required: false },
+  { prop: 'dept_name', label: '所在部门', visible: true, required: false },
+  { prop: 'position_name', label: '岗位名称', visible: true, required: false },
+  { prop: 'position_type', label: '岗位类型', visible: true, required: false },
+  { prop: 'bank_name', label: '开户行', visible: false, required: false },
+  { prop: 'bank_card_no', label: '银行卡号', visible: false, required: false },
+  { prop: 'create_time', label: '创建时间', visible: true, required: false }
+])
+
+const visiblePersonnelColumns = ref([])
+
+const savePersonnelColumnConfig = () => {
+  localStorage.setItem('personnel_visible_columns', JSON.stringify(visiblePersonnelColumns.value))
+}
+
+const initVisiblePersonnelColumns = () => {
+  const defaultVisible = allPersonnelColumns.value.filter(col => col.visible).map(col => col.prop)
+  const requiredColumns = allPersonnelColumns.value.filter(col => col.required).map(col => col.prop)
+  const savedColumns = localStorage.getItem('personnel_visible_columns')
+  const savedVersion = localStorage.getItem('personnel_visible_columns_version') || ''
+  const CURRENT_VERSION = '2026-04-29-personnel-cols-v1'
+
+  const allProps = allPersonnelColumns.value.map(col => col.prop)
+
+  let parsed = []
+  if (savedColumns) {
+    try {
+      parsed = JSON.parse(savedColumns)
+      if (!Array.isArray(parsed)) parsed = []
+    } catch (e) {
+      parsed = []
+    }
+  }
+
+  // 始终保留 required，并合并默认 visible，且过滤掉不存在的列
+  let merged = Array.from(new Set([...(parsed || []), ...defaultVisible, ...requiredColumns])).filter((p) =>
+    allProps.includes(p)
+  )
+
+  // 版本变更时，同步写回最新列
+  if (savedVersion !== CURRENT_VERSION) {
+    localStorage.setItem('personnel_visible_columns_version', CURRENT_VERSION)
+    localStorage.setItem('personnel_visible_columns', JSON.stringify(merged))
+  }
+
+  visiblePersonnelColumns.value = merged
+}
+
+const isPersonnelColumnVisible = (prop) => {
+  return visiblePersonnelColumns.value.includes(prop)
+}
+
+const resetPersonnelColumns = () => {
+  const defaultVisible = allPersonnelColumns.value.filter(col => col.visible).map(col => col.prop)
+  const requiredColumns = allPersonnelColumns.value.filter(col => col.required).map(col => col.prop)
+  visiblePersonnelColumns.value = Array.from(new Set([...defaultVisible, ...requiredColumns]))
+  savePersonnelColumnConfig()
+  ElMessage.success('已重置为默认配置')
+}
+
+watch(visiblePersonnelColumns, () => {
+  savePersonnelColumnConfig()
+}, { deep: true })
 
 // 费用支出管理
 const salaryLoading = ref(false)
@@ -1262,35 +1286,24 @@ const handleTabClick = (tab) => {
 }
 
 // 人员管理方法
-const fetchDepartmentList = async () => {
-  try {
-    const res = await fetch('/admin/api/personnel/departments', {
-      credentials: 'include'
-    })
-    const data = await res.json()
-    if (data.success) {
-      departmentList.value = data.data || []
-    }
-  } catch (error) {
-    // 静默处理错误
-    console.log('部门列表加载失败（可忽略）:', error.message)
-  }
-}
-
 const fetchPersonnelList = async () => {
   personnelLoading.value = true
   try {
-    const res = await getPersonnelList(personnelQuery)
-    console.log('人员列表API响应:', res)
+    const params = {
+      page: personnelQuery.page,
+      pageSize: personnelQuery.pageSize
+    }
+    if (personnelQuery.keyword) params.keyword = personnelQuery.keyword
+    if (personnelQuery.dept_name) params.dept_name = personnelQuery.dept_name
+    if (personnelQuery.position_type) params.position_type = personnelQuery.position_type
+
+    const res = await getPersonnelList(params)
     const payload = res?.data || {}
-    console.log('解析后的payload:', payload)
     personnelList.value = payload.list || []
     personnelTotal.value = payload.total || 0
-    console.log('人员列表数据:', personnelList.value)
-    console.log('总数:', personnelTotal.value)
   } catch (error) {
-    // 静默处理错误
-    console.log('人员列表加载失败（可忽略）:', error.message)
+    console.error('人员列表加载失败:', error)
+    ElMessage.error('人员列表加载失败')
   } finally {
     personnelLoading.value = false
   }
@@ -1299,10 +1312,9 @@ const fetchPersonnelList = async () => {
 const resetPersonnelQuery = () => {
   personnelQuery.page = 1
   personnelQuery.pageSize = 20
-  personnelQuery.department_id = 1
-  personnelQuery.employment_status = ''
-  personnelQuery.employment_type = ''
   personnelQuery.keyword = ''
+  personnelQuery.dept_name = ''
+  personnelQuery.position_type = ''
   fetchPersonnelList()
 }
 
@@ -1317,63 +1329,40 @@ const onPersonnelSizeChange = (size) => {
   fetchPersonnelList()
 }
 
-const resetPersonnelForm = () => {
-  Object.assign(personnelForm, emptyPersonnelForm())
-}
-
 const openPersonnelCreate = () => {
-  personnelIsEdit.value = false
+  personnelDialogMode.value = 'create'
   personnelEditingId.value = null
-  resetPersonnelForm()
   personnelDialogVisible.value = true
 }
 
 const openPersonnelEdit = (row) => {
-  personnelIsEdit.value = true
+  personnelDialogMode.value = 'edit'
   personnelEditingId.value = row.id
-  Object.assign(personnelForm, {
-    name: row.name,
-    phone: row.phone || '',
-    id_card: row.id_card || '',
-    employment_status: row.employment_status,
-    employment_type: row.employment_type,
-    department: row.department || '',
-    position: row.position || '',
-    entry_date: row.entry_date || '',
-    departure_date: row.departure_date || '',
-    remark: row.remark || ''
-  })
   personnelDialogVisible.value = true
 }
 
-const submitPersonnelForm = async () => {
-  await personnelFormRef.value.validate()
-  personnelSubmitLoading.value = true
-  try {
-    if (personnelIsEdit.value) {
-      await updatePersonnel(personnelEditingId.value, personnelForm)
-      ElMessage.success('更新成功')
-    } else {
-      await createPersonnel(personnelForm)
-      ElMessage.success('创建成功')
-    }
-    personnelDialogVisible.value = false
-    fetchPersonnelList()
-  } catch (error) {
-    ElMessage.error(personnelIsEdit.value ? '更新失败' : '创建失败')
-  } finally {
-    personnelSubmitLoading.value = false
-  }
+const openPersonnelView = (row) => {
+  personnelDialogMode.value = 'view'
+  personnelEditingId.value = row.id
+  personnelDialogVisible.value = true
+}
+
+const onPersonnelSaved = () => {
+  fetchPersonnelList()
 }
 
 const deletePersonnel = async (row) => {
   try {
-    await ElMessageBox.confirm('确定删除该人员吗？', '提示', {
+    await ElMessageBox.confirm('确定删除该人员吗？同时会清除其教育经历与紧急联系人。', '提示', {
       type: 'warning'
     })
-    await deletePersonnelApi(row.id)
-    ElMessage.success('删除成功')
-    fetchPersonnelList()
+    const res = await deletePersonnelApi(row.id)
+    if (res && (res.success === true || res.code === 0)) {
+      ElMessage.success('删除成功')
+      fetchPersonnelList()
+    } else {
+      ElMessage.error((res && (res.message || res.msg)) || '删除失败')
+    }
   } catch (error) {
     if (error !== 'cancel') {
       ElMessage.error('删除失败')
@@ -2511,6 +2500,8 @@ const deletePaymentMethodItem = async (row) => {
 onMounted(() => {
   // 默认加载人员管理数据
   fetchPersonnelList()
+  // 初始化人员列设置
+  initVisiblePersonnelColumns()
   // 加载费用类型列表
   fetchExpenseTypeList()
   // 加载统计数据（无论在哪个标签页）
@@ -2565,6 +2556,12 @@ onMounted(() => {
   display: flex;
   gap: 12px;
 }
+
+  .right {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
 
 .pagination {
   margin-top: 16px;
@@ -2725,5 +2722,41 @@ onMounted(() => {
   height: 32px;
   display: flex;
   align-items: center;
+}
+
+/* 入职登记二维码弹窗 */
+.personnel-qr-dialog-body {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 0;
+}
+
+.personnel-qr-img {
+  width: 240px;
+  height: 240px;
+  border: 1px solid #ebeef5;
+  border-radius: 8px;
+  background: #fff;
+}
+
+.personnel-qr-link {
+  width: 100%;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: #f5f7fa;
+}
+
+.personnel-qr-link-title {
+  font-size: 12px;
+  color: #909399;
+  margin-bottom: 6px;
+}
+
+.personnel-qr-link-url {
+  font-size: 12px;
+  color: #303133;
+  word-break: break-all;
 }
 </style>

@@ -39,9 +39,9 @@
           <el-form-item>
             <el-input 
               v-model="searchForm.keyword" 
-              placeholder="搜索编号/姓名/手机号/微信号" 
+              placeholder="搜索编号/姓名/手机号/微信号/OpenID" 
               clearable 
-              style="width: 220px"
+              style="width: 260px"
               prefix-icon="Search"
               @keyup.enter="handleSearch"
             />

@@ -220,7 +220,7 @@
         :rules="rules"
         label-width="100px"
       >
-        <el-form-item label="用户名" prop="username" :disabled="form.id">
+        <el-form-item label="用户名" prop="username">
           <el-input v-model="form.username" placeholder="请输入用户名" :disabled="!!form.id" />
         </el-form-item>
         <el-form-item label="密码" prop="password">
@@ -475,8 +475,7 @@ const cityOptions = ref([])
 
 const rules = {
   username: [
-    { required: true, message: '请输入用户名', trigger: 'blur' },
-    { pattern: /^[a-zA-Z0-9_]{4,20}$/, message: '用户名须为4-20个字母、数字或下划线', trigger: 'blur' }
+    { required: true, message: '请输入用户名', trigger: 'blur' }
   ],
   email: [
     { required: function() { return form.role === 'customer_service' }, message: '客服组角色必须填写邮箱', trigger: 'blur' },

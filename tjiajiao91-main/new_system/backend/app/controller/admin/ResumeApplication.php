@@ -3,6 +3,7 @@ namespace app\controller\admin;
 
 use app\BaseController;
 use app\model\ResumeApplication as ApplicationModel;
+use app\service\SubscribeMessageService;
 use think\facade\Db;
 use think\facade\Log;
 
@@ -163,10 +164,16 @@ class ResumeApplication extends BaseController
      */
     public function review()
     {
+        // 添加测试日志
+        Log::info('========== 审核投递方法被调用 ==========');
+        Log::info('请求参数: ' . json_encode($this->request->param()));
+        
         try {
             $id = $this->request->param('id');
             $status = $this->request->param('status'); // approved 或 rejected
             $remark = $this->request->param('remark', '');
+            
+            Log::info('审核参数: id=' . $id . ', status=' . $status . ', remark=' . $remark);
             
             if (!in_array($status, ['approved', 'rejected'])) {
                 return json([
@@ -192,6 +199,24 @@ class ResumeApplication extends BaseController
             $application->review_time = date('Y-m-d H:i:s');
             $application->reviewer_id = $adminId;
             $application->save();
+            
+            // 发送订阅消息通知
+            try {
+                Log::info('=== 准备调用 sendApplicationNotification ===');
+                $this->sendApplicationNotification($application, $status, $remark);
+                Log::info('=== sendApplicationNotification 调用完成 ===');
+            } catch (\Exception $e) {
+                Log::error('调用 sendApplicationNotification 异常: ' . $e->getMessage());
+            }
+            
+            // 发送邮件通知给客服、客服组长和家长组
+            try {
+                Log::info('=== 准备发送邮件通知 ===');
+                \app\service\EmailService::sendApplicationReviewNotification($application, $status, $remark);
+                Log::info('=== 邮件通知发送完成 ===');
+            } catch (\Exception $e) {
+                Log::error('发送邮件通知异常: ' . $e->getMessage());
+            }
             
             $statusText = $status === 'approved' ? '通过' : '拒绝';
             
@@ -235,12 +260,29 @@ class ResumeApplication extends BaseController
             // 获取当前登录管理员ID
             $adminId = $this->request->adminId ?? null;
             
+            // 获取所有要审核的记录，用于发送通知
+            $applications = ApplicationModel::whereIn('id', $ids)->select();
+            
             ApplicationModel::whereIn('id', $ids)->update([
                 'status' => $status,
                 'admin_remark' => $remark,
                 'review_time' => date('Y-m-d H:i:s'),
                 'reviewer_id' => $adminId
             ]);
+            
+            // 批量发送订阅消息通知
+            foreach ($applications as $application) {
+                $this->sendApplicationNotification($application, $status, $remark);
+            }
+            
+            // 批量发送邮件通知给客服、客服组长和家长组
+            foreach ($applications as $application) {
+                try {
+                    \app\service\EmailService::sendApplicationReviewNotification($application, $status, $remark);
+                } catch (\Exception $e) {
+                    Log::error('批量发送邮件通知异常: application_id=' . $application->id . ', error=' . $e->getMessage());
+                }
+            }
             
             $statusText = $status === 'approved' ? '通过' : '拒绝';
             
@@ -337,6 +379,89 @@ class ResumeApplication extends BaseController
                 'code' => 500,
                 'message' => '删除失败：' . $e->getMessage()
             ]);
+        }
+    }
+    
+    /**
+     * 发送简历投递审核通知
+     */
+    private function sendApplicationNotification($application, $status, $remark)
+    {
+        try {
+            Log::info('开始发送简历投递审核通知: application_id=' . $application->id . ', status=' . $status);
+            
+            // 获取教师的openid
+            $teacher = Db::name('teachers')->where('id', $application->teacher_id)->find();
+            Log::info('教师信息: ' . json_encode($teacher));
+            
+            if (!$teacher || empty($teacher['openid'])) {
+                Log::warning('教师openid为空，无法发送订阅消息: teacher_id=' . $application->teacher_id);
+                return;
+            }
+            
+            // 获取家教订单信息
+            $tutor = Db::name('tutor_orders_new')->alias('o')
+                ->leftJoin('cities c', 'o.city_id = c.id')
+                ->leftJoin('districts d', 'o.district_id = d.id')
+                ->leftJoin('subjects s', 'o.subject_id = s.id')
+                ->field('o.*, c.name as city_name, d.name as district_name, s.name as subject_name')
+                ->where('o.id', $application->tutor_id)
+                ->find();
+            
+            if (!$tutor) {
+                Log::warning('家教订单不存在，无法发送订阅消息: tutor_id=' . $application->tutor_id);
+                return;
+            }
+            
+            // 构建家教信息摘要
+            $tutorInfo = ($tutor['grade'] ?? '') . ' ' . ($tutor['subject_name'] ?? '') . ' ' . 
+                        ($tutor['city_name'] ?? '') . ($tutor['district_name'] ? ' ' . $tutor['district_name'] : '');
+            
+            Log::info('家教信息: ' . $tutorInfo);
+            
+            if ($status === 'approved') {
+                // 审核通过：发送通过通知
+                // 获取派单员信息
+                $dispatcher = Db::name('admin')->where('id', $tutor['admin_id'] ?? 0)->find();
+                $dispatcherName = $dispatcher ? ($dispatcher['nickname'] ?? $dispatcher['username'] ?? '派单员') : '派单员';
+                $dispatcherContact = $dispatcher ? ($dispatcher['phone'] ?? $dispatcher['contact'] ?? '') : '';
+                
+                Log::info('准备发送通过通知: openid=' . $teacher['openid'] . ', contact=' . $dispatcherContact);
+                
+                $result = SubscribeMessageService::sendApplicationAuditMessage($teacher['openid'], [
+                    'tutor_info' => $tutorInfo,
+                    'audit_result' => '审核通过',
+                    'recommender' => $dispatcherName,
+                    'contact_phone' => $dispatcherContact, // 可以为空，服务层会处理
+                    'audit_time' => $application->review_time ?? date('Y-m-d H:i:s'),
+                    'application_id' => $application->id
+                ]);
+                
+                Log::info('发送通过通知结果: ' . json_encode($result));
+            } else {
+                // 审核驳回：发送驳回通知
+                // 获取派单员信息
+                $dispatcher = Db::name('admin')->where('id', $tutor['admin_id'] ?? 0)->find();
+                $dispatcherName = $dispatcher ? ($dispatcher['nickname'] ?? $dispatcher['username'] ?? '派单员') : '派单员';
+                $dispatcherContact = $dispatcher ? ($dispatcher['phone'] ?? $dispatcher['contact'] ?? '') : '';
+                
+                Log::info('准备发送驳回通知: openid=' . $teacher['openid'] . ', contact=' . $dispatcherContact);
+                
+                $result = SubscribeMessageService::sendApplicationAuditMessage($teacher['openid'], [
+                    'tutor_info' => $tutorInfo,
+                    'audit_result' => '审核驳回',
+                    'recommender' => $dispatcherName,
+                    'contact_phone' => $dispatcherContact, // 可以为空，服务层会处理
+                    'audit_time' => $application->review_time ?? date('Y-m-d H:i:s'),
+                    'application_id' => $application->id
+                ]);
+                
+                Log::info('发送驳回通知结果: ' . json_encode($result));
+            }
+        } catch (\Exception $e) {
+            Log::error('发送简历投递审核通知失败: ' . $e->getMessage());
+            Log::error('异常堆栈: ' . $e->getTraceAsString());
+            // 不抛出异常，避免影响主流程
         }
     }
 }

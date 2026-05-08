@@ -179,6 +179,7 @@
 import envConfig from '../../config/env.js'
 import auth from '../../utils/auth.js'
 import { wechatLogin, applyForTutor, teacherRegisterApi } from '../../utils/api.js'
+import { requestResumeReviewSubscribe } from '../../utils/subscribe.js'
 import uniIcons from '@/uni_modules/uni-icons/components/uni-icons/uni-icons.vue'
 
 export default {
@@ -617,6 +618,20 @@ export default {
 				const result = response?.data
 				
 				if (result && result.success) {
+					// 投递成功后，请求订阅消息授权
+					try {
+						await requestResumeReviewSubscribe({
+							success: () => {
+								console.log('订阅成功')
+							},
+							fail: (err) => {
+								console.log('订阅失败或取消', err)
+							}
+						})
+					} catch (err) {
+						console.log('订阅失败', err)
+					}
+					
 					uni.showToast({
 						title: '投递成功',
 						icon: 'success'

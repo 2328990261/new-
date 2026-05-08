@@ -64,6 +64,8 @@
                 :key="idx"
                 :src="normalizeUrl(img)"
                 :preview-src-list="(row.images || []).map(normalizeUrl)"
+                :preview-teleported="true"
+                :z-index="99999"
                 fit="cover"
                 style="width: 52px; height: 52px; border-radius: 6px; margin-right: 8px;"
               />
@@ -134,6 +136,8 @@
               :key="idx"
               :src="normalizeUrl(img)"
               :preview-src-list="(currentFeedback.images || []).map(normalizeUrl)"
+              :preview-teleported="true"
+              :z-index="99999"
               fit="cover"
               style="width: 100px; height: 100px; border-radius: 8px; margin-right: 12px; margin-bottom: 12px; cursor: pointer;"
             />
@@ -181,6 +185,8 @@
                     :key="idx"
                     :src="normalizeUrl(img)"
                     :preview-src-list="msg.images.map(normalizeUrl)"
+                    :preview-teleported="true"
+                    :z-index="99999"
                     fit="cover"
                     style="width:72px;height:72px;border-radius:6px;margin:4px 4px 0 0;cursor:pointer;"
                   />
@@ -320,8 +326,20 @@ const statusText = (s) => {
 
 const normalizeUrl = (u) => {
   if (!u) return ''
-  // 后端返回 /uploads/xxx（相对路径）时，交给 nginx / 代理处理；这里保持原样
-  return u
+  
+  // 如果已经是完整的URL（http/https开头），直接返回
+  if (u.startsWith('http://') || u.startsWith('https://')) {
+    return u
+  }
+  
+  // 如果是相对路径（/uploads/xxx），需要拼接完整的服务器地址
+  // 获取当前页面的origin（协议+域名+端口）
+  const origin = window.location.origin
+  
+  // 确保路径以 / 开头
+  const path = u.startsWith('/') ? u : '/' + u
+  
+  return origin + path
 }
 
 // 归一化 sender：兼容不可见字符、大小写、中文别名（避免严格 === 'admin' 失效）
@@ -545,6 +563,34 @@ onMounted(() => {
   margin-top: 16px;
   display: flex;
   justify-content: flex-end;
+}
+
+/* 修复图片预览时表格内容透出的问题 */
+:deep(.el-image-viewer__wrapper) {
+  background-color: rgba(0, 0, 0, 0.8) !important;
+  z-index: 99999 !important;
+  position: fixed !important;
+  top: 0 !important;
+  left: 0 !important;
+  right: 0 !important;
+  bottom: 0 !important;
+}
+
+:deep(.el-image-viewer__mask) {
+  background-color: rgba(0, 0, 0, 0.8) !important;
+  z-index: 99999 !important;
+}
+
+/* 确保表格的 z-index 低于图片预览 */
+:deep(.el-table) {
+  position: relative;
+  z-index: 1;
+}
+
+/* 确保图片预览时，页面其他内容不会覆盖 */
+.mini-feedback-page {
+  position: relative;
+  z-index: 1;
 }
 
 /* 列设置弹窗样式 */

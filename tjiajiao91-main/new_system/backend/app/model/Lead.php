@@ -27,6 +27,8 @@ class Lead extends Model
         'tutor_content'     => 'string',
         'tutor_title'       => 'string',
         'info_fee'          => 'float',
+        'reminder_time'     => 'datetime',
+        'reminder_sent'     => 'int',
         'create_time'       => 'datetime',
         'update_time'       => 'datetime',
         'creator_admin_id'  => 'int',

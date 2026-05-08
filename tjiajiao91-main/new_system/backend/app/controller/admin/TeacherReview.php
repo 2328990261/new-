@@ -103,9 +103,14 @@ class TeacherReview extends BaseController
             
             $teacher->save();
             
-            // 简历认证通过：若该教师是被邀请人，则发放邀请双方优惠券
-            if ($teacher->review_status === 'approved' && !empty($teacher->openid)) {
-                \app\service\InvitationService::grantCouponsForApprovedInvitee($teacher->openid);
+            // 审核通过时，自动更新用户身份为教师
+            if ($teacher->review_status === 'approved') {
+                $this->updateUserTypeToTeacher($teacher);
+                
+                // 简历认证通过：若该教师是被邀请人，则发放邀请双方优惠券
+                if (!empty($teacher->openid)) {
+                    \app\service\InvitationService::grantCouponsForApprovedInvitee($teacher->openid);
+                }
             }
 
             // 发送小程序订阅消息（不影响审核主流程）
@@ -155,12 +160,16 @@ class TeacherReview extends BaseController
             
             $count = Teacher::whereIn('id', $ids)->update($updateData);
             
-            // 本次设为「通过」的教师：若为被邀请人则发放邀请优惠券
+            // 本次设为「通过」的教师：更新用户身份并发放邀请优惠券
             if ($reviewStatus === 'approved') {
-                $approvedTeachers = Teacher::whereIn('id', $ids)->where('review_status', 'approved')->column('openid');
-                foreach ($approvedTeachers as $openid) {
-                    if (!empty($openid)) {
-                        \app\service\InvitationService::grantCouponsForApprovedInvitee($openid);
+                $approvedTeachers = Teacher::whereIn('id', $ids)->where('review_status', 'approved')->select();
+                foreach ($approvedTeachers as $teacher) {
+                    // 更新用户身份为教师
+                    $this->updateUserTypeToTeacher($teacher);
+                    
+                    // 发放邀请优惠券
+                    if (!empty($teacher->openid)) {
+                        \app\service\InvitationService::grantCouponsForApprovedInvitee($teacher->openid);
                     }
                 }
             }
@@ -198,6 +207,100 @@ class TeacherReview extends BaseController
             'success' => true,
             'data' => $stats
         ]);
+    }
+
+    /**
+     * 更新用户身份为教师
+     * 审核通过时调用，将用户表的 user_type 更新为 teacher
+     */
+    private function updateUserTypeToTeacher($teacher): void
+    {
+        try {
+            // 优先通过 openid 更新
+            if (!empty($teacher->openid)) {
+                $openid = trim($teacher->openid);
+                
+                // 更新 fa_users 表
+                $updated = Db::name('users')
+                    ->where('openid', $openid)
+                    ->update([
+                        'user_type' => 'teacher',
+                        'update_time' => date('Y-m-d H:i:s')
+                    ]);
+                
+                // 更新 fa_wechat_users 表（兼容旧表）
+                Db::name('wechat_users')
+                    ->where('openid', $openid)
+                    ->update([
+                        'user_type' => 'teacher',
+                        'update_time' => date('Y-m-d H:i:s')
+                    ]);
+                
+                if ($updated > 0) {
+                    Log::info("教师审核通过，已更新用户身份为teacher, openid={$openid}, teacher_id={$teacher->id}");
+                    return;
+                }
+            }
+            
+            // 如果通过 openid 未找到，尝试通过手机号更新
+            if (!empty($teacher->phone)) {
+                $phone = trim($teacher->phone);
+                
+                // 更新 fa_users 表
+                $updated = Db::name('users')
+                    ->where('phone', $phone)
+                    ->update([
+                        'user_type' => 'teacher',
+                        'update_time' => date('Y-m-d H:i:s')
+                    ]);
+                
+                // 更新 fa_wechat_users 表（兼容旧表）
+                Db::name('wechat_users')
+                    ->where('phone', $phone)
+                    ->update([
+                        'user_type' => 'teacher',
+                        'update_time' => date('Y-m-d H:i:s')
+                    ]);
+                
+                if ($updated > 0) {
+                    Log::info("教师审核通过，已通过手机号更新用户身份为teacher, phone={$phone}, teacher_id={$teacher->id}");
+                    return;
+                }
+            }
+            
+            // 如果通过 account_id 关联
+            if (!empty($teacher->account_id)) {
+                $accountId = (int)$teacher->account_id;
+                
+                // 更新 fa_users 表
+                $updated = Db::name('users')
+                    ->where('id', $accountId)
+                    ->update([
+                        'user_type' => 'teacher',
+                        'update_time' => date('Y-m-d H:i:s')
+                    ]);
+                
+                if ($updated > 0) {
+                    Log::info("教师审核通过，已通过account_id更新用户身份为teacher, account_id={$accountId}, teacher_id={$teacher->id}");
+                    
+                    // 获取该用户的 openid，同步更新 fa_wechat_users
+                    $user = Db::name('users')->where('id', $accountId)->field('openid')->find();
+                    if (!empty($user['openid'])) {
+                        Db::name('wechat_users')
+                            ->where('openid', $user['openid'])
+                            ->update([
+                                'user_type' => 'teacher',
+                                'update_time' => date('Y-m-d H:i:s')
+                            ]);
+                    }
+                    return;
+                }
+            }
+            
+            Log::warning("教师审核通过，但无法更新用户身份：未找到关联的用户记录, teacher_id={$teacher->id}");
+        } catch (\Exception $e) {
+            Log::error("更新用户身份为teacher失败: " . $e->getMessage() . ", teacher_id={$teacher->id}");
+        }
     }
 
     /**

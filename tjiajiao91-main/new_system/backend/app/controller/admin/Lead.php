@@ -478,6 +478,13 @@ class Lead extends BaseController
         
         $data = $this->request->post();
         
+        // ===== 调试日志 =====
+        trace('=== 创建线索接收到的数据 ===', 'info');
+        trace('完整数据: ' . json_encode($data, JSON_UNESCAPED_UNICODE), 'info');
+        trace('status 字段值: ' . ($data['status'] ?? 'null'), 'info');
+        trace('status 字段类型: ' . gettype($data['status'] ?? null), 'info');
+        // ===== 调试日志结束 =====
+        
         try {
             // 验证必填字段
             // contact_name 为非必填项，已移除验证
@@ -532,10 +539,17 @@ class Lead extends BaseController
             // 设置创建人
             $data['creator_admin_id'] = $_SESSION['admin_id'];
             
-            // 设置默认状态
-            if (empty($data['status'])) {
+            // 强制设置默认状态（确保值正确）
+            if (empty($data['status']) || !in_array($data['status'], ['待联系','跟进中','已发单','已出单','不需要','无效'])) {
                 $data['status'] = '待联系';
             }
+            
+            // ===== 调试：创建前的最终数据 =====
+            trace('=== 准备创建线索，最终数据 ===', 'info');
+            trace('status 值: ' . $data['status'], 'info');
+            trace('status 长度: ' . mb_strlen($data['status']), 'info');
+            trace('status HEX: ' . bin2hex($data['status']), 'info');
+            // ===== 调试结束 =====
             
             // 创建线索
             $lead = LeadModel::create($data);
@@ -790,8 +804,22 @@ class Lead extends BaseController
             $newStatus = $data['new_status'] ?? $oldStatus;
             $remark = $data['remark'] ?? '';
             
+            // ===== 调试日志 =====
+            trace('=== addFollow 接收到的数据 ===', 'info');
+            trace('lead_id: ' . $id, 'info');
+            trace('old_status: ' . $oldStatus, 'info');
+            trace('new_status: ' . $newStatus, 'info');
+            trace('reminder_time: ' . ($data['reminder_time'] ?? 'null'), 'info');
+            trace('完整数据: ' . json_encode($data, JSON_UNESCAPED_UNICODE), 'info');
+            // ===== 调试日志结束 =====
+            
             // 只有在状态发生变化时才进行验证
             $statusChanged = ($oldStatus !== $newStatus);
+            
+            // 跟进中：状态变更为"跟进中"时需要填写提醒时间
+            if ($statusChanged && $newStatus === '跟进中' && empty($data['reminder_time'])) {
+                return json(['success' => false, 'error' => '请选择提醒时间']);
+            }
             
             // 已发单：状态变更为"已发单"时需要填写家教内容
             if ($statusChanged && $newStatus === '已发单' && empty($data['tutor_title'])) {
@@ -823,7 +851,25 @@ class Lead extends BaseController
             if (isset($data['info_fee'])) {
                 $updateData['info_fee'] = $data['info_fee'];
             }
+            
+            // 处理提醒时间（无论状态是否变化）
+            if ($newStatus === '跟进中') {
+                // 如果新状态是"跟进中"，更新提醒时间
+                if (!empty($data['reminder_time'])) {
+                    $updateData['reminder_time'] = $data['reminder_time'];
+                    $updateData['reminder_sent'] = 0; // 重置为未发送
+                    trace('更新提醒时间: ' . $data['reminder_time'], 'info');
+                }
+            } else {
+                // 如果状态不是"跟进中"，清空提醒时间
+                $updateData['reminder_time'] = null;
+                $updateData['reminder_sent'] = 0;
+                trace('清空提醒时间', 'info');
+            }
+            
+            trace('准备更新数据: ' . json_encode($updateData, JSON_UNESCAPED_UNICODE), 'info');
             $lead->save($updateData);
+            trace('数据更新成功', 'info');
             
             // 记录跟进日志（包含额外信息）
             $logData = [
@@ -840,6 +886,10 @@ class Lead extends BaseController
             }
             if (isset($data['info_fee'])) {
                 $logData['info_fee'] = $data['info_fee'];
+            }
+            // 保存提醒时间到跟进日志
+            if (!empty($data['reminder_time'])) {
+                $logData['reminder_time'] = $data['reminder_time'];
             }
             // 保存多张图片到跟进日志（手动转换为JSON字符串）
             if (!empty($proofImages)) {

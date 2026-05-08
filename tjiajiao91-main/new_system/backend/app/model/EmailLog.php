@@ -12,9 +12,12 @@ class EmailLog extends Model
     
     // 邮件类型常量
     const TYPE_LEAD_ASSIGN = 'lead_assign';      // 线索指派
+    const TYPE_LEAD_REMINDER = 'lead_reminder';  // 线索跟进提醒
     const TYPE_BOOKING = 'booking';              // 预约通知
     const TYPE_ORDER = 'order';                  // 订单通知
     const TYPE_TEST = 'test';                    // 测试邮件
+    const TYPE_APPLICATION_REVIEW = 'application_review';  // 投递审核通知
+    const TYPE_APPLICATION_SUBMIT = 'application_submit';  // 投递提交通知
     
     // 发送状态常量（根据现有表结构）
     const STATUS_PENDING = 'pending';    // 待发送
@@ -28,9 +31,12 @@ class EmailLog extends Model
     {
         $types = [
             self::TYPE_LEAD_ASSIGN => '线索指派通知',
+            self::TYPE_LEAD_REMINDER => '线索跟进提醒',
             self::TYPE_BOOKING => '预约通知',
             self::TYPE_ORDER => '订单通知',
             self::TYPE_TEST => '测试邮件',
+            self::TYPE_APPLICATION_REVIEW => '投递审核通知',
+            self::TYPE_APPLICATION_SUBMIT => '投递提交通知',
         ];
         
         return $types[$data['email_type']] ?? $data['email_type'];

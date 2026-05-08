@@ -25,14 +25,10 @@ class Application extends BaseController
         
         $token = substr($authorization, 7);
         
-        // 解析 token 获取用户信息（这里简化处理，实际应该验证 token）
-        // 从 token 中提取手机号（假设 token 格式为 test_token_timestamp）
-        // 实际项目中应该使用 JWT 或其他方式存储用户信息
-        
         // 临时方案：从 storage 中获取用户信息
         $userInfo = $this->request->post('userInfo'); // 前端传递用户信息
         
-        if (!$userInfo || empty($userInfo['phone'])) {
+        if (!$userInfo || empty($userInfo['openid'])) {
             return json(['success' => false, 'error' => '请先登录']);
         }
         
@@ -40,15 +36,28 @@ class Application extends BaseController
         $tutorId = $this->request->post('tutor_id');
         
         // 记录日志
-        trace('投递简历请求参数: tutor_id=' . $tutorId . ', phone=' . $userInfo['phone'], 'info');
+        trace('投递简历请求参数: tutor_id=' . $tutorId . ', openid=' . substr($userInfo['openid'], 0, 8) . '...', 'info');
         
         if (empty($tutorId)) {
             return json(['success' => false, 'error' => '缺少必要参数：tutor_id']);
         }
         
         try {
-            // 通过手机号查找教师
-            $teacher = TeacherModel::where('phone', $userInfo['phone'])->find();
+            // 通过 openid 查找教师（优先），如果找不到再尝试手机号（兼容旧数据）
+            $teacher = TeacherModel::where('openid', $userInfo['openid'])->find();
+            
+            if (!$teacher && !empty($userInfo['phone'])) {
+                // 兼容：如果通过 openid 找不到，尝试用手机号查找
+                $teacher = TeacherModel::where('phone', $userInfo['phone'])->find();
+                
+                // 如果通过手机号找到了，更新 openid（数据修复）
+                if ($teacher && empty($teacher->openid)) {
+                    $teacher->openid = $userInfo['openid'];
+                    $teacher->save();
+                    trace('数据修复: 为教师 teacher_id=' . $teacher->id . ' 补充 openid', 'info');
+                }
+            }
+            
             if (!$teacher) {
                 return json(['success' => false, 'error' => '未找到对应的教师账号']);
             }
@@ -91,6 +100,16 @@ class Application extends BaseController
             $application->apply_time = date('Y-m-d H:i:s');
             $application->save();
             
+            // 发送邮件通知给客服和客服组长
+            try {
+                trace('=== 准备发送投递提交邮件通知 ===', 'info');
+                \app\service\EmailService::sendApplicationSubmitNotification($application);
+                trace('=== 投递提交邮件通知发送完成 ===', 'info');
+            } catch (\Exception $e) {
+                trace('发送投递提交邮件通知异常: ' . $e->getMessage(), 'error');
+                // 不影响投递流程
+            }
+            
             return json([
                 'success' => true,
                 'message' => '投递成功',
@@ -120,16 +139,34 @@ class Application extends BaseController
             return json(['success' => false, 'error' => '请先登录']);
         }
         
-        // 从 URL 参数中获取手机号
+        // 从 URL 参数中获取 openid（优先）或手机号（兼容）
+        $openid = $this->request->get('openid');
         $phone = $this->request->get('phone');
         
-        if (!$phone) {
+        if (empty($openid) && empty($phone)) {
             return json(['success' => false, 'error' => '请先登录']);
         }
         
         try {
-            // 通过手机号查找教师
-            $teacher = TeacherModel::where('phone', $phone)->find();
+            // 通过 openid 查找教师（优先），如果找不到再尝试手机号（兼容旧数据）
+            $teacher = null;
+            
+            if (!empty($openid)) {
+                $teacher = TeacherModel::where('openid', $openid)->find();
+            }
+            
+            if (!$teacher && !empty($phone)) {
+                // 兼容：如果通过 openid 找不到，尝试用手机号查找
+                $teacher = TeacherModel::where('phone', $phone)->find();
+                
+                // 如果通过手机号找到了，更新 openid（数据修复）
+                if ($teacher && empty($teacher->openid) && !empty($openid)) {
+                    $teacher->openid = $openid;
+                    $teacher->save();
+                    trace('数据修复: 为教师 teacher_id=' . $teacher->id . ' 补充 openid', 'info');
+                }
+            }
+            
             if (!$teacher) {
                 return json(['success' => false, 'error' => '未找到对应的教师账号']);
             }
@@ -139,10 +176,11 @@ class Application extends BaseController
             // 获取筛选参数
             $status = $this->request->get('status', '');
             
-            // 构建查询 - 只返回当前教师的投递记录
+            // 构建查询 - 只返回当前教师的投递记录，关联审核人信息
             $query = ResumeApplicationModel::alias('ra')
                 ->leftJoin('fa_tutor_orders_new t', 't.id = ra.tutor_id')
                 ->leftJoin('fa_subjects s', 's.id = t.subject_id')
+                ->leftJoin('fa_admin a', 'a.id = ra.reviewer_id')
                 ->where('ra.teacher_id', $teacherId)
                 ->field([
                     'ra.id',
@@ -152,10 +190,14 @@ class Application extends BaseController
                     'ra.apply_time',
                     'ra.review_time',
                     'ra.admin_remark',
+                    'ra.reviewer_id',
                     't.content as tutor_content',
                     's.name as tutor_subject',
                     't.grade as tutor_grade',
-                    't.salary as tutor_salary'
+                    't.salary as tutor_salary',
+                    'a.nickname as reviewer_nickname',
+                    'a.contact as reviewer_contact',
+                    'a.booking_service_phone as reviewer_phone'
                 ])
                 ->order('ra.apply_time', 'desc');
             
@@ -223,15 +265,19 @@ class Application extends BaseController
         }
         
         try {
-            // 不关联教师表，只查询投递记录和家教订单信息
+            // 关联审核人信息
             $application = ResumeApplicationModel::alias('ra')
                 ->leftJoin('fa_tutor_orders_new t', 't.id = ra.tutor_id')
+                ->leftJoin('fa_admin a', 'a.id = ra.reviewer_id')
                 ->where('ra.id', $id)
                 ->field([
                     'ra.*',
                     't.content as tutor_content',
                     't.grade as tutor_grade',
-                    't.salary as tutor_salary'
+                    't.salary as tutor_salary',
+                    'a.nickname as reviewer_nickname',
+                    'a.contact as reviewer_contact',
+                    'a.booking_service_phone as reviewer_phone'
                 ])
                 ->find();
             

@@ -14,6 +14,45 @@
         <text class="status-desc">{{ getStatusDesc(detail.status) }}</text>
       </view>
 
+      <!-- 审核人信息（仅已通过状态显示） - 移到顶部 -->
+      <view v-if="detail.status === 'approved' && detail.reviewer_nickname" class="info-card reviewer-card">
+        <view class="card-title">
+          <text>审核人信息</text>
+          <view class="title-badge">已通过</view>
+        </view>
+        <view class="info-item">
+          <text class="label">审核人</text>
+          <text class="value">{{ detail.reviewer_nickname }}</text>
+        </view>
+        <view v-if="detail.reviewer_contact" class="info-item">
+          <text class="label">联系方式</text>
+          <view class="value-with-action">
+            <text class="value">{{ detail.reviewer_contact }}</text>
+            <view class="copy-btn" @click="copyContact(detail.reviewer_contact)">
+              <text class="copy-text">复制</text>
+            </view>
+          </view>
+        </view>
+        <view v-if="detail.reviewer_phone" class="info-item">
+          <text class="label">电话</text>
+          <view class="value-with-action">
+            <text class="value">{{ detail.reviewer_phone }}</text>
+            <view class="action-group">
+              <view class="copy-btn" @click="copyContact(detail.reviewer_phone)">
+                <text class="copy-text">复制</text>
+              </view>
+              <view class="call-btn" @click="callPhone(detail.reviewer_phone)">
+                <text class="call-text">拨打</text>
+              </view>
+            </view>
+          </view>
+        </view>
+        <view class="reviewer-tip">
+          <text class="tip-icon">💡</text>
+          <text class="tip-text">请联系审核人了解更多详情</text>
+        </view>
+      </view>
+
       <!-- 家教信息 -->
       <view class="info-card">
         <view class="card-title">家教信息</view>
@@ -136,6 +175,26 @@ const getStatusDesc = (status) => {
 const getStatusClass = (status) => {
   return `status-${status}`
 }
+
+// 复制联系方式
+const copyContact = (text) => {
+  uni.setClipboardData({
+    data: text,
+    success: () => {
+      uni.showToast({
+        title: '已复制',
+        icon: 'success'
+      })
+    }
+  })
+}
+
+// 拨打电话
+const callPhone = (phone) => {
+  uni.makePhoneCall({
+    phoneNumber: phone
+  })
+}
 </script>
 
 <style lang="scss" scoped>
@@ -237,6 +296,18 @@ const getStatusClass = (status) => {
     margin-bottom: 30rpx;
     padding-bottom: 20rpx;
     border-bottom: 1px solid #f0f0f0;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    
+    .title-badge {
+      padding: 6rpx 16rpx;
+      background: linear-gradient(135deg, #F6FFED 0%, #D9F7BE 100%);
+      color: #52C41A;
+      font-size: 24rpx;
+      border-radius: 20rpx;
+      font-weight: 500;
+    }
   }
   
   .info-item {
@@ -274,6 +345,65 @@ const getStatusClass = (status) => {
         line-height: 1.8;
         white-space: pre-wrap;
       }
+    }
+    
+    .value-with-action {
+      flex: 1;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      
+      .value {
+        flex: 1;
+      }
+      
+      .action-group {
+        display: flex;
+        gap: 12rpx;
+      }
+      
+      .copy-btn, .call-btn {
+        padding: 8rpx 20rpx;
+        border-radius: 20rpx;
+        font-size: 24rpx;
+        font-weight: 500;
+      }
+      
+      .copy-btn {
+        background: linear-gradient(135deg, #E8F8F2 0%, #D4F1E8 100%);
+        color: #52C9A6;
+      }
+      
+      .call-btn {
+        background: linear-gradient(135deg, #E6F7FF 0%, #BAE7FF 100%);
+        color: #1890FF;
+      }
+    }
+  }
+}
+
+.reviewer-card {
+  background: linear-gradient(135deg, #F6FFED 0%, #FFFFFF 100%);
+  border: 2rpx solid #D9F7BE;
+  
+  .reviewer-tip {
+    margin-top: 20rpx;
+    padding: 20rpx;
+    background: rgba(82, 201, 166, 0.08);
+    border-radius: 12rpx;
+    display: flex;
+    align-items: center;
+    gap: 12rpx;
+    
+    .tip-icon {
+      font-size: 32rpx;
+    }
+    
+    .tip-text {
+      flex: 1;
+      font-size: 26rpx;
+      color: #52C9A6;
+      line-height: 1.5;
     }
   }
 }

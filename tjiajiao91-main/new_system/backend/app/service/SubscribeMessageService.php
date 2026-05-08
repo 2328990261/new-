@@ -354,6 +354,317 @@ class SubscribeMessageService
      * @param array $data 消息数据 { result, review_time, remark, page? }
      * @return array
      */
+    
+    /**
+     * 发送简历投递审核通知（统一模板，通过和驳回都用这个）
+     *
+     * @param string $openid 用户OpenID
+     * @param array $data 消息数据 { tutor_info, audit_result, recommender, contact_phone, audit_time, application_id }
+     * @return array
+     */
+    public static function sendApplicationAuditMessage($openid, $data)
+    {
+        try {
+            $tplId = self::getTemplateIdByCode('tutor_order_audit_notify');
+            $subscribe = null;
+            try {
+                $subscribe = Db::name('user_subscribe')
+                    ->where('openid', $openid)
+                    ->where('template_id', $tplId)
+                    ->where('is_used', 0)
+                    ->order('subscribe_time', 'desc')
+                    ->find();
+            } catch (\Throwable $e) {
+                trace('读取 user_subscribe（投递审核）失败，跳过订阅检查：' . $e->getMessage(), 'warning');
+            }
+            
+            $subscribeId = $subscribe ? (int)($subscribe['id'] ?? 0) : 0;
+            $subscribeUserId = $subscribe ? ($subscribe['user_id'] ?? null) : null;
+
+            // 获取小程序配置
+            $runtimeConfig = (new MiniProgramConfigService())->getRuntimeConfig('wechat');
+            $appId = (string)($runtimeConfig['app_id'] ?? '');
+            $appSecret = (string)($runtimeConfig['app_secret'] ?? '');
+            $miniState = self::resolveMiniProgramState((string)($runtimeConfig['env_version'] ?? 'release'));
+
+            if (!$appId || !$appSecret) {
+                throw new \Exception('小程序配置未完成');
+            }
+
+            // 模板字段：
+            // 课程 {{thing1.DATA}}
+            // 审核结果 {{phrase7.DATA}}
+            // 推荐人 {{phrase5.DATA}}
+            // 联系电话 {{phone_number4.DATA}} - 必填，必须是有效手机号
+            // 审核时间 {{time6.DATA}}
+            $course = self::limitThingValue((string)($data['tutor_info'] ?? '家教订单'));
+            $auditResult = (string)($data['audit_result'] ?? '审核通过'); // phrase 类型
+            $recommender = (string)($data['recommender'] ?? '派单员'); // phrase 类型
+            $contactPhone = (string)($data['contact_phone'] ?? ''); // phone_number 类型
+            $auditTime = trim((string)($data['audit_time'] ?? date('Y-m-d H:i:s')));
+
+            // phone_number 类型必须是有效的11位手机号，如果无效则使用默认号码
+            if (empty($contactPhone) || !preg_match('/^1[3-9]\d{9}$/', $contactPhone)) {
+                $contactPhone = '13800138000'; // 默认客服电话
+            }
+
+            $messageData = [
+                'thing1' => ['value' => $course],
+                'phrase7' => ['value' => $auditResult],
+                'phrase5' => ['value' => $recommender],
+                'phone_number4' => ['value' => $contactPhone],
+                'time6' => ['value' => $auditTime]
+            ];
+
+            $applicationId = $data['application_id'] ?? '';
+            $page = $applicationId ? "pages/application-detail/index?id={$applicationId}" : 'pages/tutor-list/index';
+
+            $postData = [
+                'touser' => $openid,
+                'template_id' => $tplId,
+                'page' => $page,
+                'data' => $messageData,
+                'miniprogram_state' => $miniState
+            ];
+
+            $response = self::postSubscribeMessageSend($appId, $appSecret, $postData);
+
+            $success = isset($response['errcode']) && $response['errcode'] == 0;
+
+            self::logMessage($subscribeUserId, $openid, $postData, $response);
+
+            if ($success) {
+                if ($subscribeId > 0) {
+                    try {
+                        Db::name('user_subscribe')
+                            ->where('id', $subscribeId)
+                            ->update([
+                                'is_used' => 1,
+                                'used_time' => date('Y-m-d H:i:s')
+                            ]);
+                    } catch (\Throwable $e) {
+                        trace('更新 user_subscribe 失败: ' . $e->getMessage(), 'warning');
+                    }
+                }
+            } else {
+                $ec = (int)($response['errcode'] ?? 0);
+                $em = (string)($response['errmsg'] ?? '发送失败');
+                throw new \Exception($em . ($ec ? " (errcode={$ec})" : ''));
+            }
+
+            return [
+                'success' => true,
+                'message' => '发送成功'
+            ];
+        } catch (\Exception $e) {
+            trace('投递审核订阅消息发送失败: ' . $e->getMessage(), 'error');
+            return [
+                'success' => false,
+                'message' => $e->getMessage()
+            ];
+        }
+    }
+    
+    /**
+     * 发送简历投递通过通知
+     *
+     * @param string $openid 用户OpenID
+     * @param array $data 消息数据 { tutor_info, dispatcher_name, dispatcher_contact, application_id }
+     * @return array
+     */
+    public static function sendApplicationApproveMessage($openid, $data)
+    {
+        try {
+            $tplId = self::getTemplateIdByCode('tutor_application_approve');
+            $subscribe = null;
+            try {
+                $subscribe = Db::name('user_subscribe')
+                    ->where('openid', $openid)
+                    ->where('template_id', $tplId)
+                    ->where('is_used', 0)
+                    ->order('subscribe_time', 'desc')
+                    ->find();
+            } catch (\Throwable $e) {
+                trace('读取 user_subscribe（投递通过）失败，跳过订阅检查：' . $e->getMessage(), 'warning');
+            }
+            
+            $subscribeId = $subscribe ? (int)($subscribe['id'] ?? 0) : 0;
+            $subscribeUserId = $subscribe ? ($subscribe['user_id'] ?? null) : null;
+
+            // 获取小程序配置
+            $runtimeConfig = (new MiniProgramConfigService())->getRuntimeConfig('wechat');
+            $appId = (string)($runtimeConfig['app_id'] ?? '');
+            $appSecret = (string)($runtimeConfig['app_secret'] ?? '');
+            $miniState = self::resolveMiniProgramState((string)($runtimeConfig['env_version'] ?? 'release'));
+
+            if (!$appId || !$appSecret) {
+                throw new \Exception('小程序配置未完成');
+            }
+
+            // 模板字段：
+            // 申请内容 {{thing5.DATA}}
+            // 审核结果 {{phrase6.DATA}}
+            // 审核人 {{name1.DATA}}
+            // 审核时间 {{date2.DATA}}
+            $applicationContent = self::limitThingValue((string)($data['tutor_info'] ?? '家教订单'));
+            $reviewResult = '审核通过'; // phrase 类型，固定文本
+            $reviewerName = self::limitNameValue((string)($data['reviewer_name'] ?? '管理员'));
+            $reviewTime = trim((string)($data['review_time'] ?? date('Y-m-d H:i:s')));
+
+            $messageData = [
+                'thing5' => ['value' => $applicationContent],
+                'phrase6' => ['value' => $reviewResult],
+                'name1' => ['value' => $reviewerName],
+                'date2' => ['value' => $reviewTime]
+            ];
+
+            $applicationId = $data['application_id'] ?? '';
+            $page = $applicationId ? "pages/application-detail/index?id={$applicationId}" : 'pages/tutor-list/index';
+
+            $postData = [
+                'touser' => $openid,
+                'template_id' => $tplId,
+                'page' => $page,
+                'data' => $messageData,
+                'miniprogram_state' => $miniState
+            ];
+
+            $response = self::postSubscribeMessageSend($appId, $appSecret, $postData);
+
+            $success = isset($response['errcode']) && $response['errcode'] == 0;
+
+            self::logMessage($subscribeUserId, $openid, $postData, $response);
+
+            if ($success) {
+                if ($subscribeId > 0) {
+                    try {
+                        Db::name('user_subscribe')
+                            ->where('id', $subscribeId)
+                            ->update([
+                                'is_used' => 1,
+                                'used_time' => date('Y-m-d H:i:s')
+                            ]);
+                    } catch (\Throwable $e) {
+                        trace('更新 user_subscribe 失败: ' . $e->getMessage(), 'warning');
+                    }
+                }
+            } else {
+                $ec = (int)($response['errcode'] ?? 0);
+                $em = (string)($response['errmsg'] ?? '发送失败');
+                throw new \Exception($em . ($ec ? " (errcode={$ec})" : ''));
+            }
+
+            return [
+                'success' => true,
+                'message' => '发送成功'
+            ];
+        } catch (\Exception $e) {
+            trace('投递通过订阅消息发送失败: ' . $e->getMessage(), 'error');
+            return [
+                'success' => false,
+                'message' => $e->getMessage()
+            ];
+        }
+    }
+
+    /**
+     * 发送简历投递驳回通知
+     *
+     * @param string $openid 用户OpenID
+     * @param array $data 消息数据 { tutor_info, reject_reason, reject_time }
+     * @return array
+     */
+    public static function sendApplicationRejectMessage($openid, $data)
+    {
+        try {
+            $tplId = self::getTemplateIdByCode('tutor_application_reject');
+            $subscribe = null;
+            try {
+                $subscribe = Db::name('user_subscribe')
+                    ->where('openid', $openid)
+                    ->where('template_id', $tplId)
+                    ->where('is_used', 0)
+                    ->order('subscribe_time', 'desc')
+                    ->find();
+            } catch (\Throwable $e) {
+                trace('读取 user_subscribe（投递驳回）失败，跳过订阅检查：' . $e->getMessage(), 'warning');
+            }
+            
+            $subscribeId = $subscribe ? (int)($subscribe['id'] ?? 0) : 0;
+            $subscribeUserId = $subscribe ? ($subscribe['user_id'] ?? null) : null;
+
+            // 获取小程序配置
+            $runtimeConfig = (new MiniProgramConfigService())->getRuntimeConfig('wechat');
+            $appId = (string)($runtimeConfig['app_id'] ?? '');
+            $appSecret = (string)($runtimeConfig['app_secret'] ?? '');
+            $miniState = self::resolveMiniProgramState((string)($runtimeConfig['env_version'] ?? 'release'));
+
+            if (!$appId || !$appSecret) {
+                throw new \Exception('小程序配置未完成');
+            }
+
+            // 模板字段：
+            // 家教信息 {{thing8.DATA}}
+            // 驳回原因 {{thing4.DATA}}
+            // 驳回时间 {{time3.DATA}}
+            $tutorInfo = self::limitThingValue((string)($data['tutor_info'] ?? '家教订单'));
+            $rejectReason = self::limitThingValue((string)($data['reject_reason'] ?? '不符合要求'));
+            $rejectTime = trim((string)($data['reject_time'] ?? date('Y-m-d H:i:s')));
+
+            $messageData = [
+                'thing8' => ['value' => $tutorInfo],
+                'thing4' => ['value' => $rejectReason],
+                'time3' => ['value' => $rejectTime]
+            ];
+
+            $page = 'pages/tutor-list/index';
+
+            $postData = [
+                'touser' => $openid,
+                'template_id' => $tplId,
+                'page' => $page,
+                'data' => $messageData,
+                'miniprogram_state' => $miniState
+            ];
+
+            $response = self::postSubscribeMessageSend($appId, $appSecret, $postData);
+
+            $success = isset($response['errcode']) && $response['errcode'] == 0;
+
+            self::logMessage($subscribeUserId, $openid, $postData, $response);
+
+            if ($success) {
+                if ($subscribeId > 0) {
+                    try {
+                        Db::name('user_subscribe')
+                            ->where('id', $subscribeId)
+                            ->update([
+                                'is_used' => 1,
+                                'used_time' => date('Y-m-d H:i:s')
+                            ]);
+                    } catch (\Throwable $e) {
+                        trace('更新 user_subscribe 失败: ' . $e->getMessage(), 'warning');
+                    }
+                }
+            } else {
+                $ec = (int)($response['errcode'] ?? 0);
+                $em = (string)($response['errmsg'] ?? '发送失败');
+                throw new \Exception($em . ($ec ? " (errcode={$ec})" : ''));
+            }
+
+            return [
+                'success' => true,
+                'message' => '发送成功'
+            ];
+        } catch (\Exception $e) {
+            trace('投递驳回订阅消息发送失败: ' . $e->getMessage(), 'error');
+            return [
+                'success' => false,
+                'message' => $e->getMessage()
+            ];
+        }
+    }
+
     /**
      * 发送问题反馈通知
      *
