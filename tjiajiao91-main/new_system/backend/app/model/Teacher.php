@@ -61,6 +61,7 @@ class Teacher extends Model
         'reviewer_id'           => 'int',
         'review_note'           => 'string',
         'is_top'                => 'int',
+        'source'                => 'string',
         'last_login_time'       => 'datetime',
         'create_time'           => 'datetime',
         'update_time'           => 'datetime',

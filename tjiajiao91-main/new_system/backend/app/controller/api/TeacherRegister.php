@@ -209,6 +209,9 @@ class TeacherRegister extends BaseController
             $insertData['teacher_verified'] = 0;
             $insertData['is_top'] = 0;
             
+            // 来源：有 openid 的是小程序，否则是 H5
+            $insertData['source'] = !empty($insertData['openid']) ? 'miniprogram' : 'h5';
+            
             // 自动生成 teacher_no（对外展示编号，从 1000 起自增，如 T1000）
             $maxNo = (int) Teacher::max('teacher_no');
             $insertData['teacher_no'] = ($maxNo >= 1000) ? ($maxNo + 1) : 1000;

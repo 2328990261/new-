@@ -37,6 +37,15 @@ export function updatePersonnel(id, data) {
   })
 }
 
+// 局部更新人员（转正/升职/离职等，不做完整校验）
+export function patchPersonnel(id, data) {
+  return request({
+    url: `/personnel/${id}`,
+    method: 'patch',
+    data
+  })
+}
+
 // 删除人员
 export function deletePersonnel(id) {
   return request({

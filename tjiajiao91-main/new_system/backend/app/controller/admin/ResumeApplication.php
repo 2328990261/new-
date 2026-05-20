@@ -209,15 +209,6 @@ class ResumeApplication extends BaseController
                 Log::error('调用 sendApplicationNotification 异常: ' . $e->getMessage());
             }
             
-            // 发送邮件通知给客服、客服组长和家长组
-            try {
-                Log::info('=== 准备发送邮件通知 ===');
-                \app\service\EmailService::sendApplicationReviewNotification($application, $status, $remark);
-                Log::info('=== 邮件通知发送完成 ===');
-            } catch (\Exception $e) {
-                Log::error('发送邮件通知异常: ' . $e->getMessage());
-            }
-            
             $statusText = $status === 'approved' ? '通过' : '拒绝';
             
             return json([
@@ -273,15 +264,6 @@ class ResumeApplication extends BaseController
             // 批量发送订阅消息通知
             foreach ($applications as $application) {
                 $this->sendApplicationNotification($application, $status, $remark);
-            }
-            
-            // 批量发送邮件通知给客服、客服组长和家长组
-            foreach ($applications as $application) {
-                try {
-                    \app\service\EmailService::sendApplicationReviewNotification($application, $status, $remark);
-                } catch (\Exception $e) {
-                    Log::error('批量发送邮件通知异常: application_id=' . $application->id . ', error=' . $e->getMessage());
-                }
             }
             
             $statusText = $status === 'approved' ? '通过' : '拒绝';

@@ -34,7 +34,9 @@
 /runtime/temp/*
 
 # Database
+# 仅忽略 backend 目录下零散 SQL（如临时导出）；`sql/` 内为运维/补丁脚本纳入版本库
 *.sql
+!sql/*.sql
 *.sqlite
 
 # OS

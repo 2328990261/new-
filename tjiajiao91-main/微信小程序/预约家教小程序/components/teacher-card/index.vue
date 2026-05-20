@@ -72,10 +72,6 @@
         </text>
       </view>
 
-      <view class="personal-advantage" v-if="teacher.personal_advantage">
-        <text class="advantage-text">{{ teacher.personal_advantage }}</text>
-      </view>
-
       <view class="distance-badge" v-if="teacher.distance_text">
         <view class="distance-icon">
           <uni-icons type="location" size="18" color="#52C9A6" />
@@ -391,12 +387,6 @@ export default {
   background: #fff2e8;
   color: #fa8c16;
   border: 1rpx solid rgba(250, 140, 22, 0.25);
-}
-
-.personal-advantage .advantage-text {
-  font-size: 24rpx;
-  color: #6b7280;
-  line-height: 1.4;
 }
 
 .distance-badge {

@@ -1544,6 +1544,22 @@ class Tutor extends BaseController
             // 记录删除操作日志
             trace("订单删除操作 - 订单ID: {$id}, 操作者: {$_SESSION['admin_id']}, 订单内容: " . mb_substr($order->content, 0, 50), 'info');
             
+            // 在删除订单前，先将关联的投递记录状态设置为"已拒绝"
+            $adminId = $_SESSION['admin_id'];
+            $affectedApplications = \think\facade\Db::name('resume_application')
+                ->where('tutor_id', $id)
+                ->whereIn('status', ['pending', 'approved']) // 只处理待审核和已通过的投递
+                ->update([
+                    'status' => 'rejected',
+                    'admin_remark' => '该家教订单已被删除',
+                    'review_time' => date('Y-m-d H:i:s'),
+                    'reviewer_id' => $adminId
+                ]);
+            
+            if ($affectedApplications > 0) {
+                trace("订单删除 - 自动拒绝关联投递 - 订单ID: {$id}, 影响投递数: {$affectedApplications}", 'info');
+            }
+            
             // 尝试物理删除
             $result = $order->delete();
             
@@ -1605,6 +1621,22 @@ class Tutor extends BaseController
             
             if (empty($existingIds)) {
                 return json(['success' => false, 'error' => '所有订单均不存在，可能已被删除']);
+            }
+            
+            // 在删除订单前，先将关联的投递记录状态设置为"已拒绝"
+            $adminId = $_SESSION['admin_id'];
+            $affectedApplications = \think\facade\Db::name('resume_application')
+                ->whereIn('tutor_id', $existingIds)
+                ->whereIn('status', ['pending', 'approved']) // 只处理待审核和已通过的投递
+                ->update([
+                    'status' => 'rejected',
+                    'admin_remark' => '该家教订单已被删除',
+                    'review_time' => date('Y-m-d H:i:s'),
+                    'reviewer_id' => $adminId
+                ]);
+            
+            if ($affectedApplications > 0) {
+                trace("批量删除 - 自动拒绝关联投递 - 影响投递数: {$affectedApplications}", 'info');
             }
             
             // 执行物理删除
@@ -1857,7 +1889,7 @@ class Tutor extends BaseController
     }
     
     /**
-     * 自动派单：按订单城市匹配派单员归属城市；同工作量的候选派单员中随机指派（见 DispatcherAutoAssignService）
+     * 自动派单：优先按城市匹配；无匹配城市时回退全员按总单量均衡随机（见 DispatcherAutoAssignService）
      */
     private function autoAssignOrder($order)
     {

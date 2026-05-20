@@ -37,6 +37,7 @@ class Teacher extends BaseController
             $cityId = $this->request->get('city_id'); // 授课城市筛选
             $districtIds = $this->request->get('district_ids'); // 授课区域筛选（多选）
             $subjectIds = $this->request->get('subject_ids'); // 科目筛选（多选）
+            $source = $this->request->get('source'); // 来源筛选：h5 / miniprogram
             $page = $this->request->get('page', 1);
             $limit = $this->request->get('limit', 20);
             
@@ -87,6 +88,10 @@ class Teacher extends BaseController
             
             if ($isTop !== '' && $isTop !== null) {
                 $where[] = ['is_top', '=', intval($isTop)];
+            }
+
+            if ($source) {
+                $where[] = ['source', '=', $source];
             }
             
             // 科目筛选（多选）- 使用 JSON_CONTAINS 或 LIKE 查询

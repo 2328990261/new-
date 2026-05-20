@@ -66,6 +66,14 @@
               <el-option label="专职老师" value="professional"></el-option>
             </el-select>
           </el-form-item>
+
+          <el-form-item>
+            <el-select v-model="searchForm.source" placeholder="注册来源" clearable style="width: 130px">
+              <el-option label="全部来源" value=""></el-option>
+              <el-option label="用户端H5" value="h5"></el-option>
+              <el-option label="支付宝小程序" value="miniprogram"></el-option>
+            </el-select>
+          </el-form-item>
           
           <el-form-item>
             <el-input 
@@ -1373,7 +1381,8 @@ const searchForm = ref({
   is_top: '',
   city_id: '',
   district_ids: [],
-  subject_ids: []
+  subject_ids: [],
+  source: ''
 })
 
 // 城市、区域、科目数据

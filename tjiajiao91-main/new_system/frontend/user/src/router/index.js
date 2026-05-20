@@ -50,6 +50,12 @@ const routes = [
     meta: { title: '教师注册' }
   },
   {
+    path: '/teacher-register-success',
+    name: 'TeacherRegisterSuccess',
+    component: () => import('@/views/TeacherRegisterSuccess.vue'),
+    meta: { title: '提交成功' }
+  },
+  {
     path: '/teacher-login',
     name: 'TeacherLogin',
     component: () => import('@/views/TeacherLogin.vue'),

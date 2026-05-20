@@ -24,19 +24,16 @@
                 <router-link to="/" :class="{ 'nav-activation': isActive('/') }">首页</router-link>
               </li>
               <li>
-                <router-link to="/city-tutor" :class="{ 'nav-activation': isActive('/city-tutor') }">请家教</router-link>
-              </li>
-              <li>
                 <router-link to="/teacher-register" :class="{ 'nav-activation': isActive('/teacher-register') }">当老师</router-link>
               </li>
               <li>
                 <router-link to="/teachers" :class="{ 'nav-activation': isActive('/teachers') }">教员库</router-link>
               </li>
               <li>
-                <router-link to="/city-tutor" :class="{ 'nav-activation': isActive('/city-tutor') }">学员库</router-link>
+                <router-link to="/city-tutor" :class="{ 'nav-activation': isActive('/city-tutor') }">家教单</router-link>
               </li>
               <li>
-                <router-link to="/partnership" :class="{ 'nav-activation': isActive('/partnership') }">资费标准</router-link>
+                <router-link to="/partnership" :class="{ 'nav-activation': isActive('/partnership') }">合作招募</router-link>
               </li>
               <li>
                 <router-link to="/news" :class="{ 'nav-activation': isActive('/news') }">新闻资讯</router-link>

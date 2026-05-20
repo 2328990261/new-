@@ -10,13 +10,13 @@
       </el-card>
       <el-card shadow="hover" class="stat-card">
         <div class="stat-content">
-          <div class="stat-label">平均薪酬</div>
+          <div class="stat-label">平均实发工资</div>
           <div class="stat-value">¥{{ formatMoney(stats.avgSalary) }}</div>
         </div>
       </el-card>
       <el-card shadow="hover" class="stat-card">
         <div class="stat-content">
-          <div class="stat-label">薪酬总额</div>
+          <div class="stat-label">实发工资总额</div>
           <div class="stat-value">¥{{ formatMoney(stats.totalSalary) }}</div>
         </div>
       </el-card>
@@ -46,7 +46,7 @@
         <el-button @click="resetQuery">重置</el-button>
       </div>
       <div class="right">
-        <el-button type="primary" @click="openCreate">新增薪酬</el-button>
+        <el-button type="primary" @click="openCreate">新增工资发放</el-button>
       </div>
     </div>
 
@@ -76,15 +76,14 @@
           {{ formatMoney(calculateAllowanceTotal(row)) }}
         </template>
       </el-table-column>
-      <el-table-column prop="total_salary" label="总薪酬" width="140" align="right">
+      <el-table-column prop="total_salary" label="实发工资" width="140" align="right">
         <template #default="{ row }">
           <span style="font-weight: bold; color: #409eff;">{{ formatMoney(row.total_salary) }}</span>
         </template>
       </el-table-column>
-      <el-table-column prop="effective_date" label="生效日期" width="120" />
-      <el-table-column prop="end_date" label="结束日期" width="120">
+      <el-table-column prop="salary_month" label="归属月份" width="110">
         <template #default="{ row }">
-          {{ row.end_date || '-' }}
+          {{ row.salary_month || (row.effective_date ? row.effective_date.slice(0, 7) : '-') }}
         </template>
       </el-table-column>
       <el-table-column prop="status" label="状态" width="100" align="center">
@@ -119,27 +118,45 @@
     <!-- 编辑弹窗 -->
     <el-dialog
       v-model="dialogVisible"
-      :title="isEdit ? '编辑薪酬' : '新增薪酬'"
-      width="720px"
+      :title="isEdit ? '编辑工资条明细' : '新增工资条明细'"
+      width="760px"
       :close-on-click-modal="false"
     >
-      <el-form ref="formRef" :model="form" :rules="rules" label-width="100px">
-        <el-form-item label="选择人员" prop="personnel_id">
-          <el-select
-            v-model="form.personnel_id"
-            placeholder="请选择人员"
-            filterable
-            style="width: 100%;"
-            :disabled="isEdit"
-          >
-            <el-option
-              v-for="item in personnelOptions"
-              :key="item.id"
-              :label="`${item.name} - ${item.phone} - ${item.position_name || '未设置岗位'}`"
-              :value="item.id"
-            />
-          </el-select>
-        </el-form-item>
+      <el-form ref="formRef" :model="form" :rules="rules" label-width="110px">
+        <el-row :gutter="20">
+          <el-col :span="16">
+            <el-form-item label="选择人员" prop="personnel_id">
+              <el-select
+                v-model="form.personnel_id"
+                placeholder="请选择人员"
+                filterable
+                style="width: 100%;"
+                :disabled="isEdit"
+              >
+                <el-option
+                  v-for="item in personnelOptions"
+                  :key="item.id"
+                  :label="`${item.name} - ${item.phone} - ${item.position_name || '未设置岗位'}`"
+                  :value="item.id"
+                />
+              </el-select>
+            </el-form-item>
+          </el-col>
+          <el-col :span="8">
+            <el-form-item label="归属月份" prop="salary_month">
+              <el-date-picker
+                v-model="form.salary_month"
+                type="month"
+                placeholder="选择归属月份"
+                format="YYYY-MM"
+                value-format="YYYY-MM"
+                style="width: 100%;"
+              />
+            </el-form-item>
+          </el-col>
+        </el-row>
+
+        <el-divider content-position="left" style="margin: 8px 0 16px;">收入项</el-divider>
 
         <el-row :gutter="20">
           <el-col :span="12">
@@ -155,7 +172,7 @@
             </el-form-item>
           </el-col>
           <el-col :span="12">
-            <el-form-item label="绩效工资" prop="performance_salary">
+            <el-form-item label="绩效工资">
               <el-input-number
                 v-model="form.performance_salary"
                 :precision="2"
@@ -235,8 +252,69 @@
               />
             </el-form-item>
           </el-col>
+        </el-row>
+
+        <el-divider content-position="left" style="margin: 8px 0 16px;">社保 / 公积金</el-divider>
+
+        <el-row :gutter="20">
           <el-col :span="12">
-            <el-form-item label="总薪酬">
+            <el-form-item label="公积金（单位）">
+              <el-input-number
+                v-model="form.provident_fund_company"
+                :precision="2"
+                :min="0"
+                :max="9999999"
+                style="width: 100%;"
+                @change="calculateTotal"
+              />
+            </el-form-item>
+          </el-col>
+          <el-col :span="12">
+            <el-form-item label="公积金（个人）">
+              <el-input-number
+                v-model="form.provident_fund_personal"
+                :precision="2"
+                :min="0"
+                :max="9999999"
+                style="width: 100%;"
+                @change="calculateTotal"
+              />
+            </el-form-item>
+          </el-col>
+        </el-row>
+
+        <el-row :gutter="20">
+          <el-col :span="12">
+            <el-form-item label="社保（单位）">
+              <el-input-number
+                v-model="form.social_insurance_company"
+                :precision="2"
+                :min="0"
+                :max="9999999"
+                style="width: 100%;"
+                @change="calculateTotal"
+              />
+            </el-form-item>
+          </el-col>
+          <el-col :span="12">
+            <el-form-item label="社保（个人）">
+              <el-input-number
+                v-model="form.social_insurance_personal"
+                :precision="2"
+                :min="0"
+                :max="9999999"
+                style="width: 100%;"
+                @change="calculateTotal"
+              />
+            </el-form-item>
+          </el-col>
+        </el-row>
+
+        <el-divider style="margin: 8px 0 16px;" />
+
+        <el-row :gutter="20">
+          <el-col :span="12">
+            <el-form-item label="实发工资">
               <el-input
                 :model-value="formatMoney(form.total_salary)"
                 disabled
@@ -246,42 +324,15 @@
               </el-input>
             </el-form-item>
           </el-col>
-        </el-row>
-
-        <el-row :gutter="20">
           <el-col :span="12">
-            <el-form-item label="生效日期" prop="effective_date">
-              <el-date-picker
-                v-model="form.effective_date"
-                type="date"
-                placeholder="选择生效日期"
-                format="YYYY-MM-DD"
-                value-format="YYYY-MM-DD"
-                style="width: 100%;"
-              />
-            </el-form-item>
-          </el-col>
-          <el-col :span="12">
-            <el-form-item label="结束日期">
-              <el-date-picker
-                v-model="form.end_date"
-                type="date"
-                placeholder="选择结束日期（可选）"
-                format="YYYY-MM-DD"
-                value-format="YYYY-MM-DD"
-                style="width: 100%;"
-              />
+            <el-form-item label="状态" prop="status">
+              <el-radio-group v-model="form.status">
+                <el-radio :label="1">有效</el-radio>
+                <el-radio :label="0">失效</el-radio>
+              </el-radio-group>
             </el-form-item>
           </el-col>
         </el-row>
-
-        <el-form-item label="状态" prop="status">
-          <el-radio-group v-model="form.status">
-            <el-radio :label="1">有效</el-radio>
-            <el-radio :label="0">失效</el-radio>
-          </el-radio-group>
-          <div class="form-tip">设置为"有效"时，该人员的其他有效薪酬将自动失效</div>
-        </el-form-item>
 
         <el-form-item label="备注">
           <el-input
@@ -355,7 +406,12 @@ const emptyForm = () => ({
   meal_allowance: 0,
   transport_allowance: 0,
   other_allowance: 0,
+  provident_fund_company: 0,
+  provident_fund_personal: 0,
+  social_insurance_company: 0,
+  social_insurance_personal: 0,
   total_salary: 0,
+  salary_month: '',
   effective_date: '',
   end_date: '',
   status: 1,
@@ -368,7 +424,7 @@ const form = reactive(emptyForm())
 const rules = {
   personnel_id: [{ required: true, message: '请选择人员', trigger: 'change' }],
   base_salary: [{ required: true, message: '请输入基本工资', trigger: 'blur' }],
-  effective_date: [{ required: true, message: '请选择生效日期', trigger: 'change' }],
+  salary_month: [{ required: true, message: '请选择归属月份', trigger: 'change' }],
   status: [{ required: true, message: '请选择状态', trigger: 'change' }]
 }
 
@@ -388,9 +444,9 @@ const calculateAllowanceTotal = (row) => {
   return total
 }
 
-// 计算总薪酬
+// 计算总薪酬（实发 = 收入合计 - 个人社保 - 个人公积金）
 const calculateTotal = () => {
-  form.total_salary = 
+  const income =
     parseFloat(form.base_salary || 0) +
     parseFloat(form.performance_salary || 0) +
     parseFloat(form.post_allowance || 0) +
@@ -398,6 +454,10 @@ const calculateTotal = () => {
     parseFloat(form.meal_allowance || 0) +
     parseFloat(form.transport_allowance || 0) +
     parseFloat(form.other_allowance || 0)
+  const deduction =
+    parseFloat(form.provident_fund_personal || 0) +
+    parseFloat(form.social_insurance_personal || 0)
+  form.total_salary = income - deduction
 }
 
 // 获取列表
@@ -490,7 +550,12 @@ const openEdit = async (row) => {
     meal_allowance: parseFloat(row.meal_allowance) || 0,
     transport_allowance: parseFloat(row.transport_allowance) || 0,
     other_allowance: parseFloat(row.other_allowance) || 0,
+    provident_fund_company: parseFloat(row.provident_fund_company) || 0,
+    provident_fund_personal: parseFloat(row.provident_fund_personal) || 0,
+    social_insurance_company: parseFloat(row.social_insurance_company) || 0,
+    social_insurance_personal: parseFloat(row.social_insurance_personal) || 0,
     total_salary: parseFloat(row.total_salary) || 0,
+    salary_month: row.salary_month || (row.effective_date ? row.effective_date.slice(0, 7) : ''),
     effective_date: row.effective_date,
     end_date: row.end_date || '',
     status: parseInt(row.status) || 0,
@@ -509,6 +574,10 @@ const submitForm = async () => {
     const data = { 
       ...form,
       status: parseInt(form.status) // 确保status是整数
+    }
+    // 不传空的 end_date，避免 MySQL 日期格式报错
+    if (!data.end_date) {
+      delete data.end_date
     }
     
     if (isEdit.value) {

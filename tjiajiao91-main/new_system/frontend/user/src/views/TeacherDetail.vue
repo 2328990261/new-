@@ -24,12 +24,6 @@
             </div>
           </div>
         </div>
-        
-        <div class="salary-box">
-          <div class="salary-label">课时费</div>
-          <div class="salary-price">¥{{ teacher.hourly_rate }}</div>
-          <div class="salary-unit">/小时</div>
-        </div>
       </div>
 
       <el-divider />
@@ -45,7 +39,7 @@
           {{ teacher.major }}
         </el-descriptions-item>
         <el-descriptions-item label="授课城市">
-          {{ teacher.city_name }} - {{ teacher.district_name }}
+          {{ [teacher.location_city, teacher.location_district].filter(Boolean).join(' - ') || '暂无' }}
         </el-descriptions-item>
         <el-descriptions-item label="授课科目" :span="2">
           <el-tag
@@ -60,9 +54,26 @@
 
       <el-divider />
 
-      <div class="section">
+      <div class="section" v-if="teacher.experience && teacher.experience.length > 0">
         <h3><el-icon><Reading /></el-icon> 教学经历</h3>
-        <div class="content" v-html="teacher.experience"></div>
+        <div class="experience-list">
+          <div 
+            v-for="(exp, index) in teacher.experience" 
+            :key="index" 
+            class="experience-item"
+          >
+            <div class="exp-header">
+              <span class="exp-time" v-if="exp.start_date || exp.end_date">
+                {{ exp.start_date || '?' }} ~ {{ exp.end_date || '至今' }}
+              </span>
+              <span class="exp-subject" v-if="exp.subject">{{ exp.subject }}</span>
+              <span class="exp-location" v-if="exp.location">{{ exp.location }}</span>
+            </div>
+            <div class="exp-description" v-if="exp.description">
+              {{ exp.description }}
+            </div>
+          </div>
+        </div>
       </div>
 
       <el-divider />
@@ -359,43 +370,6 @@ onMounted(() => {
   font-size: 20px;
 }
 
-.salary-box {
-  text-align: center;
-  padding: 28px 24px;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  border-radius: 16px;
-  color: white;
-  min-width: 160px;
-  box-shadow: 0 8px 24px rgba(102, 126, 234, 0.35);
-  transition: all 0.3s ease;
-}
-
-.salary-box:hover {
-  transform: translateY(-4px);
-  box-shadow: 0 12px 32px rgba(102, 126, 234, 0.45);
-}
-
-.salary-label {
-  font-size: 15px;
-  opacity: 0.95;
-  margin-bottom: 8px;
-  font-weight: 500;
-  letter-spacing: 0.5px;
-}
-
-.salary-price {
-  font-size: 38px;
-  font-weight: 800;
-  margin: 10px 0;
-  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-}
-
-.salary-unit {
-  font-size: 15px;
-  opacity: 0.95;
-  font-weight: 500;
-}
-
 .teacher-detail-container :deep(.el-divider) {
   margin: 32px 0;
   border-color: #e4e7ed;
@@ -524,11 +498,6 @@ onMounted(() => {
     align-items: center;
   }
 
-  .salary-box {
-    width: 100%;
-    max-width: 300px;
-  }
-  
   .photos-grid {
     grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
     gap: 12px;
@@ -546,6 +515,62 @@ onMounted(() => {
   .action-buttons .el-button {
     width: 100%;
   }
+}
+
+/* 教学经历列表 */
+.experience-list {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.experience-item {
+  background: #f8f9fa;
+  border: 2px solid #e9ecef;
+  border-radius: 12px;
+  padding: 18px 20px;
+  transition: border-color 0.2s;
+}
+
+.experience-item:hover {
+  border-color: #667eea;
+}
+
+.exp-header {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.exp-time {
+  font-size: 13px;
+  color: #909399;
+  background: #e9ecef;
+  padding: 2px 10px;
+  border-radius: 20px;
+}
+
+.exp-subject {
+  font-size: 14px;
+  font-weight: 600;
+  color: #667eea;
+  background: rgba(102, 126, 234, 0.1);
+  padding: 2px 10px;
+  border-radius: 20px;
+}
+
+.exp-location {
+  font-size: 13px;
+  color: #606266;
+}
+
+.exp-description {
+  color: #606266;
+  font-size: 14px;
+  line-height: 1.8;
+  white-space: pre-wrap;
 }
 </style>
 

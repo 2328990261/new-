@@ -159,11 +159,6 @@
             </div>
             
             <div class="info-row">
-              <el-icon class="info-icon"><Location /></el-icon>
-              <span class="info-text">{{ teacher.city_name }} · {{ teacher.district_name }}</span>
-            </div>
-            
-            <div class="info-row">
               <el-icon class="info-icon"><Reading /></el-icon>
               <span class="info-text">{{ 
                 Array.isArray(teacher.subject_names) 
@@ -177,11 +172,6 @@
             </div>
             
             <div class="card-footer">
-              <div class="salary-info">
-                <span class="salary-label">课时费</span>
-                <span class="salary-price">¥{{ teacher.hourly_rate }}</span>
-                <span class="salary-unit">/小时</span>
-              </div>
               <el-button type="primary" size="small" :icon="View">
                 查看详情
               </el-button>
@@ -309,13 +299,29 @@ const loadCities = async () => {
 // 加载科目列表
 const loadSubjects = async () => {
   try {
-    // 后端路由：GET /api/search/subjects
-    const res = await request.get('/search/subjects')
+    // 后端路由：GET /api/subjects（返回平铺数组）
+    const res = await request.get('/subjects')
     if (res.success) {
-      subjects.value = res.data
+      // /api/subjects 返回平铺数组，直接使用
+      subjects.value = Array.isArray(res.data) ? res.data : []
+    }
+    // 如果没有数据，尝试 /api/search/subjects（返回分组对象，需展开）
+    if (!subjects.value.length) {
+      const res2 = await request.get('/search/subjects')
+      if (res2.success) {
+        if (Array.isArray(res2.data)) {
+          subjects.value = res2.data
+        } else if (res2.data && typeof res2.data === 'object') {
+          // 分组格式：{ "高中": [{id,name,...}], ... } → 展开为平铺数组
+          const flat = []
+          Object.values(res2.data).forEach(group => {
+            if (Array.isArray(group)) flat.push(...group)
+          })
+          subjects.value = flat
+        }
+      }
     }
   } catch (error) {
-    
     // 如果科目加载失败，使用默认科目
     subjects.value = [
       { id: 1, name: '数学' },
@@ -393,13 +399,6 @@ watch(teacherList, () => {
   setTimeout(setupLazyLoad, 0)
 })
 
-onMounted(() => {
-  loadCities()
-  loadSubjects()
-  loadTeachers()
-  setTimeout(setupLazyLoad, 0)
-})
-
 // 重置
 const handleReset = () => {
   searchForm.value = {
@@ -420,6 +419,7 @@ onMounted(() => {
   loadCities()
   loadSubjects()
   loadTeachers()
+  setTimeout(setupLazyLoad, 0)
 })
 </script>
 
@@ -684,33 +684,11 @@ onMounted(() => {
 
 .card-footer {
   display: flex;
-  justify-content: space-between;
+  justify-content: flex-end;
   align-items: center;
   margin-top: 16px;
   padding-top: 16px;
   border-top: 2px solid #f0f0f0;
-}
-
-.salary-info {
-  display: flex;
-  align-items: baseline;
-  gap: 4px;
-}
-
-.salary-label {
-  color: #909399;
-  font-size: 13px;
-}
-
-.salary-price {
-  color: #FF6B6B;
-  font-size: 24px;
-  font-weight: 700;
-}
-
-.salary-unit {
-  color: #909399;
-  font-size: 13px;
 }
 
 /* 分页 */

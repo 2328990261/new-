@@ -111,105 +111,17 @@
 
         <!-- 忘记密码标签 -->
         <el-tab-pane label="忘记密码" name="forgot">
-          <el-form
-            ref="forgotFormRef"
-            :model="forgotForm"
-            :rules="forgotRules"
-            label-width="0"
-          >
-            <el-form-item prop="email">
-              <el-input
-                v-model="forgotForm.email"
-                placeholder="请输入注册邮箱"
-                prefix-icon="Message"
-                size="large"
-              />
-            </el-form-item>
-            
-            <el-form-item prop="code">
-              <div class="code-input">
-                <el-input
-                  v-model="forgotForm.code"
-                  placeholder="请输入验证码"
-                  prefix-icon="Key"
-                  size="large"
-                />
-                <el-button
-                  size="large"
-                  :disabled="codeCountdown > 0"
-                  @click="sendResetCode"
-                >
-                  {{ codeCountdown > 0 ? `${codeCountdown}秒后重试` : '发送验证码' }}
-                </el-button>
-              </div>
-            </el-form-item>
-            
-            <el-form-item prop="newPassword">
-              <el-input
-                v-model="forgotForm.newPassword"
-                type="password"
-                placeholder="请输入新密码"
-                prefix-icon="Lock"
-                size="large"
-                show-password
-              />
-            </el-form-item>
-            
-            <el-form-item>
-              <el-button
-                type="primary"
-                size="large"
-                style="width: 100%"
-                :loading="resetLoading"
-                @click="handleResetPassword"
-              >
-                重置密码
-              </el-button>
-            </el-form-item>
-          </el-form>
+          <el-alert
+            title="如需重置密码，请联系管理员处理"
+            type="info"
+            :closable="false"
+            show-icon
+            style="margin-top: 20px;"
+          />
         </el-tab-pane>
       </el-tabs>
     </el-card>
 
-    <!-- 邮箱验证对话框 -->
-    <el-dialog
-      v-model="verifyDialogVisible"
-      title="验证邮箱"
-      width="400px"
-    >
-      <el-form label-width="0">
-        <el-form-item>
-          <el-alert
-            title="验证码已发送到您的邮箱"
-            type="success"
-            :closable="false"
-            show-icon
-          />
-        </el-form-item>
-        
-        <el-form-item>
-          <div class="code-input">
-            <el-input
-              v-model="verifyCode"
-              placeholder="请输入6位验证码"
-              size="large"
-            />
-            <el-button
-              size="large"
-              :disabled="verifyCountdown > 0"
-              @click="resendVerifyCode"
-            >
-              {{ verifyCountdown > 0 ? `${verifyCountdown}秒` : '重新发送' }}
-            </el-button>
-          </div>
-        </el-form-item>
-      </el-form>
-      
-      <template #footer>
-        <el-button @click="verifyDialogVisible = false">取消</el-button>
-        <el-button type="primary" @click="handleVerifyEmail">验证</el-button>
-      </template>
-    </el-dialog>
   </div>
 </template>
 
@@ -273,30 +185,14 @@ const registerRules = {
 }
 const registerLoading = ref(false)
 
-// 忘记密码表单
+// 忘记密码（已移除验证码功能，如需重置请联系管理员）
 const forgotFormRef = ref()
-const forgotForm = reactive({
-  email: '',
-  code: '',
-  newPassword: ''
-})
-const forgotRules = {
-  email: [
-    { required: true, message: '请输入邮箱', trigger: 'blur' },
-    { type: 'email', message: '请输入正确的邮箱格式', trigger: 'blur' }
-  ],
-  code: [
-    { required: true, message: '请输入验证码', trigger: 'blur' }
-  ],
-  newPassword: [
-    { required: true, message: '请输入新密码', trigger: 'blur' },
-    { min: 6, message: '密码至少6位', trigger: 'blur' }
-  ]
-}
+const forgotForm = reactive({ email: '', code: '', newPassword: '' })
+const forgotRules = {}
 const resetLoading = ref(false)
 const codeCountdown = ref(0)
 
-// 邮箱验证对话框
+// 邮箱验证（已移除，注册直接通过）
 const verifyDialogVisible = ref(false)
 const verifyCode = ref('')
 const verifyCountdown = ref(0)
@@ -310,19 +206,28 @@ const handleLogin = async () => {
     
     const res = await request.post('/teacher-auth/login', loginForm)
     
+    console.log('登录响应:', res)
+    
+    // 注意：后端返回的数据结构是 res.success 而不是 res.data.success
     if (res.success) {
       ElMessage.success('登录成功')
-      // 保存Token
-      localStorage.setItem('teacher_token', res.data.data.token)
-      localStorage.setItem('teacher_info', JSON.stringify(res.data.data))
+      // 保存Token和用户信息
+      localStorage.setItem('teacher_token', res.data.token)
+      localStorage.setItem('teacher_info', JSON.stringify(res.data))
+      
+      console.log('已保存到localStorage:', {
+        token: res.data.token,
+        info: res.data
+      })
       
       // 跳转到教师注册页面（填写详细资料）
       router.push('/teacher-register')
     } else {
-      ElMessage.error(res.data.error || '登录失败')
+      ElMessage.error(res.error || '登录失败')
     }
   } catch (error) {
-    
+    console.error('登录错误:', error)
+    ElMessage.error('登录失败，请重试')
   } finally {
     loginLoading.value = false
   }
@@ -340,16 +245,15 @@ const handleRegister = async () => {
     })
     
     if (res.success) {
-      ElMessage.success('注册成功，请验证邮箱')
-      verifyEmail.value = registerForm.email
-      
-      // 发送验证码
-      await sendVerifyCode()
-      
-      // 显示验证对话框
-      verifyDialogVisible.value = true
+      ElMessage.success('注册成功，请登录')
+      // 切换到登录 tab，预填邮箱
+      activeTab.value = 'login'
+      loginForm.email = registerForm.email
+      registerForm.email = ''
+      registerForm.password = ''
+      registerForm.confirmPassword = ''
     } else {
-      ElMessage.error(res.data.error || '注册失败')
+      ElMessage.error(res.error || '注册失败')
     }
   } catch (error) {
     
@@ -358,133 +262,9 @@ const handleRegister = async () => {
   }
 }
 
-// 发送验证码
-const sendVerifyCode = async () => {
-  try {
-    const res = await request.post('/teacher-auth/send-code', {
-      email: verifyEmail.value,
-      type: 'register'
-    })
-    
-    if (res.data.success) {
-      ElMessage.success('验证码已发送')
-      // 开发环境显示验证码
-      if (res.data.data?.code) {
-        ElMessage.info(`验证码：${res.data.data.code}`)
-      }
-      
-      // 倒计时
-      verifyCountdown.value = 60
-      const timer = setInterval(() => {
-        verifyCountdown.value--
-        if (verifyCountdown.value <= 0) {
-          clearInterval(timer)
-        }
-      }, 1000)
-    } else {
-      ElMessage.error(res.data.error || '发送失败')
-    }
-  } catch (error) {
-    
-  }
-}
-
-// 重新发送验证码
-const resendVerifyCode = () => {
-  sendVerifyCode()
-}
-
-// 验证邮箱
-const handleVerifyEmail = async () => {
-  if (!verifyCode.value) {
-    ElMessage.warning('请输入验证码')
-    return
-  }
-  
-  try {
-    const res = await request.post('/teacher-auth/verify-email', {
-      email: verifyEmail.value,
-      code: verifyCode.value
-    })
-    
-    if (res.data.success) {
-      ElMessage.success('验证成功！请登录')
-      verifyDialogVisible.value = false
-      activeTab.value = 'login'
-      registerForm.email = ''
-      registerForm.password = ''
-      registerForm.confirmPassword = ''
-    } else {
-      ElMessage.error(res.data.error || '验证失败')
-    }
-  } catch (error) {
-    
-  }
-}
-
-// 发送重置验证码
-const sendResetCode = async () => {
-  if (!forgotForm.email) {
-    ElMessage.warning('请输入邮箱')
-    return
-  }
-  
-  try {
-    const res = await request.post('/teacher-auth/send-code', {
-      email: forgotForm.email,
-      type: 'reset'
-    })
-    
-    if (res.data.success) {
-      ElMessage.success('验证码已发送')
-      // 开发环境显示验证码
-      if (res.data.data?.code) {
-        ElMessage.info(`验证码：${res.data.data.code}`)
-      }
-      
-      // 倒计时
-      codeCountdown.value = 60
-      const timer = setInterval(() => {
-        codeCountdown.value--
-        if (codeCountdown.value <= 0) {
-          clearInterval(timer)
-        }
-      }, 1000)
-    } else {
-      ElMessage.error(res.data.error || '发送失败')
-    }
-  } catch (error) {
-    
-  }
-}
-
-// 重置密码
-const handleResetPassword = async () => {
-  try {
-    await forgotFormRef.value.validate()
-    resetLoading.value = true
-    
-    const res = await request.post('/teacher-auth/reset-password', {
-      email: forgotForm.email,
-      code: forgotForm.code,
-      new_password: forgotForm.newPassword
-    })
-    
-    if (res.data.success) {
-      ElMessage.success('密码重置成功，请登录')
-      activeTab.value = 'login'
-      forgotForm.email = ''
-      forgotForm.code = ''
-      forgotForm.newPassword = ''
-    } else {
-      ElMessage.error(res.data.error || '重置失败')
-    }
-  } catch (error) {
-    
-  } finally {
-    resetLoading.value = false
-  }
-}
+// 发送重置验证码 / 重置密码（已移除，功能不再使用）
+const sendResetCode = () => {}
+const handleResetPassword = () => {}
 </script>
 
 <style scoped>

@@ -13,9 +13,6 @@
         <router-link to="/" class="nav-item" :class="{ 'active': $route.path === '/' }">
           <span>首页</span>
         </router-link>
-        <router-link to="/city-tutor" class="nav-item" :class="{ 'active': $route.path === '/city-tutor' }">
-          <span>请家教</span>
-        </router-link>
         <router-link to="/teacher-register" class="nav-item" :class="{ 'active': $route.path === '/teacher-register' }">
           <span>当老师</span>
         </router-link>
@@ -23,10 +20,10 @@
           <span>教员库</span>
         </router-link>
         <router-link to="/city-tutor" class="nav-item" :class="{ 'active': $route.path === '/city-tutor' }">
-          <span>学员库</span>
+          <span>家教单</span>
         </router-link>
         <router-link to="/partnership" class="nav-item" :class="{ 'active': $route.path === '/partnership' }">
-          <span>资费标准</span>
+          <span>合作招募</span>
         </router-link>
         <router-link to="/news" class="nav-item" :class="{ 'active': $route.path === '/news' }">
           <span>新闻资讯</span>
@@ -77,10 +74,6 @@
             <span class="item-text">首页</span>
             <el-icon class="item-arrow"><ArrowRight /></el-icon>
           </router-link>
-          <router-link to="/city-tutor" class="sidebar-nav-item" @click="closeMenu">
-            <span class="item-text">请家教</span>
-            <el-icon class="item-arrow"><ArrowRight /></el-icon>
-          </router-link>
           <router-link to="/teacher-register" class="sidebar-nav-item" @click="closeMenu">
             <span class="item-text">当老师</span>
             <el-icon class="item-arrow"><ArrowRight /></el-icon>
@@ -90,7 +83,7 @@
             <el-icon class="item-arrow"><ArrowRight /></el-icon>
           </router-link>
           <router-link to="/partnership" class="sidebar-nav-item" @click="closeMenu">
-            <span class="item-text">资费标准</span>
+            <span class="item-text">合作招募</span>
             <el-icon class="item-arrow"><ArrowRight /></el-icon>
           </router-link>
           <router-link to="/teachers" class="sidebar-nav-item" @click="closeMenu">
@@ -98,7 +91,7 @@
             <el-icon class="item-arrow"><ArrowRight /></el-icon>
           </router-link>
           <router-link to="/city-tutor" class="sidebar-nav-item" @click="closeMenu">
-            <span class="item-text">学员库</span>
+            <span class="item-text">家教单</span>
             <el-icon class="item-arrow"><ArrowRight /></el-icon>
           </router-link>
           <router-link to="/news" class="sidebar-nav-item" @click="closeMenu">

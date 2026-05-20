@@ -6,7 +6,8 @@ use app\model\Admin;
 use app\model\TutorOrder;
 
 /**
- * 家教单自动派单：按订单城市匹配派单员归属城市，在同等工作量下随机选出一人，避免多人重复认领。
+ * 家教单自动派单：优先按订单城市匹配派单员归属城市；若无任何人匹配该城市，则回退为全部启用派单员，
+ * 按总单量最少者中随机选出一人，实现轮流均衡。
  */
 class DispatcherAutoAssignService
 {
@@ -29,7 +30,7 @@ class DispatcherAutoAssignService
     }
 
     /**
-     * 将订单派给一名符合条件的派单员（城市匹配 + 工作量最少者中随机）
+     * 将订单派给一名符合条件的派单员（优先城市匹配；无匹配时全员按总单量最少者中随机）
      *
      * @param TutorOrder|\think\Model $order
      * @return bool 是否成功写入派单员
@@ -50,20 +51,26 @@ class DispatcherAutoAssignService
             }
 
             $orderCityId = (int)($order->city_id ?? 0);
+            // 有城市且存在归属该城市的派单员时，按「同城单量」均衡；否则按「全部在单单量」均衡（含：无城市、无城市匹配回退）
+            $scopedByCity = false;
             $eligible = $dispatchers;
 
             if ($orderCityId > 0) {
-                $eligible = [];
+                $cityMatched = [];
                 foreach ($dispatchers as $d) {
                     $cities = self::normalizeDispatcherCityIds($d['city_id'] ?? null);
                     if (in_array($orderCityId, $cities, true)) {
-                        $eligible[] = $d;
+                        $cityMatched[] = $d;
                     }
                 }
-                if (empty($eligible)) {
-                    trace("自动派单 - 订单 {$order->id} 城市 {$orderCityId} 无匹配归属城市的派单员", 'info');
-
-                    return false;
+                if (!empty($cityMatched)) {
+                    $eligible = $cityMatched;
+                    $scopedByCity = true;
+                } else {
+                    trace(
+                        "自动派单 - 订单 {$order->id} 城市 {$orderCityId} 无派单员配置该归属城市，回退为全部启用派单员按总单量均衡",
+                        'info'
+                    );
                 }
             }
 
@@ -71,8 +78,7 @@ class DispatcherAutoAssignService
             foreach ($eligible as $dispatcher) {
                 $workloadQuery = TutorOrder::where('dispatcher_id', $dispatcher['id'])
                     ->where('status', 1);
-                // 有订单城市时按“同城单量”均衡；无城市时退化为全量单量均衡
-                if ($orderCityId > 0) {
+                if ($scopedByCity) {
                     $workloadQuery->where('city_id', $orderCityId);
                 }
                 $workload = $workloadQuery->count();
@@ -113,8 +119,9 @@ class DispatcherAutoAssignService
                 return false;
             }
 
+            $modeNote = $scopedByCity ? '同城最少单量内随机' : '总单量最少者内随机';
             trace(
-                "订单 {$order->id} 自动派单给: ID={$selectedDispatcher['id']}, nickname={$selectedDispatcher['nickname']}, workload={$selectedDispatcher['workload']}（同城最少单量内随机）",
+                "订单 {$order->id} 自动派单给: ID={$selectedDispatcher['id']}, nickname={$selectedDispatcher['nickname']}, workload={$selectedDispatcher['workload']}（{$modeNote}）",
                 'info'
             );
 

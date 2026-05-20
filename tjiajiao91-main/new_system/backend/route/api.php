@@ -60,6 +60,15 @@ Route::group('api', function () {
     Route::get('teacher/detail/:id', 'api.Teacher/detail');
     Route::post('teacher/book', 'api.Teacher/book');
     
+    // 教师注册和上传
+    Route::post('teachers/register', 'api.Teacher/register');
+    Route::post('teachers/upload', 'api.Teacher/upload');
+    
+    // 公共数据接口
+    Route::get('cities', 'api.Common/cities');
+    Route::get('districts', 'api.Common/districts');
+    Route::get('subjects', 'api.Common/subjects');
+    
     // 教师注册
     Route::post('teacher-register/save-progress', 'api.TeacherRegister/saveProgress');
     Route::get('teacher-register/get-progress', 'api.TeacherRegister/getProgress');

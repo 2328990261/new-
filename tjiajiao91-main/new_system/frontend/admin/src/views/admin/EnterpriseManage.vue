@@ -1,4 +1,4 @@
-﻿<template>
+<template>
   <div class="enterprise-manage">
     <!-- 无权限提示 -->
     <div v-if="!canAccessEnterprise" class="no-permission-wrap">
@@ -17,6 +17,23 @@
     <el-card v-if="canAccessEnterprise">
       <el-tabs v-model="activeTab" @tab-click="handleTabClick">
         <el-tab-pane label="人员管理" name="personnel">
+          <!-- 岗位类型快速筛选标签 -->
+          <div class="personnel-type-tabs">
+            <el-radio-group v-model="personnelQuery.position_type" size="small" @change="onPositionTypeTabChange">
+              <el-radio-button label="">全部</el-radio-button>
+              <el-radio-button label="管理层">管理层</el-radio-button>
+              <el-radio-button label="全职">全职</el-radio-button>
+              <el-radio-button label="实习生">实习</el-radio-button>
+              <el-radio-button label="兼职">兼职</el-radio-button>
+            </el-radio-group>
+            <el-divider direction="vertical" style="height: 24px; margin: 0 12px;" />
+            <el-radio-group v-model="personnelQuery.employment_status" size="small" @change="onEmploymentStatusTabChange">
+              <el-radio-button label="">全部</el-radio-button>
+              <el-radio-button label="在职">在职</el-radio-button>
+              <el-radio-button label="离职">离职</el-radio-button>
+            </el-radio-group>
+          </div>
+
           <div class="toolbar">
             <div class="left">
               <el-input
@@ -102,9 +119,20 @@
             <el-table-column v-if="isPersonnelColumnVisible('position_name')" prop="position_name" label="岗位名称" min-width="140" show-overflow-tooltip />
             <el-table-column v-if="isPersonnelColumnVisible('position_type')" prop="position_type" label="岗位类型" width="110">
               <template #default="{ row }">
-                <el-tag v-if="row.position_type" type="info">{{ row.position_type }}</el-tag>
+                <el-tag v-if="row.position_type === '管理层'" type="danger">{{ row.position_type }}</el-tag>
+                <el-tag v-else-if="row.position_type === '全职'" type="success">{{ row.position_type }}</el-tag>
+                <el-tag v-else-if="row.position_type === '兼职'" type="warning">{{ row.position_type }}</el-tag>
+                <el-tag v-else-if="row.position_type" type="info">{{ row.position_type }}</el-tag>
               </template>
             </el-table-column>
+            <el-table-column v-if="isPersonnelColumnVisible('employment_status')" prop="employment_status" label="在职状态" width="100">
+              <template #default="{ row }">
+                <el-tag :type="row.employment_status === '离职' ? 'danger' : 'success'">
+                  {{ row.employment_status || '在职' }}
+                </el-tag>
+              </template>
+            </el-table-column>
+            <el-table-column v-if="isPersonnelColumnVisible('entry_date')" prop="entry_date" label="入职日期" width="120" />
 
             <el-table-column v-if="isPersonnelColumnVisible('bank_name')" prop="bank_name" label="开户行" min-width="140" show-overflow-tooltip />
             <el-table-column v-if="isPersonnelColumnVisible('bank_card_no')" prop="bank_card_no" label="银行卡号" min-width="180" show-overflow-tooltip />
@@ -115,10 +143,31 @@
               </template>
             </el-table-column>
 
-            <el-table-column label="操作" width="190" fixed="right">
+            <el-table-column label="操作" width="260" fixed="right">
               <template #default="{ row }">
                 <el-button type="info" link @click="openPersonnelView(row)">查看</el-button>
                 <el-button type="primary" link @click="openPersonnelEdit(row)">编辑</el-button>
+                <!-- 转正：实习生/兼职 → 全职 -->
+                <el-button
+                  v-if="row.position_type === '实习生' || row.position_type === '兼职'"
+                  type="success"
+                  link
+                  @click="handleRegularize(row)"
+                >转正</el-button>
+                <!-- 升职：全职 → 管理层 -->
+                <el-button
+                  v-if="row.position_type === '全职'"
+                  type="warning"
+                  link
+                  @click="handlePromote(row)"
+                >升职</el-button>
+                <!-- 离职 -->
+                <el-button
+                  v-if="row.employment_status !== '离职'"
+                  type="danger"
+                  link
+                  @click="handleLeave(row)"
+                >离职</el-button>
                 <el-button type="danger" link @click="deletePersonnel(row)">删除</el-button>
               </template>
             </el-table-column>
@@ -393,7 +442,7 @@
           </div>
         </el-tab-pane>
 
-        <el-tab-pane label="薪酬管理" name="personnelSalary">
+        <el-tab-pane label="工资发放管理" name="personnelSalary">
           <PersonnelSalaryManage />
         </el-tab-pane>
       </el-tabs>
@@ -406,6 +455,98 @@
       :personnel-id="personnelEditingId"
       @success="onPersonnelSaved"
     />
+
+    <!-- 转正弹窗 -->
+    <el-dialog
+      v-model="regularizeDialogVisible"
+      title="办理转正"
+      width="460px"
+      :close-on-click-modal="false"
+      destroy-on-close
+    >
+      <div v-if="regularizeRow" class="dialog-employee-info">
+        <el-icon><User /></el-icon>
+        <span>将 <b>{{ regularizeRow.name }}</b> 从【{{ regularizeRow.position_type }}】转正为【全职】</span>
+      </div>
+      <el-form ref="regularizeFormRef" :model="regularizeForm" :rules="regularizeRules" label-width="90px" style="margin-top: 12px;">
+        <el-form-item label="转正日期" prop="regularize_date">
+          <el-date-picker
+            v-model="regularizeForm.regularize_date"
+            type="date"
+            placeholder="请选择转正日期"
+            format="YYYY-MM-DD"
+            value-format="YYYY-MM-DD"
+            style="width: 100%;"
+          />
+        </el-form-item>
+        <el-form-item label="转正备注">
+          <el-input
+            v-model="regularizeForm.regularize_remark"
+            type="textarea"
+            :rows="3"
+            placeholder="填写备注（选填）"
+          />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="regularizeDialogVisible = false">取消</el-button>
+        <el-button type="success" :loading="regularizeLoading" @click="confirmRegularize">确认转正</el-button>
+      </template>
+    </el-dialog>
+
+    <!-- 离职弹窗 -->
+    <el-dialog
+      v-model="leaveDialogVisible"
+      title="发起离职"
+      width="460px"
+      :close-on-click-modal="false"
+      destroy-on-close
+    >
+      <div class="leave-dialog-tip">
+        发起后，员工将进入待离职状态，请尽快和员工沟通工作交接事宜
+      </div>
+      <el-form ref="leaveFormRef" :model="leaveForm" :rules="leaveRules" label-width="90px" style="margin-top: 12px;">
+        <el-form-item label="离职员工" prop="name">
+          <el-input :value="leaveRow ? leaveRow.name : ''" disabled />
+        </el-form-item>
+        <el-form-item label="离职日期" prop="leave_date">
+          <el-date-picker
+            v-model="leaveForm.leave_date"
+            type="date"
+            placeholder="请选择离职日期"
+            format="YYYY-MM-DD"
+            value-format="YYYY-MM-DD"
+            style="width: 100%;"
+          />
+        </el-form-item>
+        <el-form-item label="离职类型" prop="leave_type">
+          <el-select v-model="leaveForm.leave_type" placeholder="请选择" style="width: 100%;">
+            <el-option label="主动离职" value="主动离职" />
+            <el-option label="被动离职" value="被动离职" />
+            <el-option label="合同到期" value="合同到期" />
+            <el-option label="其他" value="其他" />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="离职原因">
+          <el-input
+            v-model="leaveForm.leave_reason"
+            placeholder="请填写离职原因（选填）"
+          />
+        </el-form-item>
+        <el-form-item label="备注">
+          <el-input
+            v-model="leaveForm.leave_remark"
+            type="textarea"
+            :rows="3"
+            placeholder="填写备注（选填）"
+          />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="leaveDialogVisible = false">取消</el-button>
+        <el-button type="danger" :loading="leaveLoading" @click="confirmLeave">确认发起</el-button>
+      </template>
+    </el-dialog>
 
     <!-- 人员扫码入职登记二维码 -->
     <el-dialog
@@ -845,13 +986,14 @@
 import { onMounted, reactive, ref, computed, nextTick, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Lock, View, Hide, Plus, Rank, DataAnalysis, ArrowUp, ArrowDown, Grid } from '@element-plus/icons-vue'
+import { Lock, View, Hide, Plus, Rank, DataAnalysis, ArrowUp, ArrowDown, Grid, User } from '@element-plus/icons-vue'
 import Sortable from 'sortablejs'
-// import { useUserStore } from '@/store'  // 已取消权限验证
 import { useUserStore } from '@/store'
 import {
   getPersonnelList,
   deletePersonnel as deletePersonnelApi,
+  updatePersonnel as updatePersonnelApi,
+  patchPersonnel as patchPersonnelApi,
   getSalaryList,
   createSalary,
   updateSalary,
@@ -900,7 +1042,8 @@ const personnelQuery = reactive({
   pageSize: 20,
   keyword: '',
   dept_name: '',
-  position_type: ''
+  position_type: '',
+  employment_status: ''
 })
 
 // 入职登记（扫码落地页）二维码
@@ -998,6 +1141,8 @@ const allPersonnelColumns = ref([
   { prop: 'dept_name', label: '所在部门', visible: true, required: false },
   { prop: 'position_name', label: '岗位名称', visible: true, required: false },
   { prop: 'position_type', label: '岗位类型', visible: true, required: false },
+  { prop: 'employment_status', label: '在职状态', visible: true, required: false },
+  { prop: 'entry_date', label: '入职日期', visible: true, required: false },
   { prop: 'bank_name', label: '开户行', visible: false, required: false },
   { prop: 'bank_card_no', label: '银行卡号', visible: false, required: false },
   { prop: 'create_time', label: '创建时间', visible: true, required: false }
@@ -1296,6 +1441,7 @@ const fetchPersonnelList = async () => {
     if (personnelQuery.keyword) params.keyword = personnelQuery.keyword
     if (personnelQuery.dept_name) params.dept_name = personnelQuery.dept_name
     if (personnelQuery.position_type) params.position_type = personnelQuery.position_type
+    if (personnelQuery.employment_status) params.employment_status = personnelQuery.employment_status
 
     const res = await getPersonnelList(params)
     const payload = res?.data || {}
@@ -1315,6 +1461,7 @@ const resetPersonnelQuery = () => {
   personnelQuery.keyword = ''
   personnelQuery.dept_name = ''
   personnelQuery.position_type = ''
+  personnelQuery.employment_status = ''
   fetchPersonnelList()
 }
 
@@ -1367,6 +1514,145 @@ const deletePersonnel = async (row) => {
     if (error !== 'cancel') {
       ElMessage.error('删除失败')
     }
+  }
+}
+
+// 岗位类型标签切换
+const onPositionTypeTabChange = () => {
+  personnelQuery.page = 1
+  fetchPersonnelList()
+}
+
+// 在职状态标签切换
+const onEmploymentStatusTabChange = () => {
+  personnelQuery.page = 1
+  fetchPersonnelList()
+}
+
+// 转正弹窗
+const regularizeDialogVisible = ref(false)
+const regularizeRow = ref(null)
+const regularizeFormRef = ref(null)
+const regularizeForm = reactive({
+  regularize_date: '',
+  regularize_remark: ''
+})
+const regularizeRules = {
+  regularize_date: [{ required: true, message: '请选择转正日期', trigger: 'change' }]
+}
+const regularizeLoading = ref(false)
+
+// 转正：实习生/兼职 → 全职（弹窗选日期）
+const handleRegularize = (row) => {
+  regularizeRow.value = row
+  regularizeForm.regularize_date = new Date().toISOString().slice(0, 10)
+  regularizeForm.regularize_remark = ''
+  regularizeLoading.value = false
+  regularizeDialogVisible.value = true
+}
+
+const confirmRegularize = async () => {
+  try {
+    await regularizeFormRef.value.validate()
+  } catch {
+    return
+  }
+  regularizeLoading.value = true
+  try {
+    const row = regularizeRow.value
+    const res = await patchPersonnelApi(row.id, {
+      position_type: '全职',
+      regularize_date: regularizeForm.regularize_date,
+      regularize_remark: regularizeForm.regularize_remark
+    })
+    if (res && (res.success === true || res.code === 0)) {
+      ElMessage.success(`${row.name} 已成功转正为全职`)
+      regularizeDialogVisible.value = false
+      fetchPersonnelList()
+    } else {
+      ElMessage.error((res && (res.message || res.msg)) || '转正失败')
+    }
+  } catch (error) {
+    ElMessage.error('转正失败')
+  } finally {
+    regularizeLoading.value = false
+  }
+}
+
+// 升职：全职 → 管理层
+const handlePromote = async (row) => {
+  try {
+    await ElMessageBox.confirm(
+      `确定将 ${row.name} 从【全职】升职为【管理层】吗？`,
+      '升职确认',
+      { type: 'warning', confirmButtonText: '确定升职', cancelButtonText: '取消' }
+    )
+    const res = await patchPersonnelApi(row.id, { position_type: '管理层' })
+    if (res && (res.success === true || res.code === 0)) {
+      ElMessage.success(`${row.name} 已成功升职为管理层`)
+      fetchPersonnelList()
+    } else {
+      ElMessage.error((res && (res.message || res.msg)) || '升职失败')
+    }
+  } catch (error) {
+    if (error !== 'cancel') ElMessage.error('升职失败')
+  }
+}
+
+// 离职弹窗
+const leaveDialogVisible = ref(false)
+const leaveRow = ref(null)
+const leaveFormRef = ref(null)
+const leaveForm = reactive({
+  leave_date: '',
+  leave_type: '',
+  leave_reason: '',
+  leave_remark: ''
+})
+const leaveRules = {
+  leave_date: [{ required: true, message: '请选择离职日期', trigger: 'change' }],
+  leave_type: [{ required: true, message: '请选择离职类型', trigger: 'change' }]
+}
+const leaveLoading = ref(false)
+
+// 离职
+const handleLeave = (row) => {
+  leaveRow.value = row
+  leaveForm.leave_date = new Date().toISOString().slice(0, 10)
+  leaveForm.leave_type = ''
+  leaveForm.leave_reason = ''
+  leaveForm.leave_remark = ''
+  leaveLoading.value = false
+  leaveDialogVisible.value = true
+}
+
+const confirmLeave = async () => {
+  try {
+    await leaveFormRef.value.validate()
+  } catch {
+    return
+  }
+  leaveLoading.value = true
+  try {
+    const row = leaveRow.value
+    const res = await patchPersonnelApi(row.id, {
+      employment_status: '离职',
+      leave_date: leaveForm.leave_date,
+      leave_type: leaveForm.leave_type,
+      leave_reason: leaveForm.leave_reason,
+      leave_remark: leaveForm.leave_remark
+    })
+    if (res && (res.success === true || res.code === 0)) {
+      ElMessage.success(`${row.name} 已标记为离职`)
+      leaveDialogVisible.value = false
+      fetchPersonnelList()
+    } else {
+      ElMessage.error((res && (res.message || res.msg)) || '操作失败')
+    }
+  } catch (error) {
+    ElMessage.error('操作失败')
+  } finally {
+    leaveLoading.value = false
   }
 }
 
@@ -2552,6 +2838,14 @@ onMounted(() => {
   margin-bottom: 16px;
 }
 
+.personnel-type-tabs {
+  margin-bottom: 14px;
+}
+
+.personnel-type-tabs :deep(.el-radio-button__inner) {
+  padding: 6px 16px;
+}
+
 .left {
   display: flex;
   gap: 12px;
@@ -2758,5 +3052,26 @@ onMounted(() => {
   font-size: 12px;
   color: #303133;
   word-break: break-all;
+}
+
+/* 转正/离职弹窗 */
+.dialog-employee-info {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  background: #f0f9eb;
+  border-radius: 6px;
+  color: #606266;
+  font-size: 14px;
+}
+
+.leave-dialog-tip {
+  padding: 10px 14px;
+  background: #fef0f0;
+  border-radius: 6px;
+  color: #f56c6c;
+  font-size: 13px;
+  margin-bottom: 4px;
 }
 </style>

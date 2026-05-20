@@ -115,6 +115,44 @@
             <el-option v-for="item in POSITION_TYPE_OPTIONS" :key="item" :label="item" :value="item" />
           </el-select>
         </el-form-item>
+        <el-row :gutter="16">
+          <el-col :span="12">
+            <el-form-item label="入职日期" prop="entry_date">
+              <el-date-picker
+                v-model="form.entry_date"
+                type="date"
+                placeholder="选择入职日期"
+                format="YYYY-MM-DD"
+                value-format="YYYY-MM-DD"
+                style="width: 100%"
+                :disabled="isReadOnly"
+              />
+            </el-form-item>
+          </el-col>
+          <el-col :span="12">
+            <el-form-item label="在职状态" prop="employment_status">
+              <el-select v-model="form.employment_status" placeholder="请选择" style="width: 100%" :disabled="isReadOnly">
+                <el-option label="在职" value="在职" />
+                <el-option label="离职" value="离职" />
+              </el-select>
+            </el-form-item>
+          </el-col>
+        </el-row>
+        <el-row :gutter="16" v-if="form.employment_status === '离职'">
+          <el-col :span="12">
+            <el-form-item label="离职日期">
+              <el-date-picker
+                v-model="form.leave_date"
+                type="date"
+                placeholder="选择离职日期"
+                format="YYYY-MM-DD"
+                value-format="YYYY-MM-DD"
+                style="width: 100%"
+                :disabled="isReadOnly"
+              />
+            </el-form-item>
+          </el-col>
+        </el-row>
       </el-form>
     </div>
 
@@ -312,8 +350,7 @@
           @click="handleNext"
         >下一步</el-button>
         <el-button
-          v-else
-          v-if="!isReadOnly"
+          v-else-if="!isReadOnly"
           type="primary"
           :loading="submitting"
           @click="handleSubmit"
@@ -382,6 +419,7 @@ const emptyForm = () => ({
   current_address: '', wechat_account: '',
   // 在职
   dept_name: '', position_name: '', position_type: '',
+  entry_date: '', employment_status: '在职', leave_date: '', regularize_date: '',
   // 银行卡
   bank_name: '', bank_card_no: '',
   // 子表
@@ -611,6 +649,10 @@ const fillForm = (data) => {
     'dept_name',
     'position_name',
     'position_type',
+    'entry_date',
+    'employment_status',
+    'leave_date',
+    'regularize_date',
     'bank_name',
     'bank_card_no',
     'photo_url',

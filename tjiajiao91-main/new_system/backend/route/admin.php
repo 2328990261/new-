@@ -366,6 +366,7 @@ Route::group('admin/api', function () {
         Route::get('personnel', 'admin.Personnel/index');
         Route::post('personnel', 'admin.Personnel/save');
         Route::put('personnel/:id', 'admin.Personnel/update');
+        Route::patch('personnel/:id', 'admin.Personnel/patch');
         Route::delete('personnel/:id', 'admin.Personnel/delete');
         
         // 企业管理 - 薪酬管理（费用支出管理）

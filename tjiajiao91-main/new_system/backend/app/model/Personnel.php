@@ -29,6 +29,10 @@ class Personnel extends Model
         'dept_name'        => 'string',
         'position_name'    => 'string',
         'position_type'    => 'string',
+        'entry_date'       => 'date',
+        'employment_status'=> 'string',
+        'leave_date'       => 'date',
+        'regularize_date'  => 'date',
         // 银行卡
         'bank_name'        => 'string',
         'bank_card_no'     => 'string',

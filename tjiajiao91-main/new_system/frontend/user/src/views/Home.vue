@@ -135,10 +135,10 @@
           <div class="footer-widget">
             <div class="footer-widget-title">网站导航</div>
             <div class="footer-links-col">
-              <router-link class="footer-link" to="/city-tutor">请家教</router-link>
               <router-link class="footer-link" to="/teacher-register">当老师</router-link>
               <router-link class="footer-link" to="/teachers">教员库</router-link>
-              <router-link class="footer-link" to="/partnership">资费标准</router-link>
+              <router-link class="footer-link" to="/city-tutor">家教单</router-link>
+              <router-link class="footer-link" to="/partnership">合作招募</router-link>
               <router-link class="footer-link" to="/news">新闻资讯</router-link>
             </div>
           </div>

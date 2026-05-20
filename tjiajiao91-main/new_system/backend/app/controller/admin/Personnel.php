@@ -18,6 +18,7 @@ class Personnel extends BaseController
 {
     /**
      * 列表 GET /personnel
+     * 排序：管理层 > 全职 > 实习生 > 兼职，同类型按 id desc
      */
     public function index()
     {
@@ -26,9 +27,18 @@ class Personnel extends BaseController
         $keyword       = trim((string)input('keyword', ''));
         $deptName      = trim((string)input('dept_name', ''));
         $positionType  = trim((string)input('position_type', ''));
+        $employmentStatus = trim((string)input('employment_status', ''));
 
-        $buildQuery = function () use ($keyword, $deptName, $positionType) {
-            $q = PersonnelModel::order('id', 'desc');
+        $buildQuery = function () use ($keyword, $deptName, $positionType, $employmentStatus) {
+            $q = PersonnelModel::orderRaw("
+                CASE position_type
+                    WHEN '管理层' THEN 1
+                    WHEN '全职'   THEN 2
+                    WHEN '实习生' THEN 3
+                    WHEN '兼职'   THEN 4
+                    ELSE 5
+                END ASC, id DESC
+            ");
             if ($keyword !== '') {
                 $like = '%' . $keyword . '%';
                 $q->where(function ($w) use ($like) {
@@ -42,6 +52,9 @@ class Personnel extends BaseController
             }
             if ($positionType !== '') {
                 $q->where('position_type', $positionType);
+            }
+            if ($employmentStatus !== '') {
+                $q->where('employment_status', $employmentStatus);
             }
             return $q;
         };
@@ -100,6 +113,57 @@ class Personnel extends BaseController
             return json(['success' => true, 'message' => '创建成功', 'data' => ['id' => $newId]]);
         } catch (\Exception $e) {
             return json(['success' => false, 'message' => '创建失败：' . $e->getMessage()]);
+        }
+    }
+
+    /**
+     * 局部更新（转正/升职/离职等快捷操作）PATCH /personnel/:id
+     * 只更新传入的字段，不做完整必填校验
+     */
+    public function patch($id)
+    {
+        $id = (int)$id;
+        if ($id <= 0) {
+            return json(['success' => false, 'message' => '参数错误']);
+        }
+        $personnel = PersonnelModel::find($id);
+        if (!$personnel) {
+            return json(['success' => false, 'message' => '人员不存在']);
+        }
+
+        // 支持 PATCH / PUT / POST body
+        $data = $this->request->patch();
+        if (empty($data)) $data = $this->request->put();
+        if (empty($data)) $data = $this->request->post();
+
+        // 只允许更新这些字段（白名单）
+        $allowed = [
+            'position_type', 'employment_status',
+            'entry_date', 'leave_date', 'regularize_date',
+            'leave_type', 'leave_reason', 'leave_remark',
+            'regularize_remark',
+        ];
+        $update = [];
+        $dateFieds = ['entry_date', 'leave_date', 'regularize_date'];
+        foreach ($allowed as $f) {
+            if (array_key_exists($f, $data)) {
+                $value = $data[$f];
+                if (in_array($f, $dateFieds, true) && $value === '') {
+                    $value = null;
+                }
+                $update[$f] = is_string($value) ? trim($value) : $value;
+            }
+        }
+
+        if (empty($update)) {
+            return json(['success' => false, 'message' => '没有可更新的字段']);
+        }
+
+        try {
+            $personnel->save($update);
+            return json(['success' => true, 'message' => '更新成功']);
+        } catch (\Exception $e) {
+            return json(['success' => false, 'message' => '更新失败：' . $e->getMessage()]);
         }
     }
 
@@ -217,17 +281,19 @@ class Personnel extends BaseController
             'name', 'phone', 'gender', 'birth_date', 'native_place', 'ethnicity',
             'political_status', 'id_card', 'email', 'current_address', 'wechat_account',
             'dept_name', 'position_name', 'position_type',
+            'entry_date', 'employment_status', 'leave_date', 'regularize_date',
             'bank_name', 'bank_card_no',
             'photo_url', 'id_card_front', 'id_card_back',
             'degree_cert', 'graduation_cert', 'resignation_cert',
             'health_report', 'xuexin_report',
         ];
         $result = [];
+        $dateFieds = ['birth_date', 'entry_date', 'leave_date', 'regularize_date'];
         foreach ($fields as $f) {
             if (array_key_exists($f, $data)) {
                 $value = $data[$f];
                 // 空日期转 null，避免严格模式下 '' 报错
-                if (in_array($f, ['birth_date'], true) && $value === '') {
+                if (in_array($f, $dateFieds, true) && $value === '') {
                     $value = null;
                 }
                 $result[$f] = is_string($value) ? trim($value) : $value;

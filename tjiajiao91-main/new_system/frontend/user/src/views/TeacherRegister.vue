@@ -20,8 +20,8 @@
         
         <el-form-item label="性别" prop="gender">
           <el-radio-group v-model="form.gender">
-            <el-radio label="男">男</el-radio>
-            <el-radio label="女">女</el-radio>
+            <el-radio value="男">男</el-radio>
+            <el-radio value="女">女</el-radio>
           </el-radio-group>
         </el-form-item>
         
@@ -36,9 +36,11 @@
         <el-form-item label="头像" prop="avatar">
           <el-upload
             class="avatar-uploader"
-            action="/api/teachers/upload"
+            action="/api/teacher-register/upload-image"
             :show-file-list="false"
             :on-success="handleAvatarSuccess"
+            :on-error="handleUploadError"
+            :headers="uploadHeaders"
           >
             <img v-if="form.avatar" :src="form.avatar" class="avatar" />
             <el-icon v-else class="avatar-uploader-icon"><Plus /></el-icon>
@@ -65,10 +67,12 @@
         
         <el-form-item label="学历证明">
           <el-upload
-            action="/api/teachers/upload"
+            action="/api/teacher-register/upload-image"
             list-type="picture-card"
             :on-success="handleCertSuccess"
+            :on-error="handleUploadError"
             :on-remove="handleCertRemove"
+            :headers="uploadHeaders"
           >
             <el-icon><Plus /></el-icon>
           </el-upload>
@@ -96,10 +100,12 @@
         
         <el-form-item label="教学风采">
           <el-upload
-            action="/api/teachers/upload"
+            action="/api/teacher-register/upload-image"
             list-type="picture-card"
             :on-success="handlePhotoSuccess"
+            :on-error="handleUploadError"
             :on-remove="handlePhotoRemove"
+            :headers="uploadHeaders"
           >
             <el-icon><Plus /></el-icon>
           </el-upload>
@@ -110,7 +116,9 @@
         <el-form-item label="授课城市" prop="city_id">
           <el-select
             v-model="form.city_id"
-            placeholder="请选择城市"
+            placeholder="请选择或输入城市"
+            filterable
+            allow-create
             @change="handleCityChange"
           >
             <el-option
@@ -151,12 +159,6 @@
         <el-form-item label="年级范围" prop="grade_range">
           <el-input v-model="form.grade_range" placeholder="例如：小学、初中、高中" />
         </el-form-item>
-        
-        <el-form-item label="课时费" prop="hourly_rate">
-          <el-input v-model="form.hourly_rate" placeholder="请输入课时费">
-            <template #append>元/小时</template>
-          </el-input>
-        </el-form-item>
 
         <el-form-item>
           <el-button type="primary" size="large" @click="handleSubmit" :loading="loading">
@@ -170,7 +172,7 @@
 </template>
 
 <script setup>
-import { ref, reactive, onMounted } from 'vue'
+import { ref, reactive, onMounted, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { Plus } from '@element-plus/icons-vue'
@@ -180,13 +182,20 @@ const router = useRouter()
 const formRef = ref()
 const loading = ref(false)
 
+// 获取上传请求头
+const uploadHeaders = computed(() => {
+  const token = localStorage.getItem('teacher_token')
+  return token ? { Authorization: `Bearer ${token}` } : {}
+})
+
 // 表单数据
 const form = reactive({
   name: '',
   gender: '男',
   phone: '',
   email: '',
-  avatar: '',
+  avatar: '',       // 展示用（带水印）
+  avatarPath: '',   // 存库用（原图相对路径）
   education: '',
   school: '',
   major: '',
@@ -226,22 +235,21 @@ const rules = {
   city_id: [{ required: true, message: '请选择城市', trigger: 'change' }],
   district_ids: [{ required: true, message: '请选择区域', trigger: 'change' }],
   subject_ids: [{ required: true, message: '请选择科目', trigger: 'change' }],
-  grade_range: [{ required: true, message: '请输入年级范围', trigger: 'blur' }],
-  hourly_rate: [
-    { required: true, message: '请输入课时费', trigger: 'blur' },
-    { pattern: /^\d+$/, message: '请输入有效的数字', trigger: 'blur' }
-  ]
+  grade_range: [{ required: true, message: '请输入年级范围', trigger: 'blur' }]
 }
 
 // 加载城市列表
 const loadCities = async () => {
   try {
     const res = await request.get('/cities')
-    if (res.data.success) {
-      cities.value = res.data.data
+    console.log('城市列表响应:', res)
+    if (res.success) {
+      cities.value = res.data
+    } else {
+      ElMessage.error(res.error || '加载城市列表失败')
     }
   } catch (error) {
-    
+    console.error('加载城市列表错误:', error)
   }
 }
 
@@ -249,23 +257,29 @@ const loadCities = async () => {
 const loadSubjects = async () => {
   try {
     const res = await request.get('/subjects')
-    if (res.data.success) {
-      subjects.value = res.data.data
+    console.log('科目列表响应:', res)
+    if (res.success) {
+      subjects.value = res.data
+    } else {
+      ElMessage.error(res.error || '加载科目列表失败')
     }
   } catch (error) {
-    
+    console.error('加载科目列表错误:', error)
   }
 }
 
 // 加载区域列表
 const loadDistricts = async (cityId) => {
   try {
-    const res = await request.get(`/api/districts?city_id=${cityId}`)
-    if (res.data.success) {
-      districts.value = res.data.data
+    const res = await request.get(`/districts?city_id=${cityId}`)
+    console.log('区域列表响应:', res)
+    if (res.success) {
+      districts.value = res.data
+    } else {
+      ElMessage.error(res.error || '加载区域列表失败')
     }
   } catch (error) {
-    
+    console.error('加载区域列表错误:', error)
   }
 }
 
@@ -282,21 +296,28 @@ const handleCityChange = (value) => {
 // 头像上传成功
 const handleAvatarSuccess = (response) => {
   if (response.success) {
+    // data.url 是带水印的展示图，data.path 是存库用的原图相对路径
     form.avatar = response.data.url
+    form.avatarPath = response.data.path || response.data.url
     ElMessage.success('头像上传成功')
+  } else {
+    ElMessage.error(response.error || '头像上传失败')
   }
 }
 
 // 证书上传成功
 const handleCertSuccess = (response) => {
   if (response.success) {
-    form.certificates.push(response.data.url)
+    form.certificates.push(response.data.path || response.data.url)
+  } else {
+    ElMessage.error(response.error || '证书上传失败')
   }
 }
 
 // 删除证书
 const handleCertRemove = (file) => {
-  const index = form.certificates.indexOf(file.url)
+  const url = file.response?.data?.path || file.response?.data?.url || file.url
+  const index = form.certificates.indexOf(url)
   if (index > -1) {
     form.certificates.splice(index, 1)
   }
@@ -305,16 +326,25 @@ const handleCertRemove = (file) => {
 // 照片上传成功
 const handlePhotoSuccess = (response) => {
   if (response.success) {
-    form.photos.push(response.data.url)
+    form.photos.push(response.data.path || response.data.url)
+  } else {
+    ElMessage.error(response.error || '照片上传失败')
   }
 }
 
 // 删除照片
 const handlePhotoRemove = (file) => {
-  const index = form.photos.indexOf(file.url)
+  const url = file.response?.data?.path || file.response?.data?.url || file.url
+  const index = form.photos.indexOf(url)
   if (index > -1) {
     form.photos.splice(index, 1)
   }
+}
+
+// 上传失败通用处理
+const handleUploadError = (error) => {
+  console.error('上传失败:', error)
+  ElMessage.error('上传失败，请检查网络或文件格式后重试')
 }
 
 // 提交表单
@@ -323,13 +353,15 @@ const handleSubmit = async () => {
     await formRef.value.validate()
     loading.value = true
     
-    const res = await request.post('/teachers/register', form)
+    const res = await request.post('/teachers/register', {
+      ...form,
+      avatar: form.avatarPath || form.avatar  // 优先用原图路径存库
+    })
     
-    if (res.data.success) {
-      ElMessage.success('提交成功，请等待审核')
-      router.push('/')
+    if (res.success) {
+      router.push('/teacher-register-success')
     } else {
-      ElMessage.error(res.data.error || '提交失败')
+      ElMessage.error(res.error || '提交失败')
     }
   } catch (error) {
     
@@ -348,17 +380,27 @@ const handleReset = () => {
 onMounted(() => {
   // 从localStorage获取登录信息
   const teacherInfo = localStorage.getItem('teacher_info')
+  console.log('检查登录状态:', teacherInfo)
+  
   if (teacherInfo) {
-    const info = JSON.parse(teacherInfo)
-    form.email = info.email
+    try {
+      const info = JSON.parse(teacherInfo)
+      console.log('解析后的用户信息:', info)
+      form.email = info.email || ''
+      
+      // 加载选项数据
+      loadCities()
+      loadSubjects()
+    } catch (error) {
+      console.error('解析用户信息失败:', error)
+      ElMessage.warning('登录信息异常，请重新登录')
+      router.push('/teacher-login')
+    }
   } else {
+    console.log('未找到登录信息，跳转到登录页')
     ElMessage.warning('请先登录')
     router.push('/teacher-login')
-    return
   }
-  
-  loadCities()
-  loadSubjects()
 })
 </script>
 

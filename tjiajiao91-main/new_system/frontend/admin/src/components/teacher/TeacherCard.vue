@@ -112,9 +112,21 @@
         <span class="teacher-type">{{ getTeacherTypeLabel(teacher) }}</span>
       </div>
 
-      <!-- 第五行：注册时间 -->
+      <!-- 第五行：注册时间 + 来源 -->
       <div class="info-line-5">
         <span class="create-time">注册：{{ teacher.create_time }}</span>
+        <el-tag
+          v-if="teacher.source === 'miniprogram'"
+          size="small"
+          type="warning"
+          style="margin-left: 8px;"
+        >小程序</el-tag>
+        <el-tag
+          v-else
+          size="small"
+          type="info"
+          style="margin-left: 8px;"
+        >用户端</el-tag>
       </div>
 
       <!-- 第六行：操作按钮 -->

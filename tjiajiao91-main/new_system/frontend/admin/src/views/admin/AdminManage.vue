@@ -589,7 +589,7 @@ const loadData = async () => {
       limit: pageSize.value
     })
     tableData.value = res.data
-    total.value = res.total
+    total.value = res.total  
   } catch (error) {
     
   } finally {

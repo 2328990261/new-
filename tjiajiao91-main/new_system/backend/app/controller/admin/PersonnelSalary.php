@@ -165,6 +165,16 @@ class PersonnelSalary extends BaseController
         }
 
         try {
+            // salary_month 兼容：若未传 effective_date，用 salary_month 第一天补全
+            if (empty($data['effective_date']) && !empty($data['salary_month'])) {
+                $data['effective_date'] = $data['salary_month'] . '-01';
+            }
+
+            // 空字符串的 end_date 转为 null，避免 MySQL 日期格式报错
+            if (isset($data['end_date']) && $data['end_date'] === '') {
+                $data['end_date'] = null;
+            }
+
             // 自动计算总薪酬
             $data['total_salary'] = $this->calculateTotalSalary($data);
 
@@ -206,6 +216,16 @@ class PersonnelSalary extends BaseController
         }
 
         try {
+            // salary_month 兼容：若未传 effective_date，用 salary_month 第一天补全
+            if (empty($data['effective_date']) && !empty($data['salary_month'])) {
+                $data['effective_date'] = $data['salary_month'] . '-01';
+            }
+
+            // 空字符串的 end_date 转为 null，避免 MySQL 日期格式报错
+            if (isset($data['end_date']) && $data['end_date'] === '') {
+                $data['end_date'] = null;
+            }
+
             // 自动计算总薪酬
             $data['total_salary'] = $this->calculateTotalSalary($data);
 
@@ -348,8 +368,11 @@ class PersonnelSalary extends BaseController
         $required = [
             'personnel_id'   => '人员',
             'base_salary'    => '基本工资',
-            'effective_date' => '生效日期',
         ];
+        // salary_month 优先；兼容旧数据的 effective_date
+        if (empty($data['salary_month']) && empty($data['effective_date'])) {
+            return '归属月份不能为空';
+        }
         foreach ($required as $key => $label) {
             if (!isset($data[$key]) || $data[$key] === '') {
                 return $label . '不能为空';
@@ -363,7 +386,7 @@ class PersonnelSalary extends BaseController
         }
 
         // 验证日期格式
-        if (isset($data['effective_date']) && !strtotime($data['effective_date'])) {
+        if (!empty($data['effective_date']) && !strtotime($data['effective_date'])) {
             return '生效日期格式不正确';
         }
         if (isset($data['end_date']) && $data['end_date'] !== '' && !strtotime($data['end_date'])) {
@@ -372,7 +395,9 @@ class PersonnelSalary extends BaseController
 
         // 验证金额
         $salaryFields = ['base_salary', 'performance_salary', 'post_allowance', 'housing_allowance', 
-                        'meal_allowance', 'transport_allowance', 'other_allowance'];
+                        'meal_allowance', 'transport_allowance', 'other_allowance',
+                        'provident_fund_company', 'provident_fund_personal',
+                        'social_insurance_company', 'social_insurance_personal'];
         foreach ($salaryFields as $field) {
             if (isset($data[$field]) && $data[$field] < 0) {
                 return '薪酬金额不能为负数';
@@ -383,18 +408,23 @@ class PersonnelSalary extends BaseController
     }
 
     /**
-     * 计算总薪酬
+     * 计算总薪酬（实发 = 收入合计 - 个人社保 - 个人公积金）
      */
     private function calculateTotalSalary(array $data)
     {
-        $total = 0;
-        $total += isset($data['base_salary']) ? floatval($data['base_salary']) : 0;
-        $total += isset($data['performance_salary']) ? floatval($data['performance_salary']) : 0;
-        $total += isset($data['post_allowance']) ? floatval($data['post_allowance']) : 0;
-        $total += isset($data['housing_allowance']) ? floatval($data['housing_allowance']) : 0;
-        $total += isset($data['meal_allowance']) ? floatval($data['meal_allowance']) : 0;
-        $total += isset($data['transport_allowance']) ? floatval($data['transport_allowance']) : 0;
-        $total += isset($data['other_allowance']) ? floatval($data['other_allowance']) : 0;
-        return $total;
+        $income = 0;
+        $income += isset($data['base_salary']) ? floatval($data['base_salary']) : 0;
+        $income += isset($data['performance_salary']) ? floatval($data['performance_salary']) : 0;
+        $income += isset($data['post_allowance']) ? floatval($data['post_allowance']) : 0;
+        $income += isset($data['housing_allowance']) ? floatval($data['housing_allowance']) : 0;
+        $income += isset($data['meal_allowance']) ? floatval($data['meal_allowance']) : 0;
+        $income += isset($data['transport_allowance']) ? floatval($data['transport_allowance']) : 0;
+        $income += isset($data['other_allowance']) ? floatval($data['other_allowance']) : 0;
+
+        $deduction = 0;
+        $deduction += isset($data['provident_fund_personal']) ? floatval($data['provident_fund_personal']) : 0;
+        $deduction += isset($data['social_insurance_personal']) ? floatval($data['social_insurance_personal']) : 0;
+
+        return $income - $deduction;
     }
 }
