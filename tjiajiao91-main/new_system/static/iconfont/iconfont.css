@@ -1,0 +1,12 @@
+/* iconfont 字体图标 - 使用系统符号字体 */
+.iconfont {
+  font-family: 'iconfont', -apple-system, BlinkMacSystemFont, sans-serif;
+  font-size: 16px;
+  font-style: normal;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  display: inline-block;
+}
+
+/* 使用 Unicode 私有区域字符映射 */
+/* 这些字符会显示为对应的符号 */

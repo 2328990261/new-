@@ -1,0 +1,96 @@
+<?php
+/**
+ * 用「小程序」服务端接口生成 URL Link（https 短链），可在微信内 H5 直接 location 打开，绕过 weixin:// 限制。
+ * 复制为 wechat_miniprogram_urllink.php，填写 MINI_APP_SECRET，勿提交入库。
+ *
+ * 调用：GET 本文件 → 返回 JSON { ok, url_link }
+ * 将 url_link 填到 app.js 的 WECHAT_MP_LAUNCH.urlLink，或前端 fetch 后赋值再点按钮。
+ */
+
+header('Content-Type: application/json; charset=utf-8');
+
+const MINI_APP_ID = 'wx60a1da7e69927942';
+const MINI_APP_SECRET = '小程序后台 AppSecret';
+const LINK_PATH = 'pages/step-booking/index';
+const ENV_VERSION = 'release';
+
+const CACHE_DIR = __DIR__ . '/.wechat_cache_mini';
+
+function json_fail($msg, $code = 500) {
+    http_response_code($code);
+    echo json_encode(['ok' => false, 'error' => $msg], JSON_UNESCAPED_UNICODE);
+    exit;
+}
+
+function cache_get($key) {
+    $f = CACHE_DIR . '/' . preg_replace('/[^a-z0-9_-]/i', '', $key) . '.json';
+    if (!is_file($f)) {
+        return null;
+    }
+    $d = json_decode((string) file_get_contents($f), true);
+    if (!is_array($d) || empty($d['exp']) || $d['exp'] < time()) {
+        return null;
+    }
+    return $d['val'] ?? null;
+}
+
+function cache_set($key, $val, $ttl) {
+    if (!is_dir(CACHE_DIR)) {
+        @mkdir(CACHE_DIR, 0755, true);
+    }
+    $f = CACHE_DIR . '/' . preg_replace('/[^a-z0-9_-]/i', '', $key) . '.json';
+    @file_put_contents($f, json_encode(['exp' => time() + $ttl, 'val' => $val]));
+}
+
+function http_get_json($u) {
+    $ctx = stream_context_create(['http' => ['timeout' => 15]]);
+    $r = @file_get_contents($u, false, $ctx);
+    return $r === false ? null : json_decode($r, true);
+}
+
+function http_post_json($u, $body) {
+    $ctx = stream_context_create([
+        'http' => [
+            'method' => 'POST',
+            'header' => "Content-Type: application/json\r\n",
+            'content' => $body,
+            'timeout' => 15,
+        ],
+    ]);
+    $r = @file_get_contents($u, false, $ctx);
+    return $r === false ? null : json_decode($r, true);
+}
+
+if (MINI_APP_SECRET === '小程序后台 AppSecret') {
+    json_fail('请先填写 MINI_APP_SECRET', 500);
+}
+
+$token = cache_get('mini_access_token');
+if (!$token) {
+    $api = 'https://api.weixin.qq.com/cgi-bin/token?grant_type=client_credential&appid='
+        . urlencode(MINI_APP_ID) . '&secret=' . urlencode(MINI_APP_SECRET);
+    $j = http_get_json($api);
+    if (empty($j['access_token'])) {
+        json_fail('token: ' . ($j['errmsg'] ?? 'unknown'));
+    }
+    $token = $j['access_token'];
+    cache_set('mini_access_token', $token, 7000);
+}
+
+$body = json_encode([
+    'path' => LINK_PATH,
+    'query' => '',
+    'env_version' => ENV_VERSION,
+    'expire_type' => 0,
+], JSON_UNESCAPED_UNICODE);
+
+$j = http_post_json(
+    'https://api.weixin.qq.com/wxa/generate_urllink?access_token=' . urlencode($token),
+    $body
+);
+
+if (empty($j['url_link'])) {
+    json_fail('urllink: ' . ($j['errmsg'] ?? json_encode($j, JSON_UNESCAPED_UNICODE)));
+}
+
+echo json_encode(['ok' => true, 'url_link' => $j['url_link']], JSON_UNESCAPED_UNICODE);

@@ -1,0 +1,2413 @@
+<template>
+  <div class="payment-manage">
+    <!-- 移动端视图 -->
+    <PaymentManageMobile
+      v-if="isMobile"
+      :loading="loading"
+      :statistics="statistics"
+      :payments="paymentList"
+      :active-tab="activeTab"
+      :filters="mobileFilters"
+      :has-more="hasMore"
+      :dispatcher-list="dispatcherList"
+      :status-counts="statusCounts"
+      @tab-change="handleMobileTabChange"
+      @filter-change="handleMobileFilterChange"
+      @view="handleView"
+      @refund="handleRefund"
+      @reject="handleReject"
+      @pin="handleTogglePin"
+      @remark="openRemarkDialog"
+      @remove="handleRemove"
+      @load-more="loadMore"
+      @go-to-data-panel="goToDataPanel"
+    />
+
+    <!-- 桌面端视图 -->
+    <div v-else class="desktop-view">
+    <el-alert type="info" :closable="false" class="payment-config-hint">
+      多套微信支付 / 支付宝商户参数请在
+      <router-link class="payment-config-link" to="/fields?tab=payment">基础配置 → 支付配置 · 多套</router-link>
+      中维护（支持「新增微信支付配置」等）。
+    </el-alert>
+    <el-card class="filter-card">
+      <!-- 标签组 -->
+      <div class="tabs-header">
+        <el-tabs v-model="activeTab" @tab-click="handleTabClick" class="status-tabs">
+          <el-tab-pane label="全部" name="all"></el-tab-pane>
+          <el-tab-pane label="已支付" name="paid"></el-tab-pane>
+          <el-tab-pane label="退费待处理" name="pending"></el-tab-pane>
+          <el-tab-pane label="退费驳回" name="rejected"></el-tab-pane>
+          <el-tab-pane label="已退费" name="completed"></el-tab-pane>
+        </el-tabs>
+        <el-button type="primary" @click="goToDataPanel" class="data-panel-btn">
+          <el-icon><DataAnalysis /></el-icon>
+          数据面板
+        </el-button>
+      </div>
+
+      <!-- 筛选条件 -->
+      <div class="search-section">
+      <el-form :inline="true" :model="searchForm" class="search-form">
+        <el-row :gutter="20">
+          <el-col :span="6">
+            <el-form-item label="支付时间">
+              <el-date-picker
+                v-model="searchForm.payTime"
+                type="daterange"
+                range-separator="-"
+                start-placeholder="开始日期"
+                end-placeholder="结束日期"
+                format="YYYY-MM-DD HH:mm"
+                value-format="YYYY-MM-DD HH:mm:ss"
+                :default-time="rangePickerDefaultTime"
+                :shortcuts="dateShortcuts"
+                popper-class="date-picker-dropdown"
+                placement="bottom-start"
+                style="width: 100%"
+              />
+            </el-form-item>
+          </el-col>
+          <el-col :span="6">
+            <el-form-item label="家教标题">
+              <el-input v-model="searchForm.tutorName" placeholder="家教标题" clearable />
+            </el-form-item>
+          </el-col>
+          <el-col :span="6">
+            <el-form-item label="老师姓名">
+              <el-input v-model="searchForm.payerName" placeholder="老师姓名" clearable />
+            </el-form-item>
+          </el-col>
+          <el-col :span="6">
+        <el-form-item label="状态">
+          <el-select 
+            v-model="searchForm.status" 
+            placeholder="请选择状态"
+                clearable 
+                filterable
+                style="width: 100%"
+              >
+            <el-option label="待支付" value="pending"></el-option>
+            <el-option label="已支付" value="success"></el-option>
+            <el-option label="已取消" value="cancelled"></el-option>
+              </el-select>
+            </el-form-item>
+          </el-col>
+        </el-row>
+        <el-row :gutter="20">
+          <el-col :span="6">
+        <el-form-item label="信息费金额">
+          <div style="display: flex; gap: 10px; align-items: center;">
+            <el-input v-model="searchForm.amountMin" placeholder="信息费金额" clearable />
+            <span style="line-height: 32px;">-</span>
+            <el-input v-model="searchForm.amountMax" placeholder="信息费金额" clearable />
+              </div>
+            </el-form-item>
+          </el-col>
+          <el-col :span="6">
+        <el-form-item label="退款时间">
+          <el-date-picker
+            v-model="searchForm.refundTime"
+            type="daterange"
+            range-separator="-"
+            start-placeholder="退款时间"
+            end-placeholder="退款时间"
+                format="YYYY-MM-DD HH:mm"
+                value-format="YYYY-MM-DD HH:mm:ss"
+                :default-time="rangePickerDefaultTime"
+                :shortcuts="dateShortcuts"
+                popper-class="date-picker-dropdown"
+                placement="bottom-start"
+                style="width: 100%"
+              />
+            </el-form-item>
+          </el-col>
+          <el-col :span="6">
+        <el-form-item label="申请退款时间">
+          <el-date-picker
+            v-model="searchForm.refundApplyTime"
+            type="daterange"
+            range-separator="-"
+            start-placeholder="申请退款时间"
+            end-placeholder="申请退款时间"
+                format="YYYY-MM-DD HH:mm"
+                value-format="YYYY-MM-DD HH:mm:ss"
+                :default-time="rangePickerDefaultTime"
+                :shortcuts="dateShortcuts"
+                popper-class="date-picker-dropdown"
+                placement="bottom-start"
+                style="width: 100%"
+              />
+            </el-form-item>
+          </el-col>
+          <el-col :span="6">
+            <el-form-item label="客服">
+              <el-select 
+                v-model="searchForm.dispatcherId" 
+                placeholder="请选择客服" 
+                clearable 
+                filterable
+                style="width: 100%"
+              >
+                <el-option 
+                  v-for="dispatcher in dispatcherList" 
+                  :key="dispatcher.id" 
+                  :label="dispatcher.nickname || dispatcher.username" 
+                  :value="dispatcher.id"
+                ></el-option>
+              </el-select>
+              <div v-if="dispatcherList.length === 0" style="color: #999; font-size: 12px; margin-top: 5px;">
+                暂无客服数据
+              </div>
+            </el-form-item>
+          </el-col>
+        </el-row>
+        <el-row>
+          <el-col :span="24" style="text-align: left;">
+            <el-button type="primary" @click="handleSearch">提交</el-button>
+            <el-button @click="handleReset">重置</el-button>
+          </el-col>
+        </el-row>
+      </el-form>
+      </div>
+    </el-card>
+
+    <!-- 数据表格 -->
+    <el-card class="table-card">
+      <div class="table-header">
+        <div class="table-header-left">
+          <el-button :icon="RefreshRight" @click="getList" circle />
+          <button class="stat-chip stat-chip-paid">
+            累计支付金额 ¥{{ statistics.totalPaidAmount }}
+          </button>
+          <button class="stat-chip stat-chip-refund">
+            累计退款金额 ¥{{ statistics.totalRefundedAmount }}
+          </button>
+          <button class="stat-chip stat-chip-actual">
+            累计实收金额 ¥{{ statistics.totalActualAmount }}
+          </button>
+          <button class="stat-chip stat-chip-count">
+            累计交易笔数 {{ statistics.totalCount }}
+          </button>
+        </div>
+        <div class="table-actions">
+          <el-input v-model="searchKeyword" placeholder="搜索" style="width: 200px;" clearable @clear="getList" />
+          <el-popover placement="bottom" :width="200" trigger="click">
+            <template #reference>
+              <el-button :icon="Grid" circle title="列设置" />
+            </template>
+            <div class="column-settings">
+              <div class="column-settings-header">
+                <span>列显示</span>
+                <el-button text size="small" @click="resetColumns">重置</el-button>
+              </div>
+              <el-checkbox-group v-model="visibleColumns" class="column-checkbox-group">
+                <el-checkbox 
+                  v-for="col in allColumns" 
+                  :key="col.prop" 
+                  :label="col.prop"
+                  :disabled="col.required"
+                >
+                  {{ col.label }}
+                </el-checkbox>
+              </el-checkbox-group>
+            </div>
+          </el-popover>
+          <el-button :icon="Download" circle title="导出" />
+          <el-button :icon="Search" @click="handleSearch" type="primary" circle title="搜索" />
+        </div>
+      </div>
+
+      <!-- 批量操作栏（桌面端） -->
+      <div v-if="selectedRows.length > 0" class="batch-actions-bar">
+        <div class="batch-actions-left">
+          已选择 <b>{{ selectedRows.length }}</b> 条
+          <el-button size="small" @click="selectCurrentPage">选择本页</el-button>
+          <el-button size="small" @click="clearSelection">清空</el-button>
+        </div>
+        <div class="batch-actions-right">
+          <el-button size="small" type="primary" :loading="batchPinLoading" @click="handleBatchPin">
+            批量置顶
+          </el-button>
+          <el-button size="small" type="danger" :loading="batchRemoveLoading" @click="handleBatchRemove">
+            批量移除
+          </el-button>
+        </div>
+      </div>
+
+      <!-- 不要用 default-sort / 本地 sortable 按支付时间排序，否则会覆盖后端「置顶 + pinned_at」顺序 -->
+      <el-table
+        ref="tableRef"
+        :data="paymentList"
+        v-loading="loading"
+        stripe
+        border
+        :tooltip-options="{ enterable: true, showAfter: 400 }"
+        @selection-change="handleSelectionChange"
+      >
+        <!-- 最左侧勾选 -->
+        <el-table-column type="selection" width="48" align="center" fixed="left" />
+        <el-table-column v-if="isColumnVisible('id')" prop="id" label="ID" min-width="70" align="center" show-overflow-tooltip />
+        <el-table-column v-if="isColumnVisible('order_no')" label="订单编号" min-width="180" show-overflow-tooltip>
+          <template #default="{ row }">{{ row.order_no }}</template>
+        </el-table-column>
+        <el-table-column v-if="isColumnVisible('paid_time')" label="支付时间" min-width="170" show-overflow-tooltip>
+          <template #default="{ row }">{{ formatListPayTime(row) }}</template>
+        </el-table-column>
+        <el-table-column v-if="isColumnVisible('tutor_name')" label="家教标题" min-width="180" show-overflow-tooltip>
+          <template #default="{ row }">{{ row.tutor_name }}</template>
+        </el-table-column>
+        <el-table-column v-if="isColumnVisible('payer_name')" label="老师姓名" min-width="90" show-overflow-tooltip>
+          <template #default="{ row }">{{ row.teacher_name || row.payer_name || '' }}</template>
+        </el-table-column>
+        <el-table-column
+          v-if="isColumnVisible('openid')"
+          label="openid"
+          min-width="220"
+          show-overflow-tooltip
+        >
+          <template #default="{ row }">{{ row.openid }}</template>
+        </el-table-column>
+        <el-table-column
+          v-if="isColumnVisible('status')"
+          label="状态"
+          min-width="118"
+          class-name="col-payment-status"
+          show-overflow-tooltip
+        >
+          <template #default="{ row }">
+            <el-tag v-if="row.status === 'pending'" type="warning">待支付</el-tag>
+            <el-tag v-else-if="(row.status === 'paid' || row.status === 'success') && !row.refund_status" type="success">已支付</el-tag>
+            <el-tag v-else-if="String(row.refund_status || '').trim() === 'pending'" type="warning">退款待处理</el-tag>
+            <el-tag v-else-if="String(row.refund_status || '').trim() === 'rejected'" type="danger">退款驳回</el-tag>
+            <el-tag v-else-if="String(row.refund_status || '').trim() === 'completed'" type="info">已退费</el-tag>
+            <el-tag v-else type="info">{{ row.status }}</el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column v-if="isColumnVisible('contact_student')" label="对接的同学" min-width="140" show-overflow-tooltip>
+          <template #default="{ row }">{{ row.contact_student }}</template>
+        </el-table-column>
+        <el-table-column v-if="isColumnVisible('amount')" label="信息费金额" min-width="95" align="right" show-overflow-tooltip>
+          <template #default="{ row }">{{ row.amount ? row.amount.toFixed(2) : '0.00' }}</template>
+        </el-table-column>
+        <el-table-column v-if="isColumnVisible('deposit_amount')" label="收到课酬" min-width="90" align="right" show-overflow-tooltip>
+          <template #default="{ row }">{{ Number(row.deposit_amount || 0) > 0 ? Number(row.deposit_amount).toFixed(2) : '' }}</template>
+        </el-table-column>
+        <el-table-column v-if="isColumnVisible('refund_apply_amount')" label="申请应退" min-width="90" align="right" show-overflow-tooltip>
+          <template #default="{ row }">{{ Number(row.refund_apply_amount || 0) > 0 ? Number(row.refund_apply_amount).toFixed(2) : '' }}</template>
+        </el-table-column>
+        <el-table-column
+          v-if="isColumnVisible('remark')"
+          label="订单备注"
+          min-width="180"
+          show-overflow-tooltip
+        >
+          <template #default="{ row }">{{ row.remark }}</template>
+        </el-table-column>
+        <el-table-column
+          v-if="isColumnVisible('refund_reason')"
+          label="申请说明"
+          min-width="180"
+          show-overflow-tooltip
+        >
+          <template #default="{ row }">{{ row.refund_reason }}</template>
+        </el-table-column>
+        <el-table-column
+          v-if="isColumnVisible('pay_remark')"
+          label="支付备注"
+          min-width="180"
+          show-overflow-tooltip
+        >
+          <template #default="{ row }">{{ row.pay_remark }}</template>
+        </el-table-column>
+        <el-table-column v-if="isColumnVisible('refunded_amount')" label="已退金额" min-width="90" align="right" show-overflow-tooltip>
+          <template #default="{ row }">{{ Number(row.refunded_amount || 0) > 0 ? Number(row.refunded_amount).toFixed(2) : '' }}</template>
+        </el-table-column>
+        <el-table-column v-if="isColumnVisible('refund_time')" label="退款时间" min-width="150" show-overflow-tooltip>
+          <template #default="{ row }">{{ row.refund_time }}</template>
+        </el-table-column>
+        <el-table-column v-if="isColumnVisible('actual_amount')" label="实收金额" min-width="95" align="right" show-overflow-tooltip>
+          <template #default="{ row }">{{ row.actual_amount ? row.actual_amount.toFixed(2) : '0.00' }}</template>
+        </el-table-column>
+        <el-table-column label="操作" min-width="300" fixed="right" class-name="col-payment-actions">
+          <template #default="{ row }">
+            <div class="operation-actions">
+              <el-button type="primary" size="small" @click="handleView(row)">查看</el-button>
+              <el-button
+                v-if="rowHasRefund(row)"
+                type="success"
+                size="small"
+                @click="handleRefund(row)"
+              >
+                审核
+              </el-button>
+              <el-button type="warning" size="small" @click="handleTogglePin(row)">
+                {{ Number(row.is_pinned) ? '取消置顶' : '置顶' }}
+              </el-button>
+              <el-button size="small" @click="openRemarkDialog(row)">备注</el-button>
+              <el-button type="danger" size="small" @click="handleRemove(row)">移除</el-button>
+            </div>
+          </template>
+        </el-table-column>
+      </el-table>
+
+      <el-pagination
+        v-model:current-page="pagination.page"
+        v-model:page-size="pagination.limit"
+        :total="pagination.total"
+        :page-sizes="[10, 20, 50, 100]"
+        layout="total, sizes, prev, pager, next, jumper"
+        @current-change="getList"
+        @size-change="getList"
+        class="pagination"
+      />
+    </el-card>
+
+    <!-- 查看详情弹窗 -->
+    <el-dialog v-model="viewDialogVisible" title="支付详情" width="700px">
+      <el-descriptions :column="2" border v-if="currentPayment">
+        <el-descriptions-item label="订单号">{{ displayOrderNo(currentPayment) }}</el-descriptions-item>
+        <el-descriptions-item label="支付时间">{{ formatListPayTime(currentPayment) }}</el-descriptions-item>
+        <el-descriptions-item label="家教标题">{{ currentPayment.tutor_name }}</el-descriptions-item>
+        <el-descriptions-item label="老师姓名">{{ currentPayment.teacher_name || currentPayment.payer_name }}</el-descriptions-item>
+        <el-descriptions-item label="对接同学">{{ currentPayment.contact_student || '-' }}</el-descriptions-item>
+        <el-descriptions-item label="信息费金额">¥{{ currentPayment.amount }}</el-descriptions-item>
+        <el-descriptions-item label="收到课酬">¥{{ currentPayment.deposit_amount || '0.00' }}</el-descriptions-item>
+        <el-descriptions-item label="已退金额">¥{{ currentPayment.refunded_amount || '0.00' }}</el-descriptions-item>
+        <el-descriptions-item label="实收金额">¥{{ currentPayment.actual_amount || '0.00' }}</el-descriptions-item>
+        <el-descriptions-item label="退款状态">
+          <el-tag v-if="currentPayment.refund_status === 'pending'" type="warning">退款待处理</el-tag>
+          <el-tag v-else-if="currentPayment.refund_status === 'rejected'" type="danger">退款驳回</el-tag>
+          <el-tag v-else-if="currentPayment.refund_status === 'completed'" type="success">已退费</el-tag>
+          <span v-else>-</span>
+        </el-descriptions-item>
+        <el-descriptions-item label="客服人员">{{ currentPayment.customer_service || '-' }}</el-descriptions-item>
+        <el-descriptions-item label="退款原因" :span="2">{{ currentPayment.refund_reason || '-' }}</el-descriptions-item>
+        <el-descriptions-item label="驳回原因" :span="2">{{ currentPayment.reject_reason || '-' }}</el-descriptions-item>
+        <el-descriptions-item label="退款凭证" :span="2">
+          <div v-if="getVoucherList(currentPayment.refund_voucher).length > 0" class="voucher-list">
+            <el-image
+              v-for="(voucher, index) in getVoucherList(currentPayment.refund_voucher)"
+              :key="index"
+              :src="voucher.url"
+              :preview-src-list="getVoucherUrls(currentPayment.refund_voucher)"
+              :initial-index="index"
+              fit="cover"
+              class="voucher-image"
+            >
+              <template #error>
+                <div class="image-slot">
+                  <el-icon><Picture /></el-icon>
+                  <div>{{ voucher.name }}</div>
+                </div>
+              </template>
+            </el-image>
+          </div>
+          <span v-else>-</span>
+        </el-descriptions-item>
+        <el-descriptions-item label="订单备注" :span="2">{{ currentPayment.remark || '-' }}</el-descriptions-item>
+        <el-descriptions-item label="支付备注" :span="2">{{ currentPayment.pay_remark || '-' }}</el-descriptions-item>
+      </el-descriptions>
+    </el-dialog>
+
+    <!-- 退款弹窗：同意退款（可修改退费金额） -->
+    <el-dialog
+      v-model="refundDialogVisible"
+      title="同意退款"
+      width="620px"
+      :close-on-click-modal="false"
+      destroy-on-close
+    >
+      <div class="refund-approve-modal">
+        <div class="refund-approve-info">
+          <div class="refund-approve-info-row">
+            <span class="refund-approve-label">信息费金额</span>
+            <span class="refund-approve-value">
+              {{
+                currentPayment && currentPayment.amount != null ? Number(currentPayment.amount).toFixed(2) : '0.00'
+              }}
+            </span>
+          </div>
+          <div class="refund-approve-info-row">
+            <span class="refund-approve-label">申请应退</span>
+            <span class="refund-approve-value">
+              {{ Number(currentPayment?.refund_apply_amount || 0).toFixed(2) }}
+            </span>
+          </div>
+        </div>
+
+        <el-form :model="refundForm" label-position="left" label-width="100px" class="refund-approve-form">
+          <el-form-item label="退费金额" :required="true">
+            <el-input-number
+              v-model="refundForm.refundAmount"
+              :min="0.01"
+              :max="maxRefundAmount"
+              :precision="2"
+              controls-position="right"
+              placeholder="请输入退费金额"
+            />
+            <div class="refund-approve-hint">
+              可退金额：¥{{ Number(maxRefundAmount).toFixed(2) }}
+            </div>
+          </el-form-item>
+        </el-form>
+      </div>
+
+      <template #footer>
+        <el-button @click="resetRefundAmount">重置</el-button>
+        <el-button type="primary" @click="confirmRefund" :loading="refundLoading">确定</el-button>
+      </template>
+    </el-dialog>
+
+    <!-- 驳回弹窗 -->
+    <el-dialog v-model="rejectDialogVisible" title="驳回退费" width="500px">
+      <el-form :model="rejectForm" label-width="100px">
+        <el-form-item label="驳回原因" required>
+          <el-input v-model="rejectForm.rejectReason" type="textarea" :rows="4" placeholder="请输入驳回原因" />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="rejectDialogVisible = false">取消</el-button>
+        <el-button type="danger" @click="confirmReject" :loading="rejectLoading">确定驳回</el-button>
+      </template>
+    </el-dialog>
+
+    <el-dialog
+      v-model="reviewDialogVisible"
+      title="退费申请"
+      width="920px"
+      destroy-on-close
+      append-to-body
+      :close-on-click-modal="false"
+      class="payment-refund-dialog"
+    >
+      <div class="refund-dialog-body">
+        <RefundApplicationEmbed
+          v-if="reviewDialogVisible && reviewPaymentId"
+          embedded
+          :embed-payment-id="reviewPaymentId"
+          :seed-detail="reviewSeedDetail"
+          @processed="onReviewProcessed"
+          @updated="onReviewUpdated"
+        />
+      </div>
+    </el-dialog>
+
+    <!-- 备注（写入 tutor_orders_new.remark） -->
+    <el-dialog v-model="remarkAdminDialogVisible" title="备注" width="520px" destroy-on-close>
+      <el-input
+        v-model="remarkAdminText"
+        type="textarea"
+        :rows="6"
+        placeholder="请输入备注"
+        maxlength="2000"
+        show-word-limit
+      />
+      <template #footer>
+        <el-button @click="remarkAdminDialogVisible = false">取消</el-button>
+        <el-button type="primary" :loading="remarkAdminSaving" @click="saveAdminRemark">保存</el-button>
+      </template>
+    </el-dialog>
+    </div>
+  </div>
+</template>
+
+<script setup>
+import { ref, reactive, onMounted, computed, watch, onBeforeUnmount, nextTick } from 'vue'
+import { ElMessage } from 'element-plus'
+import { RefreshRight, Grid, Download, Search, Picture, DataAnalysis } from '@element-plus/icons-vue'
+import { useRouter } from 'vue-router'
+import PaymentManageMobile from '@/components/payment/PaymentManageMobile.vue'
+import RefundApplicationEmbed from './PaymentDetail.vue'
+
+const router = useRouter()
+import { 
+  getPaymentList, 
+  getPaymentStatistics,
+  processRefund,
+  rejectRefund,
+  getDispatchers,
+  updatePaymentOrderRemark,
+  removePayment,
+  setPaymentPinned
+} from '@/api/payment'
+
+// 日期快捷选项
+const dateShortcuts = [
+  {
+    text: '今天',
+    value: () => {
+      const start = new Date()
+      start.setHours(0, 0, 0, 0)
+      const end = new Date()
+      end.setHours(23, 59, 59, 999)
+      return [start, end]
+    }
+  },
+  {
+    text: '昨天',
+    value: () => {
+      const start = new Date()
+      start.setTime(start.getTime() - 3600 * 1000 * 24)
+      start.setHours(0, 0, 0, 0)
+      const end = new Date()
+      end.setTime(end.getTime() - 3600 * 1000 * 24)
+      end.setHours(23, 59, 59, 999)
+      return [start, end]
+    }
+  },
+  {
+    text: '最近7天',
+    value: () => {
+      const end = new Date()
+      end.setHours(23, 59, 59, 999)
+      const start = new Date()
+      start.setTime(start.getTime() - 3600 * 1000 * 24 * 7)
+      start.setHours(0, 0, 0, 0)
+      return [start, end]
+    }
+  },
+  {
+    text: '最近30天',
+    value: () => {
+      const end = new Date()
+      end.setHours(23, 59, 59, 999)
+      const start = new Date()
+      start.setTime(start.getTime() - 3600 * 1000 * 24 * 30)
+      start.setHours(0, 0, 0, 0)
+      return [start, end]
+    }
+  },
+  {
+    text: '本月',
+    value: () => {
+      const start = new Date()
+      start.setDate(1)
+      start.setHours(0, 0, 0, 0)
+      const end = new Date()
+      end.setMonth(end.getMonth() + 1)
+      end.setDate(0)
+      end.setHours(23, 59, 59, 999)
+      return [start, end]
+    }
+  },
+  {
+    text: '上月',
+    value: () => {
+      const start = new Date()
+      start.setMonth(start.getMonth() - 1)
+      start.setDate(1)
+      start.setHours(0, 0, 0, 0)
+      const end = new Date()
+      end.setDate(0)
+      end.setHours(23, 59, 59, 999)
+      return [start, end]
+    }
+  }
+]
+
+/** daterange 选日时默认：开始 00:00:00、结束 23:59:59，避免同日 00:00~00:00 筛不出 */
+const rangePickerDefaultTime = [new Date(2000, 0, 1, 0, 0, 0), new Date(2000, 0, 1, 23, 59, 59)]
+
+/**
+ * 提交给后端的起止时间：按「起止日期」闭区间扩展（与后端 expandInclusiveDateRange 一致）
+ */
+const toInclusiveApiRange = (startStr, endStr) => {
+  const s = String(startStr || '').trim()
+  const e = String(endStr || '').trim()
+  if (!s || !e) return [s, e]
+  const d1 = s.slice(0, 10)
+  const d2 = e.slice(0, 10)
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(d1) || !/^\d{4}-\d{2}-\d{2}$/.test(d2)) {
+    return [s, e]
+  }
+  return [`${d1} 00:00:00`, `${d2} 23:59:59`]
+}
+
+/** 列表「支付时间」：已支付用 paid_time；否则用 create_time 兜底（H5 待支付等不再空白） */
+const formatListPayTime = (row) => {
+  if (!row) return '—'
+  const paid = row.paid_time
+  if (paid) return paid
+  const ct = row.create_time
+  if (ct) return ct
+  return '—'
+}
+
+// 解析凭证列表
+const getVoucherList = (voucherJson) => {
+  if (!voucherJson) return []
+  try {
+    const list = JSON.parse(voucherJson)
+    return Array.isArray(list) ? list : []
+  } catch (e) {
+    return []
+  }
+}
+
+// 获取凭证图片URL列表
+const getVoucherUrls = (voucherJson) => {
+  const list = getVoucherList(voucherJson)
+  return list.map(item => item.url)
+}
+
+// 列配置
+const allColumns = ref([
+  // 需求：列显示里“除了状态必须显示，其余都可去掉”
+  { prop: 'id', label: 'ID', visible: false, required: false },
+  { prop: 'order_no', label: '订单编号', visible: false, required: false },
+  { prop: 'paid_time', label: '支付时间', visible: true, required: false },
+  { prop: 'tutor_name', label: '家教标题', visible: true, required: false },
+  { prop: 'payer_name', label: '老师姓名', visible: true, required: false },
+  { prop: 'openid', label: 'openid', visible: false, required: false },
+  { prop: 'status', label: '状态', visible: true, required: true },
+  { prop: 'contact_student', label: '对接的同学', visible: true, required: false },
+  { prop: 'amount', label: '信息费金额', visible: true, required: false },
+  { prop: 'deposit_amount', label: '收到课酬', visible: true, required: false },
+  { prop: 'refund_apply_amount', label: '申请应退', visible: true, required: false },
+  // 申请说明：用户退费时填写的说明（列表默认不显示）
+  { prop: 'refund_reason', label: '申请说明', visible: false, required: false },
+  // 订单备注：管理员后台备注（列表默认显示）
+  { prop: 'remark', label: '订单备注', visible: true, required: false },
+  // 支付备注：用户支付时备注（列表默认不显示，仅详情展示）
+  { prop: 'pay_remark', label: '支付备注', visible: false, required: false },
+  { prop: 'refunded_amount', label: '已退金额', visible: true, required: false },
+  { prop: 'refund_time', label: '退款时间', visible: true, required: false },
+  { prop: 'actual_amount', label: '实收金额', visible: true, required: false }
+])
+
+// 可见列
+const visibleColumns = ref([])
+
+// 初始化可见列
+const initVisibleColumns = () => {
+  const defaultVisible = allColumns.value.filter(col => col.visible).map(col => col.prop)
+  const requiredColumns = allColumns.value.filter(col => col.required).map(col => col.prop)
+  const savedColumns = localStorage.getItem('payment_visible_columns')
+  const savedVersion = localStorage.getItem('payment_visible_columns_version') || ''
+  const CURRENT_VERSION = '2026-04-08-hide-refund-reason-and-pay-remark'
+  if (savedColumns) {
+    let parsed = []
+    try {
+      parsed = JSON.parse(savedColumns)
+      if (!Array.isArray(parsed)) parsed = []
+    } catch (e) {
+      parsed = []
+    }
+    parsed = parsed.map((col) => (col === 'teacher_name' ? 'payer_name' : col))
+    // 列配置迁移：将“申请说明/支付备注”默认改为不展示
+    // - 仅在旧版本配置上执行一次，避免影响用户之后手动勾选偏好
+    if (savedVersion !== CURRENT_VERSION) {
+      parsed = parsed.filter((c) => c !== 'refund_reason' && c !== 'pay_remark')
+      localStorage.setItem('payment_visible_columns_version', CURRENT_VERSION)
+      localStorage.setItem('payment_visible_columns', JSON.stringify(parsed))
+    }
+    // 兼容历史列配置：补齐新增默认列与必选列，避免页面升级后看不到关键字段
+    visibleColumns.value = Array.from(new Set([...parsed, ...defaultVisible, ...requiredColumns]))
+  } else {
+    visibleColumns.value = defaultVisible
+  }
+}
+
+// 保存列配置
+const saveColumnConfig = () => {
+  localStorage.setItem('payment_visible_columns', JSON.stringify(visibleColumns.value))
+}
+
+// 监听列配置变化
+watch(visibleColumns, () => {
+  saveColumnConfig()
+}, { deep: true })
+
+// 检查列是否可见
+const isColumnVisible = (prop) => {
+  return visibleColumns.value.includes(prop)
+}
+
+// 重置列配置
+const resetColumns = () => {
+  visibleColumns.value = allColumns.value.filter(col => col.visible).map(col => col.prop)
+  saveColumnConfig()
+  ElMessage.success('已重置为默认配置')
+}
+
+// 标签页
+const activeTab = ref('all')
+
+// 加载状态
+const loading = ref(false)
+
+// 表格多选（桌面端）
+const tableRef = ref(null)
+const selectedRows = ref([])
+const batchRemoveLoading = ref(false)
+const batchPinLoading = ref(false)
+
+const handleSelectionChange = (rows) => {
+  selectedRows.value = Array.isArray(rows) ? rows : []
+}
+
+const clearSelection = () => {
+  selectedRows.value = []
+  tableRef.value?.clearSelection?.()
+}
+
+// 选择当前页（把当前 paymentList 全选）
+const selectCurrentPage = () => {
+  tableRef.value?.clearSelection?.()
+  ;(paymentList.value || []).forEach((row) => {
+    tableRef.value?.toggleRowSelection?.(row, true)
+  })
+}
+
+const handleBatchRemove = async () => {
+  if (selectedRows.value.length <= 0) return
+  batchRemoveLoading.value = true
+  try {
+    const ids = selectedRows.value.map((r) => r.id).filter(Boolean)
+    const results = await Promise.allSettled(ids.map((id) => removePayment(id)))
+    const ok = results.filter((r) => r.status === 'fulfilled').length
+    const fail = results.length - ok
+    ElMessage.success(`已移除 ${ok} 条` + (fail ? `，失败 ${fail} 条` : ''))
+    clearSelection()
+    getList()
+    getStatistics()
+  } catch (e) {
+    ElMessage.error('批量移除失败')
+  } finally {
+    batchRemoveLoading.value = false
+  }
+}
+
+const handleBatchPin = async () => {
+  if (selectedRows.value.length <= 0) return
+  batchPinLoading.value = true
+  try {
+    const ids = selectedRows.value.map((r) => r.id).filter(Boolean)
+    const results = await Promise.allSettled(ids.map((id) => setPaymentPinned(id, true)))
+    const ok = results.filter((r) => r.status === 'fulfilled').length
+    const fail = results.length - ok
+    ElMessage.success(`已置顶 ${ok} 条` + (fail ? `，失败 ${fail} 条` : ''))
+    clearSelection()
+    getList()
+  } catch (e) {
+    ElMessage.error('批量置顶失败')
+  } finally {
+    batchPinLoading.value = false
+  }
+}
+
+// 搜索关键字
+const searchKeyword = ref('')
+
+// 筛选表单
+const searchForm = reactive({
+  payTime: null,
+  tutorName: '',
+  payerName: '',
+  status: undefined,
+  refund_status: undefined,  // 添加 refund_status 字段
+  amountMin: '',
+  amountMax: '',
+  refundTime: null,
+  refundApplyTime: null,
+  dispatcherId: undefined
+})
+
+// 派单员列表
+const dispatcherList = ref([])
+
+// 统计数据
+const statistics = reactive({
+  totalPaidAmount: 0,
+  totalRefundedAmount: 0,
+  totalActualAmount: 0,
+  totalCount: 0
+})
+
+// 支付列表
+const paymentList = ref([])
+
+// 分页
+const pagination = reactive({
+  page: 1,
+  limit: 10,
+  total: 0
+})
+
+// 查看详情
+const viewDialogVisible = ref(false)
+const currentPayment = ref(null)
+
+const displayOrderNo = (payment) => {
+  if (!payment) return '-'
+  return payment.order_no || payment.orderNo || payment.transaction_id || (payment.id ? `ID:${payment.id}` : '-')
+}
+
+// 退款
+const refundDialogVisible = ref(false)
+const refundLoading = ref(false)
+const refundRemarkDefault = '管理员同意退款'
+const refundForm = reactive({
+  id: null,
+  refundAmount: 0,
+  remark: refundRemarkDefault
+})
+const refundDefaultAmount = ref(0)
+const maxRefundAmount = computed(() => {
+  if (!currentPayment.value) return 0
+  const canRefund =
+    Number(currentPayment.value.amount || 0) - Number(currentPayment.value.refunded_amount || 0)
+  return Math.max(0, canRefund)
+})
+
+// 驳回
+const rejectDialogVisible = ref(false)
+const rejectLoading = ref(false)
+const rejectForm = reactive({
+  id: null,
+  rejectReason: ''
+})
+const reviewDialogVisible = ref(false)
+const reviewPaymentId = ref(null)
+const reviewSeedDetail = ref(null)
+
+const remarkAdminDialogVisible = ref(false)
+const remarkAdminSaving = ref(false)
+const remarkAdminText = ref('')
+const remarkAdminId = ref(null)
+/** 存在退款流程时显示「审核」（跳转退款申请页） */
+const rowHasRefund = (row) => {
+  return String(row?.refund_status || '').trim() === 'pending'
+}
+
+// 标签页切换
+const handleTabClick = (tab) => {
+  console.log('切换标签页:', tab.props.name)
+  
+  // 根据标签页设置筛选条件
+  if (tab.props.name === 'all') {
+    searchForm.status = undefined
+    searchForm.refund_status = undefined
+  } else if (tab.props.name === 'paid') {
+    // 后端支付成功状态使用 success（不是 paid）
+    searchForm.status = 'success'
+    // 已支付 Tab：排除所有退款状态（pending/rejected/completed），仅保留 refund_status 为空的订单
+    searchForm.refund_status = 'none'
+  } else {
+    // 退款相关状态：不限制 status，让后端根据 refund_status 筛选
+    // 因为有些记录的 status 可能是 'paid' 而不是 'success'
+    searchForm.status = undefined
+    searchForm.refund_status = tab.props.name
+  }
+  
+  console.log('筛选条件:', {
+    status: searchForm.status,
+    refund_status: searchForm.refund_status
+  })
+  
+  pagination.page = 1
+  getList()
+  getStatistics()
+}
+
+// 获取列表
+const getList = async () => {
+  loading.value = true
+  try {
+    const params = {
+      page: pagination.page,
+      limit: pagination.limit
+    }
+
+    // 右上角“搜索”关键字：交给后端统一模糊匹配（订单号/家教标题/老师姓名/对接同学/客服昵称等）
+    if (searchKeyword.value) params.keyword = searchKeyword.value
+
+    // 添加有值的筛选参数
+    if (searchForm.tutorName) params.tutor_name = searchForm.tutorName
+    if (searchForm.payerName) params.payer_name = searchForm.payerName
+    if (searchForm.status) params.status = searchForm.status
+    if (searchForm.dispatcherId) params.dispatcher_id = searchForm.dispatcherId
+    if (searchForm.amountMin) params.amount_min = searchForm.amountMin
+    if (searchForm.amountMax) params.amount_max = searchForm.amountMax
+
+    // 处理退款状态
+    if (searchForm.refund_status) {
+      params.refund_status = searchForm.refund_status
+    }
+
+    // 处理支付时间（整日闭区间，避免 00:00~00:00）
+    if (searchForm.payTime && searchForm.payTime.length === 2) {
+      const [ps, pe] = toInclusiveApiRange(searchForm.payTime[0], searchForm.payTime[1])
+      params.pay_time_start = ps
+      params.pay_time_end = pe
+    }
+
+    // 处理退款时间
+    if (searchForm.refundTime && searchForm.refundTime.length === 2) {
+      const [rs, re] = toInclusiveApiRange(searchForm.refundTime[0], searchForm.refundTime[1])
+      params.refund_time_start = rs
+      params.refund_time_end = re
+    }
+
+    // 处理申请退款时间
+    if (searchForm.refundApplyTime && searchForm.refundApplyTime.length === 2) {
+      const [as, ae] = toInclusiveApiRange(searchForm.refundApplyTime[0], searchForm.refundApplyTime[1])
+      params.refund_apply_time_start = as
+      params.refund_apply_time_end = ae
+    }
+
+    console.log('发送请求参数:', params)
+
+    const res = await getPaymentList(params)
+    if (res.success || res.code === 200) {
+      const list = res.data.list || []
+      // 默认按时间倒序（同时兼容置顶优先）
+      const toTs = (v) => {
+        const s = String(v || '').trim()
+        if (!s) return 0
+        const t = Date.parse(s.replace(/-/g, '/'))
+        return Number.isFinite(t) ? t : 0
+      }
+      paymentList.value = [...list].sort((a, b) => {
+        const ap = Number(a?.is_pinned || 0)
+        const bp = Number(b?.is_pinned || 0)
+        if (ap !== bp) return bp - ap
+        const at = toTs(a?.pinned_at) || toTs(a?.paid_time) || toTs(a?.refund_time) || toTs(a?.create_time)
+        const bt = toTs(b?.pinned_at) || toTs(b?.paid_time) || toTs(b?.refund_time) || toTs(b?.create_time)
+        if (at !== bt) return bt - at
+        return Number(b?.id || 0) - Number(a?.id || 0)
+      })
+      pagination.total = res.data.total || 0
+      // 翻页/刷新后，避免“勾选残留”与数据不一致
+      clearSelection()
+    }
+  } catch (error) {
+    
+    ElMessage.error('获取支付列表失败')
+  } finally {
+    loading.value = false
+  }
+}
+
+// 获取统计数据
+const getStatistics = async () => {
+  try {
+    const params = {}
+
+    if (searchKeyword.value) params.keyword = searchKeyword.value
+
+    // 添加有值的筛选参数
+    if (searchForm.tutorName) params.tutor_name = searchForm.tutorName
+    if (searchForm.payerName) params.payer_name = searchForm.payerName
+    if (searchForm.dispatcherId) params.dispatcher_id = searchForm.dispatcherId
+    if (searchForm.amountMin) params.amount_min = searchForm.amountMin
+    if (searchForm.amountMax) params.amount_max = searchForm.amountMax
+
+    // 处理退款状态
+    if (searchForm.refund_status) {
+      params.refund_status = searchForm.refund_status
+    }
+
+    // 处理支付时间（整日闭区间）
+    if (searchForm.payTime && searchForm.payTime.length === 2) {
+      const [ps, pe] = toInclusiveApiRange(searchForm.payTime[0], searchForm.payTime[1])
+      params.pay_time_start = ps
+      params.pay_time_end = pe
+    }
+
+    // 处理退款时间
+    if (searchForm.refundTime && searchForm.refundTime.length === 2) {
+      const [rs, re] = toInclusiveApiRange(searchForm.refundTime[0], searchForm.refundTime[1])
+      params.refund_time_start = rs
+      params.refund_time_end = re
+    }
+
+    // 处理申请退款时间
+    if (searchForm.refundApplyTime && searchForm.refundApplyTime.length === 2) {
+      const [as, ae] = toInclusiveApiRange(searchForm.refundApplyTime[0], searchForm.refundApplyTime[1])
+      params.refund_apply_time_start = as
+      params.refund_apply_time_end = ae
+    }
+
+    const res = await getPaymentStatistics(params)
+    if (res.success || res.code === 200) {
+      statistics.totalPaidAmount = res.data.total_paid_amount || 0
+      statistics.totalRefundedAmount = res.data.total_refunded_amount || 0
+      statistics.totalActualAmount = res.data.total_actual_amount || 0
+      statistics.totalCount = res.data.total_count || 0
+    }
+  } catch (error) {
+    
+  }
+}
+
+// 搜索
+const handleSearch = () => {
+  pagination.page = 1
+  getList()
+  getStatistics()
+}
+
+// 重置
+const handleReset = () => {
+  searchForm.payTime = null
+  searchForm.tutorName = ''
+  searchForm.payerName = ''
+  searchForm.status = undefined
+  searchForm.amountMin = ''
+  searchForm.amountMax = ''
+  searchForm.refundTime = null
+  searchForm.refundApplyTime = null
+  searchForm.dispatcherId = undefined
+  searchForm.refund_status = undefined  // 使用 undefined 而不是 delete
+  activeTab.value = 'all'
+  pagination.page = 1
+  getList()
+  getStatistics()
+}
+
+// 查看详情（新建标签页）
+const handleView = (row) => {
+  router.push({
+    path: `/payment-view/${row.id}`,
+    query: {
+      order_no: row.order_no || '',
+      paid_time: row.paid_time || '',
+      tutor_name: row.tutor_name || '',
+      payer_name: row.payer_name || row.teacher_name || '',
+      teacher_name: row.teacher_name || row.payer_name || '',
+      contact_student: row.contact_student || '',
+      amount: row.amount ?? '',
+      deposit_amount: row.deposit_amount ?? '',
+      refund_apply_amount: row.refund_apply_amount ?? '',
+      refund_apply_time: row.refund_apply_time || '',
+      refunded_amount: row.refunded_amount ?? '',
+      refund_time: row.refund_time || '',
+      actual_amount: row.actual_amount ?? '',
+      refund_status: row.refund_status || '',
+      customer_service: row.customer_service || '',
+      refund_reason: row.refund_reason || '',
+      reject_reason: row.reject_reason || '',
+      pay_remark: row.pay_remark || '',
+      refund_voucher: row.refund_voucher || '',
+      refund_remark: row.refund_remark || '',
+      remark: row.remark || ''
+    }
+  })
+}
+
+const openRemarkDialog = (row) => {
+  remarkAdminId.value = row.id
+  remarkAdminText.value = row.remark || ''
+  remarkAdminDialogVisible.value = true
+}
+
+const saveAdminRemark = async () => {
+  if (!remarkAdminId.value) return
+  remarkAdminSaving.value = true
+  try {
+    const res = await updatePaymentOrderRemark(remarkAdminId.value, remarkAdminText.value)
+    if (res.success || res.code === 200) {
+      ElMessage.success('备注已保存')
+      remarkAdminDialogVisible.value = false
+      getList()
+    } else {
+      ElMessage.error(res.message || '保存失败')
+    }
+  } catch (e) {
+    ElMessage.error('保存失败')
+  } finally {
+    remarkAdminSaving.value = false
+  }
+}
+
+const handleRemove = async (row) => {
+  try {
+    const ok = window.confirm('确定要移除该支付订单吗？移除后将不在列表展示。')
+    if (!ok) return
+    const res = await removePayment(row.id)
+    if (res.success || res.code === 200) {
+      ElMessage.success(res.message || '已移除')
+      pagination.page = 1
+      await getList()
+      await getStatistics()
+    } else {
+      ElMessage.error(res.message || '移除失败')
+    }
+  } catch (e) {
+    ElMessage.error('移除失败')
+  }
+}
+
+const handleTogglePin = async (row) => {
+  const next = Number(row.is_pinned) ? 0 : 1
+  try {
+    const res = await setPaymentPinned(row.id, next)
+    if (res.success || res.code === 200) {
+      ElMessage.success(res.message || (next ? '已置顶' : '已取消置顶'))
+      if (next === 1) {
+        pagination.page = 1
+      }
+      getList()
+      getStatistics()
+    } else {
+      ElMessage.error(res.message || '操作失败')
+    }
+  } catch (e) {
+    const msg = e?.response?.data?.message || e?.message || ''
+    ElMessage.error(
+      msg ||
+        '置顶失败，请确认已执行数据库脚本：patch_payments_is_pinned.sql 与 patch_payments_pinned_at.sql'
+    )
+  }
+}
+
+// 审核：列表页直接弹出退费申请弹窗
+const handleRefund = (row) => {
+  reviewPaymentId.value = row.id
+  reviewSeedDetail.value = { ...row }
+  reviewDialogVisible.value = true
+}
+
+const onReviewProcessed = async () => {
+  reviewDialogVisible.value = false
+  await getList()
+  await getStatistics()
+}
+
+const onReviewUpdated = async () => {
+  await getList()
+}
+
+// 弹窗：重置退费金额到默认值
+const resetRefundAmount = () => {
+  refundForm.refundAmount = refundDefaultAmount.value
+}
+
+// 确认退款
+const confirmRefund = async () => {
+  if (!refundForm.refundAmount || refundForm.refundAmount <= 0) {
+    ElMessage.warning('请输入退款金额')
+    return
+  }
+
+  if (refundForm.refundAmount > maxRefundAmount.value) {
+    ElMessage.warning('退款金额不能超过可退金额')
+    return
+  }
+
+  refundLoading.value = true
+  try {
+    const res = await processRefund({
+      id: refundForm.id,
+      refund_amount: refundForm.refundAmount,
+      remark: refundForm.remark || refundRemarkDefault
+    })
+    if (res.success || res.code === 200) {
+      ElMessage.success('退款成功')
+      refundDialogVisible.value = false
+      getList()
+      getStatistics()
+    } else {
+      ElMessage.error(res.message || '退款失败')
+    }
+  } catch (error) {
+    
+    ElMessage.error('退款失败')
+  } finally {
+    refundLoading.value = false
+  }
+}
+
+// 驳回
+const handleReject = (row) => {
+  currentPayment.value = row
+  rejectForm.id = row.id
+  rejectForm.rejectReason = ''
+  rejectDialogVisible.value = true
+}
+
+// 确认驳回
+const confirmReject = async () => {
+  if (!rejectForm.rejectReason) {
+    ElMessage.warning('请输入驳回原因')
+    return
+  }
+
+  rejectLoading.value = true
+  try {
+    const res = await rejectRefund({
+      id: rejectForm.id,
+      reject_reason: rejectForm.rejectReason
+    })
+    if (res.success || res.code === 200) {
+      ElMessage.success('驳回成功')
+      rejectDialogVisible.value = false
+      getList()
+      getStatistics()
+    } else {
+      ElMessage.error(res.message || '驳回失败')
+    }
+  } catch (error) {
+    
+    ElMessage.error('驳回失败')
+  } finally {
+    rejectLoading.value = false
+  }
+}
+
+// 跳转到数据面板
+const goToDataPanel = () => {
+  router.push('/payment-data-panel')
+}
+
+// 获取派单员列表
+const getDispatcherList = async () => {
+  try {
+    console.log('开始获取派单员列表...')
+    const res = await getDispatchers()
+    console.log('派单员列表响应:', res)
+    // 兼容两种响应格式：code: 200 或 success: true
+    if (res.code === 200 || res.success === true) {
+      dispatcherList.value = res.data || []
+      console.log('派单员列表数据:', dispatcherList.value)
+    } else {
+      console.error('获取派单员列表失败:', res.message)
+    }
+  } catch (error) {
+    console.error('获取派单员列表异常:', error)
+  }
+}
+
+// 初始化
+onMounted(() => {
+  initVisibleColumns()
+  getDispatcherList()
+  getList()
+  getStatistics()
+  checkMobile()
+  window.addEventListener('resize', checkMobile)
+  
+  // 使用 nextTick 确保 DOM 已经渲染完成后再添加事件监听
+  nextTick(() => {
+    const tableEl = tableRef.value?.$el
+    if (tableEl) {
+      tableEl.addEventListener('copy', handleTableCopy)
+    }
+  })
+})
+
+// 清理
+onBeforeUnmount(() => {
+  window.removeEventListener('resize', checkMobile)
+  // 移除复制事件监听
+  const tableEl = tableRef.value?.$el
+  if (tableEl) {
+    tableEl.removeEventListener('copy', handleTableCopy)
+  }
+})
+
+// 处理表格复制事件 - 自定义格式输出
+const handleTableCopy = (e) => {
+  const selection = window.getSelection()
+  if (!selection || selection.rangeCount === 0) return
+  
+  try {
+    // 获取选中的文本
+    const range = selection.getRangeAt(0)
+    const container = range.commonAncestorContainer
+    
+    // 检查是否在表格内
+    const tableEl = tableRef.value?.$el
+    if (!tableEl || !tableEl.contains(container)) return
+    
+    // 获取表头映射（列索引 -> 列名）
+    const headers = []
+    const thEls = tableEl.querySelectorAll('thead th')
+    thEls.forEach(th => {
+      headers.push(th.innerText.trim())
+    })
+    
+    // 获取选中的所有行
+    const selectedRows = []
+    const trs = tableEl.querySelectorAll('tbody tr')
+    
+    trs.forEach(tr => {
+      if (selection.containsNode(tr, true)) {
+        // 收集该行的所有数据
+        const rowData = {}
+        const tds = tr.querySelectorAll('td')
+        
+        tds.forEach((td, index) => {
+          const cellEl = td.querySelector('.cell')
+          if (!cellEl) return
+          
+          const headerName = headers[index]
+          if (!headerName) return
+          
+          // 跳过操作列
+          if (cellEl.querySelector('.el-button') || cellEl.querySelector('button')) return
+          
+          // 获取纯文本内容
+          let text = cellEl.innerText.trim().replace(/\s+/g, ' ')
+          if (text) {
+            rowData[headerName] = text
+          }
+        })
+        
+        // 按照指定格式组装数据
+        // 格式：【家教标题】 对接的同学 老师姓名 信息费 金额 状态+退款金额
+        const parts = []
+        
+        // 1. 家教标题
+        if (rowData['家教标题']) {
+          parts.push(rowData['家教标题'])
+        }
+        
+        // 2. 对接的同学
+        if (rowData['对接的同学']) {
+          parts.push(rowData['对接的同学'])
+        }
+        
+        // 3. 老师姓名
+        if (rowData['老师姓名']) {
+          parts.push(rowData['老师姓名'])
+        }
+        
+        // 4. 信息费金额（添加"信息费"标签）
+        if (rowData['信息费金额']) {
+          parts.push('信息费 ' + rowData['信息费金额'])
+        }
+        
+        // 5. 状态 + 退款金额（如果是已退费状态）
+        if (rowData['状态']) {
+          const status = rowData['状态']
+          const refundedAmount = rowData['已退金额'] || rowData['收到课酬']
+          
+          if (status === '已退费' && refundedAmount) {
+            parts.push(status + refundedAmount)
+          } else {
+            parts.push(status)
+          }
+        }
+        
+        if (parts.length > 0) {
+          selectedRows.push(parts.join('  '))
+        }
+      }
+    })
+    
+    if (selectedRows.length > 0) {
+      // 阻止默认复制行为
+      e.preventDefault()
+      // 设置自定义的复制内容（每行用换行分隔）
+      e.clipboardData.setData('text/plain', selectedRows.join('\n'))
+    }
+  } catch (err) {
+    console.error('复制处理失败:', err)
+  }
+}
+
+// 移动端检测
+const isMobile = ref(false)
+const checkMobile = () => {
+  isMobile.value = window.innerWidth <= 768
+}
+
+// 移动端筛选条件
+const mobileFilters = ref({
+  keyword: '',
+  timeRange: '',
+  customDateRange: null,
+  payTimeStart: '',
+  payTimeEnd: '',
+  dispatcherId: undefined
+})
+
+// 移动端状态计数
+const statusCounts = computed(() => {
+  // 这里可以根据实际需求计算各状态的数量
+  return {
+    pending: paymentList.value.filter(p => p.refund_status === 'pending').length
+  }
+})
+
+// 是否有更多数据
+const hasMore = computed(() => {
+  return pagination.page * pagination.limit < pagination.total
+})
+
+// 移动端Tab切换
+const handleMobileTabChange = (tab) => {
+  activeTab.value = tab
+  handleTabClick({ props: { name: tab } })
+}
+
+// 移动端筛选变化
+const handleMobileFilterChange = (filters) => {
+  mobileFilters.value = filters
+  
+  // 更新桌面端筛选条件
+  searchForm.tutorName = filters.keyword || ''
+  searchForm.payerName = filters.keyword || ''
+  searchForm.dispatcherId = filters.dispatcherId
+  
+  if (filters.payTimeStart && filters.payTimeEnd) {
+    searchForm.payTime = [filters.payTimeStart, filters.payTimeEnd]
+  } else {
+    searchForm.payTime = null
+  }
+  
+  pagination.page = 1
+  getList()
+  getStatistics()
+}
+
+// 加载更多
+const loadMore = () => {
+  pagination.page++
+  getList()
+}
+</script>
+
+<style scoped>
+.payment-manage {
+  padding: 0;
+}
+
+.payment-config-hint {
+  margin: 0 0 12px;
+}
+
+.payment-config-link {
+  font-weight: 600;
+}
+
+.batch-actions-bar {
+  margin: 10px 0 6px;
+  padding: 10px 12px;
+  border: 1px solid #e4e7ed;
+  border-radius: 10px;
+  background: #fafbfc;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.batch-actions-left,
+.batch-actions-right {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+/* 同意退款弹窗：对齐参考图 */
+.payment-manage .refund-approve-modal {
+  padding: 6px 4px 0;
+}
+
+.payment-manage .refund-approve-info {
+  background: #f8fafb;
+  border: 1px solid #e8ecef;
+  border-radius: 12px;
+  padding: 14px 16px;
+  margin-bottom: 14px;
+}
+
+.payment-manage .refund-approve-info-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin-bottom: 10px;
+}
+
+.payment-manage .refund-approve-info-row:last-child {
+  margin-bottom: 0;
+}
+
+.payment-manage .refund-approve-label {
+  color: #64748b;
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.payment-manage .refund-approve-value {
+  color: #0f172a;
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.payment-manage .refund-approve-hint {
+  color: #94a3b8;
+  font-size: 12px;
+  margin-top: 6px;
+}
+
+.payment-manage .voucher-list {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.payment-manage .voucher-image {
+  width: 100px;
+  height: 100px;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.3s;
+}
+
+.payment-manage .voucher-image:hover {
+  transform: scale(1.05);
+}
+
+.payment-manage .voucher-image .image-slot {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  background: #f5f7fa;
+  color: #999;
+  font-size: 12px;
+  text-align: center;
+  padding: 5px;
+}
+
+.payment-manage .voucher-image .image-slot .el-icon {
+  font-size: 30px;
+  margin-bottom: 5px;
+}
+
+.payment-manage .voucher-image .image-slot div {
+  word-break: break-all;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+
+/* 筛选卡片样式 */
+.payment-manage .filter-card {
+  margin-bottom: 20px;
+}
+
+.payment-manage .filter-card :deep(.el-card__body) {
+  padding: 0;
+}
+
+.payment-manage .tabs-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 20px 20px 0;
+}
+
+.payment-manage .status-tabs {
+  flex: 1;
+  margin-bottom: 0;
+}
+
+.payment-manage .status-tabs :deep(.el-tabs__header) {
+  margin-bottom: 0;
+}
+
+.payment-manage .data-panel-btn {
+  margin-left: 20px;
+  flex-shrink: 0;
+}
+
+.payment-manage .status-tabs :deep(.el-tabs__nav-wrap::after) {
+  height: 1px;
+}
+
+.payment-manage .search-section {
+  padding: 20px 20px 16px;
+  border-top: 1px solid #e4e7ed;
+  background: #fafbfc;
+}
+
+.payment-manage .search-section .search-form .el-form-item {
+  margin-bottom: 16px;
+}
+
+.payment-manage .stat-chip {
+  height: 38px;
+  padding: 0 18px;
+  border: none;
+  border-radius: 6px;
+  cursor: default;
+  font-size: 13px;
+  font-weight: 500;
+  color: #fff;
+  white-space: nowrap;
+  transition: all 0.3s ease;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+}
+
+.payment-manage .stat-chip:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+.payment-manage .stat-chip:active {
+  transform: translateY(-1px);
+}
+
+.payment-manage .stat-chip-paid {
+  background: linear-gradient(135deg, #67c23a 0%, #85ce61 100%);
+}
+
+.payment-manage .stat-chip-refund {
+  background: linear-gradient(135deg, #f56c6c 0%, #f78989 100%);
+}
+
+.payment-manage .stat-chip-actual {
+  background: linear-gradient(135deg, #409eff 0%, #66b1ff 100%);
+}
+
+.payment-manage .stat-chip-count {
+  background: linear-gradient(135deg, #909399 0%, #a6a9ad 100%);
+}
+
+.payment-manage .table-card .table-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+  gap: 10px;
+}
+
+.payment-manage .table-card .table-header .table-header-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.payment-manage .table-card .table-header .table-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin-left: auto;
+}
+
+.payment-manage .table-card .pagination {
+  margin-top: 16px;
+  display: flex;
+  justify-content: flex-end;
+}
+
+.payment-manage :deep(.el-table) .amount {
+  color: #f56c6c;
+  font-weight: bold;
+}
+
+/* 表格优化 - 解决闪烁问题 */
+.payment-manage :deep(.el-table) {
+  font-variant-numeric: tabular-nums;
+}
+
+/* 保持原有的超出隐藏功能 - 提高优先级 */
+.payment-manage :deep(.el-table .cell) {
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+  white-space: nowrap !important;
+}
+
+/* 确保 hover 时也保持省略号 */
+.payment-manage :deep(.el-table tr:hover .cell) {
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+  white-space: nowrap !important;
+}
+
+/* 优化表格复制体验 - 防止复制时出现多余换行 */
+.payment-manage :deep(.el-table td.el-table__cell) {
+  /* 让每个单元格在复制时表现为行内元素 */
+  display: table-cell;
+  vertical-align: middle;
+}
+
+/*
+ * show-overflow-tooltip 依赖触发器在单元格宽度内可测量溢出；
+ * display:inline 会让宽度随内容撑开，省略号与 Tooltip 均失效。
+ * inline-block + max-width:100% 保留单元格内省略，且不影响框选复制（仍为普通文本节点）。
+ */
+.payment-manage :deep(.el-table .el-tooltip__trigger) {
+  display: inline-block !important;
+  max-width: 100%;
+  vertical-align: middle;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.payment-manage :deep(.el-table .el-tooltip__trigger.el-tag) {
+  display: inline-flex !important;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.payment-manage :deep(.el-table .el-tag:not(.el-tooltip__trigger)) {
+  display: inline-flex !important;
+  vertical-align: middle;
+}
+
+/* 保持勾选框的正常显示 */
+.payment-manage :deep(.el-table .el-checkbox) {
+  display: inline-flex !important;
+  vertical-align: middle;
+}
+
+.payment-manage :deep(.el-table .el-checkbox__inner) {
+  display: inline-block !important;
+}
+
+/* 移除可能导致换行的元素间距 */
+.payment-manage :deep(.el-table .cell) {
+  line-height: 1.5;
+}
+
+.payment-manage :deep(.el-table .cell > *:not(:last-child)) {
+  margin-right: 0;
+}
+
+.payment-manage :deep(.el-table__body tr) {
+  transition: background-color 0.2s ease;
+}
+
+.payment-manage :deep(.el-table__body tr:hover > td) {
+  background-color: #f5f7fa !important;
+}
+
+.payment-manage :deep(.el-table__body tr.el-table__row--striped:hover > td) {
+  background-color: #f5f7fa !important;
+}
+
+.payment-manage :deep(.el-table__body tr.current-row > td) {
+  background-color: #ecf5ff !important;
+}
+
+.payment-manage :deep(.el-table td),
+.payment-manage :deep(.el-table th) {
+  padding: 12px 0;
+}
+
+.payment-manage :deep(.el-table .cell) {
+  padding: 0 10px;
+  line-height: 23px;
+}
+
+.payment-manage :deep(.el-table th.el-table__cell) {
+  background-color: #f5f7fa;
+  color: #606266;
+  font-weight: 600;
+}
+
+.payment-manage :deep(.el-table--border) {
+  border: 1px solid #ebeef5;
+}
+
+.payment-manage :deep(.el-table--border::after),
+.payment-manage :deep(.el-table--group::after) {
+  width: 0;
+}
+
+.payment-manage :deep(.el-table__body-wrapper) {
+  -webkit-overflow-scrolling: touch;
+}
+
+/* 表格按钮优化 */
+.payment-manage :deep(.el-table .el-button + .el-button) {
+  margin-left: 5px;
+}
+
+.payment-manage .operation-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.payment-manage .operation-actions :deep(.el-button) {
+  margin-left: 0 !important;
+  min-width: 50px;
+  padding-left: 8px;
+  padding-right: 8px;
+}
+
+.payment-manage :deep(.el-table .el-button--small) {
+  padding: 5px 10px;
+  font-size: 12px;
+  border-radius: 3px;
+}
+
+/* 表格标签优化 */
+.payment-manage :deep(.el-table .el-tag) {
+  border: none;
+  font-size: 12px;
+  padding: 0 8px;
+  height: 24px;
+  line-height: 22px;
+}
+
+/* 状态列：避免列宽过窄时省略号把「退款待处理」截成「..」 */
+.payment-manage :deep(.el-table td.col-payment-status .cell) {
+  overflow: visible !important;
+  white-space: nowrap !important;
+}
+
+/* 操作列：多按钮换行，不受全局 .cell 单行省略影响 */
+.payment-manage :deep(.el-table td.col-payment-actions .cell) {
+  white-space: normal !important;
+  overflow: visible !important;
+  text-overflow: clip !important;
+}
+.payment-manage :deep(.el-table td.col-payment-actions .el-tooltip__trigger) {
+  max-width: none !important;
+  white-space: normal !important;
+  overflow: visible !important;
+  text-overflow: clip !important;
+}
+
+/* 日期选择器样式优化 */
+.payment-manage :deep(.el-date-editor) {
+  width: 100%;
+}
+
+.payment-manage :deep(.el-date-editor .el-input__wrapper) {
+  box-shadow: 0 0 0 1px #dcdfe6 inset;
+  border-radius: 4px;
+}
+
+.payment-manage :deep(.el-date-editor.is-active .el-input__wrapper) {
+  box-shadow: 0 0 0 1px #409eff inset;
+}
+
+.payment-manage :deep(.el-picker-panel) {
+  border: 1px solid #e4e7ed;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.1);
+}
+
+.payment-manage :deep(.el-date-picker__header) {
+  margin: 12px;
+}
+
+/* 快捷选项样式优化 */
+:deep(.el-picker-panel__sidebar) {
+  width: 130px !important;
+  background: linear-gradient(180deg, #f8f9fa 0%, #ffffff 100%) !important;
+  border-right: 1px solid #e4e7ed !important;
+  padding: 8px 0 !important;
+}
+
+:deep(.el-picker-panel__shortcut) {
+  display: flex !important;
+  align-items: center !important;
+  width: calc(100% - 12px) !important;
+  padding: 10px 12px !important;
+  margin: 2px 6px !important;
+  text-align: left !important;
+  border: none !important;
+  border-radius: 6px !important;
+  background: transparent !important;
+  color: #606266 !important;
+  font-size: 13px !important;
+  font-weight: 500 !important;
+  cursor: pointer !important;
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1) !important;
+  position: relative !important;
+  overflow: visible !important;
+}
+
+:deep(.el-picker-panel__shortcut::before) {
+  content: '' !important;
+  position: absolute !important;
+  left: 0 !important;
+  top: 50% !important;
+  transform: translateY(-50%) !important;
+  width: 3px !important;
+  height: 0 !important;
+  background: linear-gradient(180deg, #409eff 0%, #66b1ff 100%) !important;
+  border-radius: 0 2px 2px 0 !important;
+  transition: height 0.25s cubic-bezier(0.4, 0, 0.2, 1) !important;
+}
+
+:deep(.el-picker-panel__shortcut:hover) {
+  background: linear-gradient(90deg, #e6f4ff 0%, #f0f7ff 100%) !important;
+  color: #409eff !important;
+  transform: translateX(2px) !important;
+  box-shadow: 0 2px 8px rgba(64, 158, 255, 0.1) !important;
+}
+
+:deep(.el-picker-panel__shortcut:hover::before) {
+  height: 20px !important;
+}
+
+:deep(.el-picker-panel__shortcut:active) {
+  transform: translateX(1px) !important;
+  background: linear-gradient(90deg, #d9ecff 0%, #e6f4ff 100%) !important;
+}
+
+/* 为不同的快捷选项添加图标效果 */
+:deep(.el-picker-panel__shortcut:nth-child(1)::after) {
+  content: '📅' !important;
+  margin-left: auto !important;
+  font-size: 16px !important;
+  opacity: 0 !important;
+  transition: opacity 0.25s !important;
+}
+
+:deep(.el-picker-panel__shortcut:nth-child(2)::after) {
+  content: '⏮️' !important;
+  margin-left: auto !important;
+  font-size: 16px !important;
+  opacity: 0 !important;
+  transition: opacity 0.25s !important;
+}
+
+:deep(.el-picker-panel__shortcut:nth-child(3)::after) {
+  content: '📊' !important;
+  margin-left: auto !important;
+  font-size: 16px !important;
+  opacity: 0 !important;
+  transition: opacity 0.25s !important;
+}
+
+:deep(.el-picker-panel__shortcut:nth-child(4)::after) {
+  content: '📈' !important;
+  margin-left: auto !important;
+  font-size: 16px !important;
+  opacity: 0 !important;
+  transition: opacity 0.25s !important;
+}
+
+:deep(.el-picker-panel__shortcut:nth-child(5)::after) {
+  content: '🗓️' !important;
+  margin-left: auto !important;
+  font-size: 16px !important;
+  opacity: 0 !important;
+  transition: opacity 0.25s !important;
+}
+
+:deep(.el-picker-panel__shortcut:nth-child(6)::after) {
+  content: '◀️' !important;
+  margin-left: auto !important;
+  font-size: 16px !important;
+  opacity: 0 !important;
+  transition: opacity 0.25s !important;
+}
+
+:deep(.el-picker-panel__shortcut:hover::after) {
+  opacity: 0.7 !important;
+}
+
+.payment-manage :deep(.el-date-table td.today .el-date-table-cell__text) {
+  color: #409eff;
+  font-weight: bold;
+}
+
+.payment-manage :deep(.el-date-table td.current:not(.disabled) .el-date-table-cell__text) {
+  background-color: #409eff;
+  color: #fff;
+  border-radius: 4px;
+}
+
+.payment-manage :deep(.el-date-table td .el-date-table-cell) {
+  padding: 3px 0;
+}
+
+.payment-manage :deep(.el-date-table td .el-date-table-cell:hover) {
+  background-color: #f2f6fc;
+}
+
+.payment-manage :deep(.el-input__wrapper) {
+  box-shadow: 0 0 0 1px #dcdfe6 inset;
+  transition: all 0.2s;
+}
+
+.payment-manage :deep(.el-input__wrapper:hover) {
+  box-shadow: 0 0 0 1px #c0c4cc inset;
+}
+
+.payment-manage :deep(.el-input.is-active .el-input__wrapper) {
+  box-shadow: 0 0 0 1px #409eff inset;
+}
+
+/* 下拉选择框样式 */
+.payment-manage :deep(.el-select) {
+  width: 100%;
+}
+
+.payment-manage :deep(.el-select .el-input) {
+  width: 100%;
+}
+
+.payment-manage :deep(.el-select .el-input__wrapper) {
+  box-shadow: 0 0 0 1px #dcdfe6 inset;
+  transition: all 0.2s;
+}
+
+.payment-manage :deep(.el-select .el-input__inner) {
+  color: #606266;
+}
+
+.payment-manage :deep(.el-select .el-input__inner::placeholder) {
+  color: #a8abb2;
+}
+
+/* 日期选择器面板样式优化 */
+.date-picker-dropdown.el-popper {
+  z-index: 9999 !important;
+}
+
+.date-picker-dropdown {
+  border: 1px solid #e4e7ed;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.1);
+}
+
+/* 确保日期选择器面板不被裁剪 */
+.payment-manage .filter-card {
+  overflow: visible !important;
+}
+
+.payment-manage .filter-card :deep(.el-card__body) {
+  overflow: visible !important;
+}
+
+.payment-manage .search-form {
+  overflow: visible !important;
+}
+
+.payment-manage :deep(.el-form-item) {
+  overflow: visible !important;
+}
+
+/* 日期选择器定位修正 */
+.date-picker-dropdown.el-popper[data-popper-placement^="bottom"] {
+  margin-top: 4px;
+}
+
+.date-picker-dropdown.el-popper[data-popper-placement^="top"] {
+  margin-bottom: 4px;
+}
+
+/* 确保在侧边栏折叠时也能正确定位 */
+.date-picker-dropdown.el-popper {
+  position: fixed !important;
+  will-change: transform;
+}
+
+/* 列设置弹窗样式 */
+.column-settings {
+  padding: 10px 0;
+}
+
+.column-settings-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0 10px 10px;
+  border-bottom: 1px solid #ebeef5;
+  margin-bottom: 10px;
+}
+
+.column-settings-header span {
+  font-weight: 600;
+  font-size: 14px;
+  color: #303133;
+}
+
+.column-checkbox-group {
+  display: flex;
+  flex-direction: column;
+  padding: 0 10px;
+}
+
+.column-checkbox-group .el-checkbox {
+  margin: 8px 0;
+  height: auto;
+}
+
+.column-checkbox-group .el-checkbox__label {
+  font-size: 13px;
+}
+
+/* ==================== 响应式布局 ==================== */
+
+/* 大屏幕（默认，≥1920px） 保持现有布局 */
+
+/* 中大屏幕（1440px - 1919px）*/
+@media (max-width: 1919px) {
+  .payment-manage .stat-chip {
+    height: 36px;
+    padding: 0 16px;
+    font-size: 12px;
+  }
+}
+
+/* 中等屏幕（1200px - 1439px）*/
+@media (max-width: 1439px) {
+  .payment-manage .search-section .search-form .el-form-item {
+    margin-bottom: 12px;
+  }
+
+  .payment-manage .stat-chip {
+    height: 34px;
+    padding: 0 14px;
+    font-size: 12px;
+  }
+
+  .payment-manage .table-card .table-header {
+    margin-bottom: 12px;
+  }
+}
+
+/* 小屏幕（768px - 1199px）- 平板设备 */
+@media (max-width: 1199px) {
+
+  .payment-manage .stat-chip {
+    height: 32px;
+    padding: 0 12px;
+    font-size: 11px;
+  }
+
+  /* 筛选表单改为2列 */
+  .payment-manage .search-form .el-col {
+    width: 50%;
+  }
+
+  /* 表头布局调整 */
+  .payment-manage .table-card .table-header {
+    flex-wrap: wrap;
+  }
+
+  .payment-manage .table-card .table-header .table-header-left {
+    width: 100%;
+    margin-bottom: 10px;
+  }
+
+  .payment-manage .table-card .table-header .table-actions {
+    width: 100%;
+    justify-content: flex-end;
+  }
+
+  /* 表格横向滚动 */
+  .payment-manage :deep(.el-table) {
+    font-size: 13px;
+  }
+
+  .payment-manage :deep(.el-table .cell) {
+    padding: 0 8px;
+  }
+
+  /* 操作按钮缩小 */
+  .payment-manage :deep(.el-button--small) {
+    padding: 4px 8px;
+    font-size: 12px;
+  }
+}
+
+/* 超小屏幕（≤767px）- 手机设备 */
+@media (max-width: 767px) {
+  /* 标签页字体缩小 */
+  .payment-manage .status-tabs {
+    padding: 0 15px;
+  }
+
+  .payment-manage .status-tabs :deep(.el-tabs__item) {
+    font-size: 13px;
+    padding: 0 12px;
+  }
+
+  .payment-manage .status-tabs :deep(.el-tabs__header) {
+    padding-top: 15px;
+  }
+
+  /* 筛选区域 */
+  .payment-manage .filter-card {
+    margin-bottom: 12px;
+  }
+
+  .payment-manage .search-section {
+    padding: 15px 15px 12px;
+  }
+
+  /* 筛选表单改为单列 */
+  .payment-manage .search-form .el-col {
+    width: 100%;
+    margin-bottom: 8px;
+  }
+
+  .payment-manage .search-form .el-form-item {
+    margin-bottom: 8px;
+  }
+
+  .payment-manage .search-form :deep(.el-form-item__label) {
+    font-size: 13px;
+    min-width: 80px;
+  }
+
+  /* 统计按钮调整 */
+  .payment-manage .stat-chip {
+    height: 32px;
+    padding: 0 10px;
+    font-size: 11px;
+  }
+
+  /* 表格区域 */
+  .payment-manage .table-card :deep(.el-card__body) {
+    padding: 12px;
+  }
+
+  .payment-manage .table-header {
+    flex-direction: column;
+    gap: 10px;
+    margin-bottom: 12px;
+  }
+
+  .payment-manage .table-header .table-header-left {
+    width: 100%;
+  }
+
+  .payment-manage .table-header .table-actions {
+    width: 100%;
+    justify-content: flex-end;
+    margin-left: 0;
+  }
+
+  .payment-manage .table-header .table-actions .el-input {
+    width: 100%;
+    max-width: 200px;
+  }
+
+  /* 表格强制横向滚动 */
+  .payment-manage :deep(.el-table__body-wrapper) {
+    overflow-x: auto;
+  }
+
+  .payment-manage :deep(.el-table) {
+    font-size: 12px;
+    min-width: 1200px;
+  }
+
+  .payment-manage :deep(.el-table .cell) {
+    padding: 0 6px;
+    white-space: nowrap;
+  }
+
+  .payment-manage :deep(.el-table th) {
+    padding: 8px 0;
+  }
+
+  .payment-manage :deep(.el-table td) {
+    padding: 8px 0;
+  }
+
+  /* 操作按钮 */
+  .payment-manage :deep(.el-button--small) {
+    padding: 3px 6px;
+    font-size: 11px;
+    margin: 2px;
+  }
+
+  /* 分页器 */
+  .payment-manage .pagination {
+    margin-top: 12px;
+    justify-content: center;
+  }
+
+  .payment-manage :deep(.el-pagination) {
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+
+  .payment-manage :deep(.el-pagination .el-pager) {
+    display: flex;
+    flex-wrap: wrap;
+  }
+
+  .payment-manage :deep(.el-pagination .el-pager li) {
+    min-width: 28px;
+    height: 28px;
+    line-height: 28px;
+    font-size: 12px;
+  }
+
+  /* 弹窗适配 */
+  .payment-manage :deep(.el-dialog) {
+    width: 95%;
+    margin: 0 auto;
+  }
+
+  .payment-manage :deep(.el-dialog__body) {
+    padding: 15px;
+  }
+
+  .payment-manage :deep(.el-descriptions) {
+    font-size: 12px;
+  }
+
+  .payment-manage :deep(.el-descriptions__label) {
+    font-size: 12px;
+  }
+
+  .payment-manage :deep(.el-descriptions__content) {
+    font-size: 12px;
+  }
+}
+
+/* 极小屏幕（≤480px）- 小尺寸手机 */
+@media (max-width: 480px) {
+  .payment-manage .status-tabs {
+    padding: 0 12px;
+  }
+
+  .payment-manage .status-tabs :deep(.el-tabs__item) {
+    font-size: 12px;
+    padding: 0 8px;
+  }
+
+  .payment-manage .status-tabs :deep(.el-tabs__header) {
+    padding-top: 12px;
+  }
+
+  .payment-manage .search-section {
+    padding: 12px 12px 8px;
+  }
+
+  .payment-manage .stat-chip {
+    height: 30px;
+    padding: 0 10px;
+    font-size: 11px;
+  }
+
+  .payment-manage .table-card :deep(.el-card__body) {
+    padding: 8px;
+  }
+
+  .payment-manage :deep(.el-dialog) {
+    width: 98%;
+  }
+}
+
+/* ========== 移动端适配 ========== */
+@media (max-width: 768px) {
+  .payment-manage .desktop-view {
+    display: none;
+  }
+}
+
+@media (min-width: 769px) {
+  .payment-manage :deep(.payment-manage-mobile) {
+    display: none;
+  }
+}
+</style>

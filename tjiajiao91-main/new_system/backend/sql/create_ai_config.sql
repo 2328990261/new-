@@ -1,0 +1,9 @@
+-- AI 接口配置表（存储中转地址和 API Key，供管理端动态配置）
+CREATE TABLE IF NOT EXISTS `ai_config` (
+  `id`         INT UNSIGNED NOT NULL AUTO_INCREMENT,
+  `base_url`   VARCHAR(255) NOT NULL DEFAULT 'https://kuaipao.ai' COMMENT '中转服务地址',
+  `api_key`    VARCHAR(512) NOT NULL DEFAULT '' COMMENT 'API Key（明文存储，注意数据库访问权限）',
+  `created_at` DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='AI 接口配置';

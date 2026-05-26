@@ -1,0 +1,1504 @@
+<?php
+namespace app\controller\api;
+
+use app\BaseController;
+use app\model\ParentOrder;
+use app\model\TutorOrder;
+use app\model\Admin;
+use app\model\User;
+use app\service\EmailService;
+use app\service\DispatcherAutoAssignService;
+use app\service\OrderEmailRecipientGate;
+use app\service\SubscribeMessageService;
+use app\service\TeacherMiniOpenidResolver;
+use app\service\TutorOrderMailRenderer;
+use app\service\WecomGroupSendService;
+use think\facade\Db;
+use think\facade\Validate;
+
+/**
+ * 家长预约订单控制器（API）
+ */
+class Order extends BaseController
+{
+    private function parseTimeToMinutes($time)
+    {
+        if (!preg_match('/^(\d{2}):(\d{2})$/', (string)$time, $m)) {
+            return null;
+        }
+        return intval($m[1]) * 60 + intval($m[2]);
+    }
+
+    private function normalizeAdminTimeSlots($slots)
+    {
+        if (is_string($slots) && $slots !== '') {
+            $decoded = json_decode($slots, true);
+            if (json_last_error() === JSON_ERROR_NONE) {
+                $slots = $decoded;
+            }
+        }
+        if (!is_array($slots)) {
+            return [false, '时间段格式错误', []];
+        }
+        $result = [];
+        foreach ($slots as $slot) {
+            if (!is_array($slot)) {
+                return [false, '时间段格式错误', []];
+            }
+            $weekDay = intval($slot['week_day'] ?? 0);
+            $startTime = trim((string)($slot['start_time'] ?? ''));
+            $durationMinutes = intval($slot['duration_minutes'] ?? 0);
+            $endTime = trim((string)($slot['end_time'] ?? ''));
+            if ($weekDay < 1 || $weekDay > 7) return [false, '周几范围应为1-7', []];
+            if (!preg_match('/^\d{2}:\d{2}$/', $startTime) || !preg_match('/^\d{2}:\d{2}$/', $endTime)) return [false, '时间格式必须为HH:mm', []];
+            if ($durationMinutes <= 0 || $durationMinutes % 30 !== 0) return [false, '时长必须为30分钟倍数', []];
+            $startTs = strtotime('2000-01-01 ' . $startTime . ':00');
+            $endTs = strtotime('2000-01-01 ' . $endTime . ':00');
+            if ($startTs === false || $endTs === false || $endTs <= $startTs) return [false, '结束时间必须晚于开始时间', []];
+            if ((int)(($endTs - $startTs) / 60) !== $durationMinutes) return [false, '结束时间与时长不一致', []];
+            $result[] = [
+                'week_day' => $weekDay,
+                'start_time' => $startTime,
+                'duration_minutes' => $durationMinutes,
+                'end_time' => $endTime
+            ];
+        }
+        return [true, '', $result];
+    }
+
+    private function formatTimeSlotsForText($rawSlots)
+    {
+        if (is_string($rawSlots)) {
+            $decoded = json_decode($rawSlots, true);
+            if (json_last_error() === JSON_ERROR_NONE) {
+                $rawSlots = $decoded;
+            }
+        }
+        if (!is_array($rawSlots) || empty($rawSlots)) return '';
+        $weekMap = [1 => '周一', 2 => '周二', 3 => '周三', 4 => '周四', 5 => '周五', 6 => '周六', 7 => '周日'];
+        $parts = [];
+        foreach ($rawSlots as $slot) {
+            $w = intval($slot['week_day'] ?? 0);
+            $start = $slot['start_time'] ?? '';
+            $end = $slot['end_time'] ?? '';
+            if ($w >= 1 && $w <= 7 && $start && $end) {
+                $parts[] = $weekMap[$w] . ' ' . $start . '-' . $end;
+            }
+        }
+        return implode('；', $parts);
+    }
+    /**
+     * 提交家长预约（公开接口）
+     * POST /api/order/booking
+     */
+    public function booking()
+    {
+        try {
+            $data = $this->request->post();
+            
+            // 数据验证
+            $validate = Validate::rule([
+                'admin_id'            => 'require|number',
+                'grade'               => 'require',
+                'subject'             => 'require',
+                'student_info'        => 'require',
+                'frequency'           => 'require',
+                'teacher_requirement' => 'require',
+                'address'             => 'require',
+                'parent_name'         => 'require',
+                'parent_contact'      => 'require',
+            ])->message([
+                'admin_id.require'            => '管理员ID不能为空',
+                'grade.require'               => '学员年级不能为空',
+                'subject.require'             => '辅导科目不能为空',
+                'student_info.require'        => '学生情况不能为空',
+                'frequency.require'           => '辅导频率不能为空',
+                'teacher_requirement.require' => '老师要求不能为空',
+                'address.require'             => '授课地址不能为空',
+                'parent_name.require'         => '家长称呼不能为空',
+                'parent_contact.require'      => '联系方式不能为空',
+            ]);
+            
+            if (!$validate->check($data)) {
+                return json(['code' => 400, 'message' => $validate->getError()]);
+            }
+            
+            // 验证管理员是否存在
+            $admin = Admin::find($data['admin_id']);
+            if (!$admin) {
+                return json(['code' => 400, 'message' => '管理员不存在']);
+            }
+            
+            // 生成订单号
+            $data['order_no'] = ParentOrder::generateOrderNo();
+            $data['status'] = 'pending';
+            
+            // 创建订单
+            $order = ParentOrder::create($data);
+            
+            // 发送邮件通知给管理员
+            try {
+                if ($admin->email) {
+                    $emailSent = EmailService::sendBookingNotification($admin, $order);
+                    if ($emailSent) {
+                        trace('预约通知邮件发送成功: ' . $admin->email, 'info');
+                    } else {
+                        trace('预约通知邮件发送失败，但订单已创建: ' . $order->order_no, 'warning');
+                    }
+                } else {
+                    trace('管理员未设置邮箱，跳过邮件通知: admin_id=' . $admin->id, 'warning');
+                }
+            } catch (\Throwable $e) {
+                // 捕获所有错误和异常，确保不影响订单创建
+                trace('邮件发送异常: ' . $e->getMessage() . ' | ' . $e->getFile() . ':' . $e->getLine(), 'error');
+            }
+            
+            return json([
+                'code' => 200,
+                'message' => '预约提交成功',
+                'data' => [
+                    'order_no' => $order->order_no
+                ]
+            ]);
+            
+        } catch (\Exception $e) {
+            trace('预约提交失败: ' . $e->getMessage(), 'error');
+            return json(['code' => 500, 'message' => '预约提交失败：' . $e->getMessage()]);
+        }
+    }
+    
+    /**
+     * 获取订单列表（管理员）
+     * GET /api/order/list
+     */
+    public function list()
+    {
+        try {
+            // 尝试获取管理员信息，如果没有登录则返回空数据而不是错误
+            $admin = $this->getAdminInfo();
+            
+            $status = $this->request->get('status', '');
+            $page = $this->request->get('page/d', 1);
+            $limit = $this->request->get('limit/d', 20);
+            $isChannel = $this->request->get('is_channel', '');
+            $adminId = $this->request->get('admin_id', ''); // 前端传递的admin_id参数
+            $keyword = trim((string) $this->request->get('keyword', ''));
+            $weekDay = intval($this->request->get('week_day', 0));
+            $startTimeFrom = trim((string) $this->request->get('start_time_from', ''));
+            $startTimeTo = trim((string) $this->request->get('start_time_to', ''));
+            
+            // 如果没有登录，返回空数据
+            if (!$admin) {
+                return json([
+                    'success' => true,
+                    'data' => [
+                        'list' => [],
+                        'total' => 0,
+                        'page' => $page,
+                        'limit' => $limit
+                    ],
+                    'message' => '请先登录查看订单'
+                ]);
+            }
+            
+            // 构建查询（不预加载 admin 关联，避免 ThinkPHP 在 admin_id=0 时错误返回第一条记录）
+            $query = ParentOrder::with(['teacher' => function($query) {
+                    $query->field('id,name,phone');
+                }])
+                ->order('create_time', 'desc');
+            
+            // 处理admin_id筛选
+            if ($adminId) {
+                // 前端明确指定了admin_id，按指定的admin_id筛选
+                $query->where('admin_id', $adminId);
+            } elseif (!$this->canViewAllOrders()) {
+                // 非超级管理员/客服组长且没有指定admin_id，只能查看归属于自己的订单
+                $query->where('admin_id', $admin->id);
+            }
+            // 超级管理员或客服组长且没有指定admin_id，查看所有订单
+            
+            // 筛选状态
+            if ($status && $status !== 'all') {
+                $query->where('status', $status);
+            }
+            
+            // 关键词：家长电话、订单号、称呼、订单ID、归属管理员（昵称/登录名）
+            if ($keyword !== '') {
+                $like = '%' . addcslashes($keyword, '%_\\') . '%';
+                // 1) 匹配管理员（admin 表 nickname/username）
+                $adminIds = Admin::where(function ($aq) use ($like) {
+                    $aq->where('nickname', 'like', $like)->whereOr('username', 'like', $like);
+                })->column('id');
+                $adminOpenids = [];
+                if (!empty($adminIds)) {
+                    $adminOpenidValues = Admin::where('id', 'in', $adminIds)->column('openid');
+                    foreach ($adminOpenidValues as $openidValue) {
+                        $adminOpenids = array_merge($adminOpenids, Admin::splitOpenids($openidValue));
+                    }
+                    $adminOpenids = array_values(array_unique($adminOpenids));
+                }
+
+                // 2) 匹配分享者为普通用户（users 表 nickname/phone）
+                $shareUserOpenids = User::where(function ($uq) use ($like) {
+                    $uq->where('nickname', 'like', $like)->whereOr('phone', 'like', $like);
+                })->column('openid');
+
+                // 3) 通过 superior_openid 找到被该 openid 绑定的下级用户，再反查订单 user_id
+                $superiorOpenids = array_values(array_unique(array_filter(array_merge($adminOpenids, $shareUserOpenids))));
+                $userIdsBySuperior = [];
+                if (!empty($superiorOpenids)) {
+                    $userIdsBySuperior = User::where('superior_openid', 'in', $superiorOpenids)->column('id');
+                }
+
+                $query->where(function ($q) use ($like, $keyword, $adminIds, $userIdsBySuperior) {
+                    $q->where('parent_contact', 'like', $like)
+                        ->whereOr('order_no', 'like', $like)
+                        ->whereOr('parent_name', 'like', $like);
+                    if (preg_match('/^\d+$/', $keyword)) {
+                        $q->whereOr('id', '=', (int) $keyword);
+                    }
+                    if (!empty($adminIds)) {
+                        $q->whereOr('admin_id', 'in', $adminIds);
+                    }
+                    if (!empty($userIdsBySuperior)) {
+                        $q->whereOr('user_id', 'in', $userIdsBySuperior);
+                    }
+                });
+            }
+
+            if ($weekDay >= 1 && $weekDay <= 7) {
+                $query->where('available_time_slots', 'like', '%"week_day":' . $weekDay . '%');
+            }
+            $fromMinutes = $this->parseTimeToMinutes($startTimeFrom);
+            $toMinutes = $this->parseTimeToMinutes($startTimeTo);
+            if ($fromMinutes !== null || $toMinutes !== null) {
+                $candidateTimes = [];
+                for ($minutes = 0; $minutes < 24 * 60; $minutes += 30) {
+                    if ($fromMinutes !== null && $minutes < $fromMinutes) continue;
+                    if ($toMinutes !== null && $minutes > $toMinutes) continue;
+                    $candidateTimes[] = sprintf('%02d:%02d', intdiv($minutes, 60), $minutes % 60);
+                }
+                if (!empty($candidateTimes)) {
+                    $query->where(function ($timeQuery) use ($candidateTimes) {
+                        foreach ($candidateTimes as $idx => $timeValue) {
+                            $condition = ['available_time_slots', 'like', '%"start_time":"' . $timeValue . '"%'];
+                            if ($idx === 0) {
+                                $timeQuery->where($condition);
+                            } else {
+                                $timeQuery->whereOr($condition);
+                            }
+                        }
+                    });
+                }
+            }
+            
+            // 分页查询
+            $result = $query->paginate([
+                'list_rows' => $limit,
+                'page' => $page,
+            ]);
+            
+            // 手动构建 admin，完全避免 ThinkPHP 关联在 admin_id=0 时错误返回第一条记录
+            $items = $result->items();
+            // 批量解析：通过下单用户 user_id → superior_openid → admin/user 显示归属
+            $userIds = [];
+            foreach ($items as $o) {
+                $uid = (int) ($o->getData('user_id') ?? 0);
+                if ($uid > 0) $userIds[] = $uid;
+            }
+            $userIds = array_values(array_unique($userIds));
+
+            $usersById = [];
+            $superiorOpenids = [];
+            if (!empty($userIds)) {
+                $uRows = User::field('id,openid,superior_openid,phone,nickname')->where('id', 'in', $userIds)->select();
+                foreach ($uRows as $ur) {
+                    $ua = $ur->toArray();
+                    $usersById[(int) $ua['id']] = $ua;
+                    $so = trim((string) ($ua['superior_openid'] ?? ''));
+                    if ($so !== '') $superiorOpenids[] = $so;
+                }
+            }
+            $superiorOpenids = array_values(array_unique(array_filter($superiorOpenids)));
+
+            $adminsByOpenid = [];
+            $shareUsersByOpenid = [];
+            if (!empty($superiorOpenids)) {
+                $aRows = Admin::queryByOpenidTokens($superiorOpenids)
+                    ->field('id,username,nickname,openid')
+                    ->select();
+                foreach ($aRows as $ar) {
+                    $aa = $ar->toArray();
+                    $openidTokens = Admin::splitOpenids($aa['openid'] ?? '');
+                    foreach ($openidTokens as $ok) {
+                        if (!isset($adminsByOpenid[$ok])) {
+                            $adminsByOpenid[$ok] = $aa;
+                        }
+                    }
+                }
+                $suRows = User::field('id,openid,phone,nickname')->where('openid', 'in', $superiorOpenids)->select();
+                foreach ($suRows as $sr) {
+                    $sa = $sr->toArray();
+                    $ok = trim((string) ($sa['openid'] ?? ''));
+                    if ($ok !== '') $shareUsersByOpenid[$ok] = $sa;
+                }
+            }
+
+            $list = [];
+            foreach ($items as $order) {
+                $arr = $order->toArray();
+                // 前端既支持 string JSON，也支持 array；这里统一解码，避免某些场景下拿到空字符串/未解码导致“可辅导时段”展示为空
+                $arr['available_time_slots'] = json_decode((string)($arr['available_time_slots'] ?? '[]'), true) ?: [];
+                $rawAdminId = $order->getData('admin_id');
+                if ($rawAdminId > 0) {
+                    $admin = Admin::field('id,username,nickname')->find($rawAdminId);
+                    $arr['admin'] = $admin ? $admin->toArray() : null;
+                    $arr['admin_id'] = (int) $rawAdminId;
+                    $arr['owner_display'] = ($arr['admin'] && ($arr['admin']['nickname'] ?? '' || $arr['admin']['username'] ?? ''))
+                        ? (($arr['admin']['nickname'] ?? '') ?: ($arr['admin']['username'] ?? ''))
+                        : '-';
+                } else {
+                    $arr['admin'] = null;
+                    $arr['admin_id'] = 0;
+                    $arr['owner_display'] = '-';
+
+                    $uid = (int) ($order->getData('user_id') ?? 0);
+                    if ($uid > 0 && isset($usersById[$uid])) {
+                        $so = trim((string) ($usersById[$uid]['superior_openid'] ?? ''));
+                        if ($so !== '') {
+                            if (isset($adminsByOpenid[$so])) {
+                                $a = $adminsByOpenid[$so];
+                                $arr['owner_display'] = (string) (($a['nickname'] ?? '') ?: ($a['username'] ?? ''));
+                            } elseif (isset($shareUsersByOpenid[$so])) {
+                                $u = $shareUsersByOpenid[$so];
+                                $arr['owner_display'] = (string) (($u['nickname'] ?? '') ?: ($u['phone'] ?? '') ?: ('用户#' . ($u['id'] ?? '')));
+                            }
+                        }
+                    }
+                }
+                $list[] = $arr;
+            }
+            
+            // 禁用缓存
+            header('Cache-Control: no-cache, no-store, must-revalidate');
+            header('Pragma: no-cache');
+            header('Expires: 0');
+            
+            return json([
+                'success' => true,
+                'data' => [
+                    'list' => $list,
+                    'total' => $result->total(),
+                    'page' => $page,
+                    'limit' => $limit
+                ]
+            ]);
+            
+        } catch (\Exception $e) {
+            trace('获取订单列表失败: ' . $e->getMessage(), 'error');
+            return json([
+                'success' => false,
+                'message' => '获取订单列表失败：' . $e->getMessage()
+            ]);
+        }
+    }
+    
+    /**
+     * 获取订单统计（管理员）
+     * GET /api/order/stats
+     */
+    public function stats()
+    {
+        try {
+            $admin = $this->getAdminInfo();
+            $adminId = $this->request->get('admin_id', ''); // 前端传递的admin_id参数
+            
+            // 如果没有登录，返回空统计
+            if (!$admin) {
+                return json([
+                    'success' => true,
+                    'data' => [
+                        'mine' => 0,
+                        'all' => 0,
+                        'total' => 0,
+                        'pending' => 0,
+                        'approved' => 0,
+                        'rejected' => 0,
+                        'cancelled' => 0,
+                        'channel' => 0
+                    ],
+                    'message' => '请先登录查看统计'
+                ]);
+            }
+            
+            // 我的订单统计（当前登录管理员的订单）
+            $mine = ParentOrder::where('admin_id', $admin->id)->count();
+            
+            // 根据admin_id参数决定统计范围
+            if ($adminId) {
+                // 前端指定了admin_id，统计该管理员的订单
+                $total = ParentOrder::where('admin_id', $adminId)->count();
+                $pending = ParentOrder::where('admin_id', $adminId)->where('status', 'pending')->count();
+                $approved = ParentOrder::where('admin_id', $adminId)->where('status', 'approved')->count();
+                $rejected = ParentOrder::where('admin_id', $adminId)->where('status', 'rejected')->count();
+                $cancelled = ParentOrder::where('admin_id', $adminId)->where('status', 'cancelled')->count();
+            } elseif ($this->canViewAllOrders()) {
+                // 超级管理员或客服组长且没有指定admin_id，统计所有订单
+                $total = ParentOrder::count();
+                $pending = ParentOrder::where('status', 'pending')->count();
+                $approved = ParentOrder::where('status', 'approved')->count();
+                $rejected = ParentOrder::where('status', 'rejected')->count();
+                $cancelled = ParentOrder::where('status', 'cancelled')->count();
+            } else {
+                // 非超级管理员且没有指定admin_id，只统计自己的订单
+                $total = ParentOrder::where('admin_id', $admin->id)->count();
+                $pending = ParentOrder::where('admin_id', $admin->id)->where('status', 'pending')->count();
+                $approved = ParentOrder::where('admin_id', $admin->id)->where('status', 'approved')->count();
+                $rejected = ParentOrder::where('admin_id', $admin->id)->where('status', 'rejected')->count();
+                $cancelled = ParentOrder::where('admin_id', $admin->id)->where('status', 'cancelled')->count();
+            }
+            
+            // 所有订单统计（超级管理员或客服组长）
+            $allCount = 0;
+            if ($this->canViewAllOrders()) {
+                $allCount = ParentOrder::count();
+            }
+            
+            // 禁用缓存
+            header('Cache-Control: no-cache, no-store, must-revalidate');
+            header('Pragma: no-cache');
+            header('Expires: 0');
+            
+            return json([
+                'success' => true,
+                'data' => [
+                    'mine' => $mine,        // 我的订单数量
+                    'all' => $allCount,     // 所有订单数量（仅超级管理员）
+                    'total' => $total,      // 当前Tab的总数
+                    'pending' => $pending,
+                    'approved' => $approved,
+                    'rejected' => $rejected,
+                    'cancelled' => $cancelled,
+                    'channel' => 0          // 暂时返回0，等添加字段后再启用
+                ]
+            ]);
+            
+        } catch (\Exception $e) {
+            trace('获取订单统计失败: ' . $e->getMessage(), 'error');
+            return json([
+                'success' => false,
+                'message' => '获取订单统计失败：' . $e->getMessage()
+            ]);
+        }
+    }
+    
+    /**
+     * 获取订单详情
+     * GET /api/order/:id
+     */
+    public function detail($id)
+    {
+        try {
+            $admin = $this->getAdminInfo();
+            if (!$admin) {
+                return json(['code' => 401, 'message' => '请先登录']);
+            }
+            
+            // 超级管理员、客服组长可查看所有订单，其他管理员只能查看自己的订单
+            $query = ParentOrder::with([
+                    'teacher' => function($query) {
+                        $query->field('id,name,phone');
+                    }
+                ])
+                ->where('id', $id);
+            
+            if (!$this->canViewAllOrders()) {
+                $query->where('admin_id', $admin->id);
+            }
+            
+            $order = $query->find();
+            
+            if (!$order) {
+                return json(['code' => 404, 'message' => '订单不存在或无权访问']);
+            }
+            
+            $data = $order->toArray();
+            // 统一返回数组结构，便于后台展示/筛选
+            $data['available_time_slots'] = json_decode((string)($data['available_time_slots'] ?? '[]'), true) ?: [];
+            $rawAdminId = $order->getData('admin_id');
+            if ($rawAdminId > 0) {
+                $admin = Admin::field('id,username,nickname')->find($rawAdminId);
+                $data['admin'] = $admin ? $admin->toArray() : null;
+                $data['admin_id'] = (int) $rawAdminId;
+                $data['owner_display'] = ($data['admin'] && (($data['admin']['nickname'] ?? '') || ($data['admin']['username'] ?? '')))
+                    ? (($data['admin']['nickname'] ?? '') ?: ($data['admin']['username'] ?? ''))
+                    : '-';
+            } else {
+                $data['admin'] = null;
+                $data['admin_id'] = 0;
+                $data['owner_display'] = '-';
+
+                $uid = (int) ($order->getData('user_id') ?? 0);
+                if ($uid > 0) {
+                    $u = User::field('id,openid,superior_openid,phone,nickname')->find($uid);
+                    $so = trim((string) ($u->superior_openid ?? ''));
+                    if ($so !== '') {
+                        $a = Admin::queryByOpenidToken($so)
+                            ->field('id,username,nickname,openid')
+                            ->find();
+                        if ($a) {
+                            $data['owner_display'] = (string) (($a->nickname ?: '') ?: ($a->username ?: ''));
+                        } else {
+                            $su = User::field('id,openid,phone,nickname')->where('openid', $so)->find();
+                            if ($su) {
+                                $data['owner_display'] = (string) (($su->nickname ?: '') ?: ($su->phone ?: '') ?: ('用户#' . $su->id));
+                            }
+                        }
+                    }
+                }
+            }
+            
+            return json([
+                'code' => 200,
+                'message' => '获取成功',
+                'data' => $data
+            ]);
+            
+        } catch (\Exception $e) {
+            trace('获取订单详情失败: ' . $e->getMessage(), 'error');
+            return json(['code' => 500, 'message' => '获取订单详情失败']);
+        }
+    }
+    
+    /**
+     * 审核通过订单
+     * POST /api/order/:id/approve
+     */
+    public function approve($id)
+    {
+        try {
+            $admin = $this->getAdminInfo();
+            if (!$admin) {
+                return json(['code' => 401, 'message' => '请先登录']);
+            }
+            
+            // 查找订单（超级管理员、客服组长可以操作所有订单）
+            $query = ParentOrder::where('id', $id);
+            
+            if (!$this->canViewAllOrders()) {
+                $query->where('admin_id', $admin->id);
+            }
+            
+            $order = $query->find();
+            
+            if (!$order) {
+                return json(['code' => 404, 'message' => '订单不存在或无权访问']);
+            }
+            
+            if ($order->status !== 'pending') {
+                return json(['code' => 400, 'message' => '订单状态不正确']);
+            }
+
+            // 是否在审核通过时转换为家教单
+            // 兼容旧前端：未传参数时默认转换（保持原行为）
+            $convertToTutorRaw = $this->request->post('convert_to_tutor', 1);
+            $convertToTutor = in_array(
+                strtolower(trim((string) $convertToTutorRaw)),
+                ['1', 'true', 'yes', 'on'],
+                true
+            );
+            
+            // 开启事务
+            Db::startTrans();
+            try {
+                // 不转换：仅更新预约状态
+                if (!$convertToTutor) {
+                    $order->status = 'approved';
+                    $order->audit_time = date('Y-m-d H:i:s');
+                    $order->save();
+
+                    Db::commit();
+
+                    return json([
+                        'code' => 200,
+                        'message' => '审核通过，未生成家教单',
+                        'data' => [
+                            'tutor_id' => null
+                        ]
+                    ]);
+                }
+
+                // 生成家教单ID：保持与家教单管理端一致的生成规则（字符串ID）
+                $tutorId = TutorOrder::generateOrderId(date('Y-m-d H:i:s'));
+                
+                // 构建家教单内容（使用原始格式）
+                $tutorContent = $this->buildTutorContentFromOrder($order);
+                
+                // 解析薪酬范围 - 直接使用预约单的时薪范围字段
+                $salaryStr = $order->salary ?: '';
+                if (empty($salaryStr) && $order->budget_min && $order->budget_max) {
+                    $salaryStr = $order->budget_min . '-' . $order->budget_max . '元/小时';
+                }
+                
+                // 解析科目ID
+                $subjectId = $this->getSubjectIdByName($order->subject);
+                
+                // 解析老师类型
+                $teacherType = $this->parseTeacherType($order->teacher_type);
+                
+                // 处理城市区域 - 线上授课识别为"全国 线上"
+                $cityId = $order->city_id;
+                $districtId = $order->district_id;
+                $isOnline = ($order->teaching_method === '线上授课' || strpos($order->address, '线上') !== false);
+                if ($isOnline) {
+                    // 线上授课，查找或使用"全国"城市和"线上"区域
+                    // 先查找名为"全国"的城市
+                    $onlineCity = \app\model\City::where('name', '全国')->find();
+                    if ($onlineCity) {
+                        $cityId = $onlineCity->id;
+                        // 查找该城市下名为"线上"的区域
+                        $onlineDistrict = \app\model\District::where('city_id', $onlineCity->id)
+                            ->where('name', '线上')
+                            ->find();
+                        $districtId = $onlineDistrict ? $onlineDistrict->id : null;
+                    } else {
+                        // 如果没有"全国"城市，设为null
+                        $cityId = null;
+                        $districtId = null;
+                    }
+                }
+                // 外键约束：city_id 必须存在于 fa_cities 或为 NULL，否则插入 fa_tutor_orders_new 会报错
+                if ($cityId !== null && $cityId !== '') {
+                    $cityId = (int) $cityId;
+                    if ($cityId <= 0 || !\app\model\City::where('id', $cityId)->find()) {
+                        $cityId = null;
+                        $districtId = null;
+                    }
+                } else {
+                    $cityId = null;
+                }
+                
+                // 创建家教信息（手动设置ID）
+                $tutorData = [
+                    'id' => $tutorId,
+                    'content' => $tutorContent,
+                    'grade' => $order->grade,
+                    'city_id' => $cityId,
+                    'district_id' => $districtId,
+                    'subject_id' => $subjectId,
+                    'salary' => $salaryStr,  // 直接存储时薪范围字符串（如：130-150元/小时）
+                    'teacher_type' => $teacherType,
+                    'admin_id' => $order->admin_id ?: 0,
+                    'is_urgent' => 0,
+                    'status' => 1,
+                    'booking_channel' => $order->booking_channel ?: '小程序'  // 预约渠道，用于标识预约单
+                ];
+                
+                $tutor = TutorOrder::create($tutorData);
+                
+                // 自动轮派给发单组
+                $this->autoAssignToDispatcher($tutor);
+                
+                // 更新订单状态
+                $order->status = 'approved';
+                $order->tutor_id = $tutor->id;
+                $order->audit_time = date('Y-m-d H:i:s');
+                $order->save();
+                
+                Db::commit();
+                
+                // 发送邮件通知给匹配的订阅者（异步，不影响主流程）
+                try {
+                    $this->sendOrderNotificationToSubscribers($tutor);
+                } catch (\Exception $e) {
+                    trace('发送订单通知邮件失败（不影响主流程）: ' . $e->getMessage(), 'info');
+                }
+
+                // 给匹配的老师发送通知（小程序订阅消息 + 邮箱），不影响主流程
+                try {
+                    $this->sendOrderNotificationToTeachers($tutor);
+                } catch (\Throwable $e) {
+                    trace('发送老师通知失败（不影响主流程）: ' . $e->getMessage(), 'info');
+                }
+
+                // 创建客户群群发任务（需要成员在企微客户端确认发送），不影响主流程
+                try {
+                    WecomGroupSendService::createCityGroupTutorOrderSend($tutor);
+                } catch (\Throwable $e) {
+                    trace('预约单审核通过转家教单后创建企微客户群群发任务失败（不影响主流程）: ' . $e->getMessage(), 'info');
+                }
+                
+                return json([
+                    'code' => 200,
+                    'message' => '审核通过，家教信息已发布并自动派单',
+                    'data' => [
+                        'tutor_id' => $tutor->id
+                    ]
+                ]);
+                
+            } catch (\Exception $e) {
+                Db::rollback();
+                throw $e;
+            }
+            
+        } catch (\Exception $e) {
+            trace('审核通过失败: ' . $e->getMessage(), 'error');
+            return json(['code' => 500, 'message' => '审核通过失败：' . $e->getMessage()]);
+        }
+    }
+    
+    /**
+     * 根据科目名称获取科目ID
+     */
+    private function getSubjectIdByName($subjectName)
+    {
+        if (empty($subjectName)) return null;
+        
+        // 科目映射表
+        $subjectMap = [
+            '语文' => 1, '数学' => 2, '英语' => 3, '物理' => 4, '化学' => 5,
+            '生物' => 6, '历史' => 7, '地理' => 8, '政治' => 9,
+            '幼儿英语' => 3, '幼儿拼音' => 1, '幼儿数学' => 2,
+            '科学' => 10, '艺术' => 11, '体育' => 12
+        ];
+        
+        return $subjectMap[$subjectName] ?? null;
+    }
+    
+    /**
+     * 解析老师类型
+     */
+    private function parseTeacherType($teacherType)
+    {
+        if (empty($teacherType)) return null;
+        
+        // 老师类型映射
+        $typeMap = [
+            '大学生' => '大学生',
+            '专职老师' => '专职老师',
+            '留学生' => '留学生',
+            '不限' => null
+        ];
+        
+        return $typeMap[$teacherType] ?? $teacherType;
+    }
+    
+    /**
+     * 自动派单给派单组（按订单城市匹配归属城市，同工作量随机）
+     */
+    private function autoAssignToDispatcher($order)
+    {
+        DispatcherAutoAssignService::assignToDispatcher($order);
+    }
+    
+    /**
+     * 构建家教单内容（使用原始格式）
+     */
+    private function buildTutorContentFromOrder($order)
+    {
+        // 判断是否线上授课
+        $isOnline = ($order->teaching_method === '线上授课' || strpos($order->address, '线上') !== false);
+        
+        // 获取城市区域名称（用于内容显示）
+        $cityArea = '';
+        if ($isOnline) {
+            // 线上授课显示为"全国 线上"
+            $cityArea = '全国 线上';
+        } else {
+            if ($order->city_id) {
+                $city = \app\model\City::find($order->city_id);
+                if ($city) $cityArea .= $city->name;
+            }
+            if ($order->district_id) {
+                $district = \app\model\District::find($order->district_id);
+                if ($district) $cityArea .= ' ' . $district->name;
+            }
+            if (empty($cityArea) && $order->address) {
+                // 从地址中提取城市区域
+                $cityArea = $order->address;
+            }
+        }
+        
+        // 地址显示（线上授课不显示地址）
+        $addressDisplay = $isOnline ? '' : ($order->address ?: '');
+        
+        // 学生情况
+        $studentGender = $order->student_gender ?: '';
+        $studentInfo = $order->student_info ?: '';
+        
+        // 时薪范围 - 直接使用预约单的时薪范围字段
+        $salary = $order->salary ?: '';
+        if (empty($salary) && $order->budget_min && $order->budget_max) {
+            $salary = $order->budget_min . '-' . $order->budget_max . '元/小时';
+        }
+        
+        // 老师要求 - 正确映射老师类型
+        $teacherType = $this->parseTeacherType($order->teacher_type) ?: '';
+        $teacherGender = $order->teacher_gender ?: '';
+        $teacherReq = trim($teacherType . ' ' . $teacherGender);
+        
+        // 构建内容标题（城市区域 + 地址 + 年级 + 科目）
+        $titleParts = array_filter([$cityArea, $addressDisplay, $order->grade, $order->subject]);
+        $title = implode(' ', $titleParts);
+        
+        // 构建内容（不包含来源信息，来源通过卡片标签显示）
+        $content = "【{$title}】\n";
+        $content .= "【学生情况】{$studentGender}" . ($studentGender && $studentInfo ? '，' : '') . "{$studentInfo}\n";
+        $content .= "【时间频率】{$order->frequency}" . ($order->frequency && $order->duration ? '，' : '') . "{$order->duration}\n";
+        $timeSlotsText = $this->formatTimeSlotsForText($order->available_time_slots);
+        if ($timeSlotsText !== '') {
+            $content .= "【可辅导时段】" . $timeSlotsText . "\n";
+        }
+        $content .= "【时薪范围】{$salary}\n";
+        $content .= "【老师要求】{$teacherReq}";
+        
+        return $content;
+    }
+    
+    /**
+     * 拒绝订单
+     * POST /api/order/:id/reject
+     */
+    public function reject($id)
+    {
+        try {
+            $admin = $this->getAdminInfo();
+            if (!$admin) {
+                return json(['code' => 401, 'message' => '请先登录']);
+            }
+            
+            $reason = $this->request->post('reason', '');
+            if (empty($reason)) {
+                return json(['code' => 400, 'message' => '请输入拒绝原因']);
+            }
+            
+            // 查找订单（超级管理员、客服组长可以操作所有订单）
+            $query = ParentOrder::where('id', $id);
+            
+            if (!$this->canViewAllOrders()) {
+                $query->where('admin_id', $admin->id);
+            }
+            
+            $order = $query->find();
+            
+            if (!$order) {
+                return json(['code' => 404, 'message' => '订单不存在或无权访问']);
+            }
+            
+            if ($order->status !== 'pending') {
+                return json(['code' => 400, 'message' => '订单状态不正确']);
+            }
+            
+            // 更新订单状态
+            $order->status = 'rejected';
+            $order->reject_reason = $reason;
+            $order->audit_time = date('Y-m-d H:i:s');
+            $order->save();
+            
+            return json([
+                'code' => 200,
+                'message' => '已拒绝该订单'
+            ]);
+            
+        } catch (\Exception $e) {
+            trace('拒绝订单失败: ' . $e->getMessage(), 'error');
+            return json(['code' => 500, 'message' => '拒绝订单失败：' . $e->getMessage()]);
+        }
+    }
+    
+    /**
+     * 删除订单（仅超级管理员和客服组长）
+     * DELETE /api/order/:id/delete
+     */
+    public function delete($id)
+    {
+        try {
+            $admin = $this->getAdminInfo();
+            if (!$admin) {
+                return json(['code' => 401, 'message' => '请先登录']);
+            }
+            
+            // 检查权限：只有超级管理员和客服组长可以删除
+            if (!$this->canDeleteOrder()) {
+                return json(['code' => 403, 'message' => '无权限删除订单']);
+            }
+            
+            // 查找订单
+            $order = ParentOrder::find($id);
+            
+            if (!$order) {
+                return json(['code' => 404, 'message' => '订单不存在']);
+            }
+            
+            // 软删除：不物理删除记录，只标记为已取消（status=cancelled），与已拒绝区分
+            $order->status = 'cancelled';
+            $order->reject_reason = '已由管理员取消';
+            $order->audit_time = date('Y-m-d H:i:s');
+            $order->save();
+            
+            trace('订单已标记为已取消（软删除），ID: ' . $id . '，操作员: ' . $admin->nickname, 'info');
+            
+            return json([
+                'code' => 200,
+                'message' => '订单已取消'
+            ]);
+            
+        } catch (\Exception $e) {
+            trace('删除订单失败: ' . $e->getMessage(), 'error');
+            return json(['code' => 500, 'message' => '删除订单失败：' . $e->getMessage()]);
+        }
+    }
+    
+    /**
+     * 构建家教信息内容（不包含隐私信息）
+     */
+    private function buildTutorContent($order)
+    {
+        $content = "【学员年级】{$order->grade}\n";
+        $content .= "【辅导科目】{$order->subject}\n";
+        $content .= "【学生情况】{$order->student_info}\n";
+        $content .= "【辅导频率】{$order->frequency}\n";
+        if (!empty($order->available_time_slots)) {
+            $content .= "【可辅导时段】" . $this->formatTimeSlotsForText($order->available_time_slots) . "\n";
+        }
+        $content .= "【老师要求】{$order->teacher_requirement}\n";
+        $content .= "【授课地址】{$order->address}\n";
+        
+        if ($order->salary) {
+            $content .= "【课费薪资】{$order->salary}\n";
+        }
+        
+        if ($order->remark) {
+            $content .= "【备注】{$order->remark}\n";
+        }
+        
+        return $content;
+    }
+    
+    /**
+     * 从请求中获取管理员ID
+     * 从 session 中获取已登录的管理员ID
+     */
+    /**
+     * 获取当前登录的管理员信息
+     */
+    private function getAdminInfo()
+    {
+        // 启动 session
+        if (session_status() === PHP_SESSION_NONE) {
+            session_start();
+        }
+        
+        // 从 session 中获取管理员ID
+        $adminId = $_SESSION['admin_id'] ?? null;
+        if (!$adminId) {
+            return null;
+        }
+        
+        // 查询管理员信息
+        $admin = Admin::find($adminId);
+        return $admin;
+    }
+    
+    /**
+     * 检查是否为超级管理员
+     */
+    private function isSuperAdmin()
+    {
+        $admin = $this->getAdminInfo();
+        return $admin && $admin->role === 'super_admin';
+    }
+    
+    /**
+     * 检查是否可以查看全部预约（超级管理员或客服组长，与前端 canViewAllOrders 一致）
+     */
+    private function canViewAllOrders()
+    {
+        $admin = $this->getAdminInfo();
+        return $admin && in_array($admin->role, ['super_admin', 'team_leader']);
+    }
+    
+    /**
+     * 检查是否可以删除订单（超级管理员或客服组长）
+     */
+    private function canDeleteOrder()
+    {
+        $admin = $this->getAdminInfo();
+        return $admin && ($admin->role === 'super_admin' || $admin->role === 'team_leader');
+    }
+    
+    /**
+     * 发送订单通知给匹配的订阅者（异步方式）
+     */
+    private function sendOrderNotificationToSubscribers($order)
+    {
+        try {
+            // 查找匹配的订阅者
+            $subscribers = $this->getMatchedSubscribers($order);
+            
+            if (empty($subscribers)) {
+                trace('没有匹配的订阅者，订单ID: ' . $order->id, 'info');
+                return;
+            }
+            
+            trace('找到 ' . count($subscribers) . ' 个匹配的订阅者，订单ID: ' . $order->id, 'info');
+            
+            // 将邮件添加到队列（异步发送）
+            foreach ($subscribers as $subscriber) {
+                $this->addEmailToQueue($subscriber['email'], $order);
+            }
+            
+        } catch (\Exception $e) {
+            trace('添加订单通知邮件到队列失败: ' . $e->getMessage(), 'error');
+        }
+    }
+    
+    /**
+     * 获取匹配订单的订阅者
+     */
+    private function getMatchedSubscribers($order)
+    {
+        // 查询所有启用且已验证的订阅者
+        $query = \app\model\EmailSubscription::where('status', 1)
+            ->where('is_verified', 1);
+        
+        $subscribers = $query->select()->toArray();
+        
+        // 过滤匹配的订阅者
+        $matched = [];
+        foreach ($subscribers as $subscriber) {
+            $model = new \app\model\EmailSubscription();
+            $model->data($subscriber);
+            
+            // 将订单数据转换为数组格式
+            $orderData = [
+                'city_id' => $order->city_id,
+                'district_id' => $order->district_id,
+                'subject_id' => $order->subject_id,
+                'grade' => $order->grade
+            ];
+            
+            if ($model->matchesOrder($orderData)) {
+                $matched[] = $subscriber;
+            }
+        }
+        
+        return $matched;
+    }
+    
+    /**
+     * 添加邮件到队列
+     */
+    private function addEmailToQueue($email, $order)
+    {
+        try {
+            $email = OrderEmailRecipientGate::filter((string)$email, $order->id ?? null);
+            if ($email === null) {
+                return;
+            }
+
+            // 获取邮件配置
+            $config = Db::name('notification_config')->find(1);
+            
+            if (!$config || !$config['smtp_host'] || !$config['email_enabled']) {
+                trace('邮件配置未设置或未启用，跳过发送', 'info');
+                return;
+            }
+            
+            // 构建邮件内容
+            $subject = '【91 家教中心】新家教单通知';
+            $body = TutorOrderMailRenderer::renderHtml($order, $config);
+            
+            // 添加到队列
+            \app\model\EmailQueue::create([
+                'email_type' => \app\model\EmailQueue::TYPE_ORDER,
+                'recipient_email' => $email,
+                'subject' => $subject,
+                'body' => $body,
+                'related_id' => $order->id,
+                'status' => \app\model\EmailQueue::STATUS_PENDING,
+                'created_at' => date('Y-m-d H:i:s')
+            ]);
+            
+            trace('订单通知邮件已加入队列: email=' . $email . ', order_id=' . $order->id, 'info');
+            
+        } catch (\Exception $e) {
+            trace('添加邮件到队列失败: ' . $e->getMessage(), 'error');
+        }
+    }
+
+    /**
+     * 给匹配的老师发送通知：
+     * - 小程序订阅消息：SubscribeMessageService::sendTutorRecommendMessage
+     * - 邮箱：加入 EmailQueue（复用订单邮件模板）
+     */
+    private function sendOrderNotificationToTeachers($tutorOrder)
+    {
+        try {
+            // 补全关联（city/district/subject）方便取展示名称
+            $tutor = TutorOrder::with(['city', 'district', 'subject'])->find($tutorOrder->id);
+            if (!$tutor) {
+                trace('sendOrderNotificationToTeachers: tutor not found, id=' . ($tutorOrder->id ?? ''), 'warning');
+                return;
+            }
+
+            $matchedTeachers = $this->getMatchedTeachersByTeachingInfo($tutor);
+            if (empty($matchedTeachers)) {
+                trace('sendOrderNotificationToTeachers: no matched teachers, tutor_id=' . $tutor->id, 'info');
+                return;
+            }
+
+            $cityName = $tutor->city ? (string)$tutor->city->name : '';
+            $districtName = $tutor->district ? (string)$tutor->district->name : '';
+            $subjectName = $tutor->subject ? (string)$tutor->subject->name : '';
+
+            // 订阅消息所需字段
+            $payload = [
+                'tutor_id' => $tutor->id,
+                // 订阅消息模板里用作“订单号”的展示字段（系统无 order_no 时用 tutor_id 代替）
+                'order_no' => (string)$tutor->id,
+                'grade' => (string)($tutor->grade ?? ''),
+                'subject' => $subjectName !== '' ? $subjectName : (string)($tutor->subject_id ?? ''),
+                'city' => $cityName !== '' ? $cityName : (string)($tutor->city_id ?? ''),
+                'district' => $districtName !== '' ? $districtName : (string)($tutor->district_id ?? ''),
+                // content 用于订阅消息侧提取【时间】频率、上门/线上等关键词
+                'content' => (string)($tutor->content ?? ''),
+                // 若表中无该字段，则订阅消息服务会从 content 自动识别
+                'teaching_method' => (string)($tutor->teaching_method ?? ''),
+                // 若为空也会从 content/默认值兜底
+                'salary' => (string)($tutor->salary ?? ''),
+            ];
+
+            $successSubscribe = 0;
+            $successEmail = 0;
+
+            foreach ($matchedTeachers as $teacherRow) {
+                $wechatNotify = (int)($teacherRow['wechat_notify'] ?? 0) === 1;
+                $miniOpenid = TeacherMiniOpenidResolver::resolve($teacherRow);
+                // 只在老师明确开启“服务号/订阅消息通知”时才发小程序订阅消息
+                if ($wechatNotify && $miniOpenid !== '') {
+                    $res = SubscribeMessageService::sendTutorRecommendMessage($miniOpenid, $payload);
+                    if (!empty($res['success'])) {
+                        $successSubscribe++;
+                    }
+                }
+
+                // 邮箱通知：老师开启 email_notify 且填写邮箱时入队
+                $emailNotify = (int)($teacherRow['email_notify'] ?? 0) === 1;
+                $email = trim((string)($teacherRow['email'] ?? ''));
+                if ($emailNotify && $email !== '') {
+                    $this->addEmailToQueue($email, $tutor);
+                    $successEmail++;
+                }
+            }
+
+            trace(
+                'sendOrderNotificationToTeachers: done, tutor_id=' . $tutor->id
+                . ', teachers=' . count($matchedTeachers)
+                . ', subscribe_ok=' . $successSubscribe
+                . ', email_queued=' . $successEmail,
+                'info'
+            );
+        } catch (\Throwable $e) {
+            trace('sendOrderNotificationToTeachers exception: ' . $e->getMessage(), 'error');
+        }
+    }
+
+    /**
+     * 按老师授课信息匹配：城市/区域/科目/年级，并要求 subscribe_push=1
+     * teaching_info 的 districts/subjects/grades 为 JSON（数组，元素通常含 id/name）
+     */
+    private function getMatchedTeachersByTeachingInfo($tutor)
+    {
+        $cityId = (int)($tutor->city_id ?? 0);
+        $districtId = $tutor->district_id !== null ? (int)$tutor->district_id : 0;
+        $subjectId = $tutor->subject_id !== null ? (int)$tutor->subject_id : 0;
+        $gradeText = trim((string)($tutor->grade ?? ''));
+
+        // 仅筛城市与开关，JSON 字段在 PHP 层做包含判断（兼容不同数据库 JSON 存储）
+        $rows = [];
+        try {
+            // 邮箱/小程序通知：匹配开启任意一种通知的老师
+            $q = Db::name('teacher_teaching_info');
+            if ($cityId > 0) {
+                $q->where('city_id', $cityId);
+            }
+            $q->where(function ($qq) {
+                $qq->where('wechat_notify', 1)->whereOr('email_notify', 1);
+            });
+            $rows = $q->select()->toArray();
+        } catch (\Throwable $e) {
+            trace('getMatchedTeachersByTeachingInfo query failed: ' . $e->getMessage(), 'error');
+            return [];
+        }
+
+        $matched = [];
+        foreach ($rows as $r) {
+            // districts: [{id,name}, ...]
+            if ($districtId > 0) {
+                $districts = $r['districts'] ?? [];
+                if (is_string($districts)) {
+                    $districts = json_decode($districts, true);
+                }
+                $districtIds = [];
+                if (is_array($districts)) {
+                    foreach ($districts as $d) {
+                        if (is_array($d) && isset($d['id'])) $districtIds[] = (int)$d['id'];
+                        elseif (is_numeric($d)) $districtIds[] = (int)$d;
+                    }
+                }
+                if (!in_array($districtId, $districtIds, true)) {
+                    continue;
+                }
+            }
+
+            // subjects: [{id,name}, ...]
+            if ($subjectId > 0) {
+                $subjects = $r['subjects'] ?? [];
+                if (is_string($subjects)) {
+                    $subjects = json_decode($subjects, true);
+                }
+                $subjectIds = [];
+                if (is_array($subjects)) {
+                    foreach ($subjects as $s) {
+                        if (is_array($s) && isset($s['id'])) $subjectIds[] = (int)$s['id'];
+                        elseif (is_numeric($s)) $subjectIds[] = (int)$s;
+                    }
+                }
+                if (!in_array($subjectId, $subjectIds, true)) {
+                    continue;
+                }
+            }
+
+            // grades: [{id,name}, ...]，订单 grade 是字符串，用 name 做包含判断
+            if ($gradeText !== '') {
+                $grades = $r['grades'] ?? [];
+                if (is_string($grades)) {
+                    $grades = json_decode($grades, true);
+                }
+                $okGrade = false;
+                if (is_array($grades) && !empty($grades)) {
+                    foreach ($grades as $g) {
+                        $name = '';
+                        if (is_array($g) && isset($g['name'])) $name = trim((string)$g['name']);
+                        elseif (is_string($g)) $name = trim($g);
+                        if ($name !== '' && mb_strpos($gradeText, $name) !== false) {
+                            $okGrade = true;
+                            break;
+                        }
+                    }
+                } else {
+                    // 未填写年级要求，按“不过滤”处理
+                    $okGrade = true;
+                }
+                if (!$okGrade) {
+                    continue;
+                }
+            }
+
+            $matched[] = $r;
+        }
+
+        return $matched;
+    }
+    
+    /**
+     * 更新订单信息
+     * PUT /api/order/:id/update
+     */
+    public function update($id)
+    {
+        try {
+            $admin = $this->getAdminInfo();
+            if (!$admin) {
+                return json(['code' => 401, 'message' => '请先登录']);
+            }
+            
+            $data = $this->request->post();
+            if (!is_array($data) || $data === []) {
+                $json = json_decode((string) $this->request->getContent(), true);
+                if (is_array($json)) {
+                    $data = $json;
+                }
+            }
+            if (!is_array($data)) {
+                $data = [];
+            }
+            
+            // 查找订单（超级管理员、客服组长可编辑全部；普通客服仅能编辑归属自己的订单）
+            $query = ParentOrder::where('id', $id);
+            
+            if (!$this->canViewAllOrders()) {
+                $query->where('admin_id', $admin->id);
+            }
+            
+            $order = $query->find();
+            
+            if (!$order) {
+                return json(['code' => 404, 'message' => '订单不存在或无权访问']);
+            }
+            
+            // 开启事务
+            Db::startTrans();
+            try {
+                // 更新订单字段
+                $allowedFields = [
+                    'grade', 'subject', 'student_info', 'frequency',
+                    'teacher_requirement', 'address', 'parent_name',
+                    'parent_contact', 'salary', 'remark', 'available_time_slots'
+                ];
+                
+                foreach ($allowedFields as $field) {
+                    if (array_key_exists($field, $data)) {
+                        if ($field === 'available_time_slots') {
+                            list($slotValid, $slotMessage, $normalizedSlots) = $this->normalizeAdminTimeSlots($data[$field]);
+                            if (!$slotValid) {
+                                Db::rollback();
+                                return json(['code' => 400, 'message' => $slotMessage]);
+                            }
+                            $order->$field = json_encode($normalizedSlots, JSON_UNESCAPED_UNICODE);
+                        } else {
+                            $order->$field = $data[$field];
+                        }
+                    }
+                }
+                
+                // 归属管理员：仅超级管理员、客服组长可修改
+                if ($this->canViewAllOrders() && array_key_exists('admin_id', $data)) {
+                    $newAid = (int) $data['admin_id'];
+                    if ($newAid <= 0) {
+                        $order->admin_id = 0;
+                    } else {
+                        $targetAdmin = Admin::where('id', $newAid)->where('status', 1)->find();
+                        if (!$targetAdmin) {
+                            Db::rollback();
+                            return json(['code' => 400, 'message' => '所选管理员不存在或已禁用']);
+                        }
+                        if ($admin->role === 'team_leader') {
+                            $allowedIds = Admin::where('leader_id', $admin->id)->where('status', 1)->column('id');
+                            $allowedIds[] = (int) $admin->id;
+                            if (!in_array($newAid, array_map('intval', $allowedIds), true)) {
+                                Db::rollback();
+                                return json(['code' => 403, 'message' => '仅能将订单归属给本组客服']);
+                            }
+                        }
+                        $order->admin_id = $newAid;
+                    }
+                }
+                
+                $order->save();
+                
+                // 如果订单已审核通过且有关联的家教信息，同步更新家教信息
+                if ($order->status === 'approved' && $order->tutor_id) {
+                    $tutor = TutorOrder::find($order->tutor_id);
+                    if ($tutor) {
+                        // 重新生成家教信息内容
+                        $tutor->content = $this->buildTutorContent($order);
+                        $tutor->grade = $order->grade;
+                        
+                        // 如果提供了薪资，更新家教信息的薪资
+                        if (isset($data['salary'])) {
+                            $tutor->salary = $data['salary'];
+                        }
+                        
+                        $tutor->save();
+                    }
+                }
+                
+                Db::commit();
+                
+                return json([
+                    'code' => 200,
+                    'message' => '订单更新成功' . ($order->tutor_id ? '，家教信息已同步更新' : ''),
+                    'data' => $order
+                ]);
+                
+            } catch (\Exception $e) {
+                Db::rollback();
+                throw $e;
+            }
+            
+        } catch (\Exception $e) {
+            trace('更新订单失败: ' . $e->getMessage(), 'error');
+            return json(['code' => 500, 'message' => '更新订单失败：' . $e->getMessage()]);
+        }
+    }
+    
+    /**
+     * 测试获取订单列表（无需认证）
+     * GET /api/order/test-list
+     */
+    public function testList()
+    {
+        try {
+            $page = $this->request->get('page/d', 1);
+            $limit = $this->request->get('limit/d', 20);
+            $isChannel = $this->request->get('is_channel', '');
+            
+            // 构建查询
+            $query = ParentOrder::order('create_time', 'desc');
+            
+            // 如果有is_channel参数，可以根据需要过滤
+            if ($isChannel !== '') {
+                // 这里可以根据需要添加过滤逻辑
+                // 例如：$query->where('booking_channel', $isChannel == 1 ? '小程序' : 'H5');
+            }
+            
+            // 分页查询
+            $result = $query->paginate([
+                'list_rows' => $limit,
+                'page' => $page,
+            ]);
+            
+            return json([
+                'success' => true,
+                'data' => [
+                    'list' => $result->items(),
+                    'total' => $result->total(),
+                    'page' => $page,
+                    'limit' => $limit
+                ]
+            ]);
+            
+        } catch (\Exception $e) {
+            return json([
+                'success' => false,
+                'message' => '获取订单列表失败：' . $e->getMessage()
+            ]);
+        }
+    }
+    
+    /**
+     * 测试获取订单统计（无需认证）
+     * GET /api/order/test-stats
+     */
+    public function testStats()
+    {
+        try {
+            $total = ParentOrder::count();
+            $pending = ParentOrder::where('status', 'pending')->count();
+            $approved = ParentOrder::where('status', 'approved')->count();
+            $rejected = ParentOrder::where('status', 'rejected')->count();
+            
+            return json([
+                'success' => true,
+                'data' => [
+                    'total' => $total,
+                    'pending' => $pending,
+                    'approved' => $approved,
+                    'rejected' => $rejected
+                ]
+            ]);
+            
+        } catch (\Exception $e) {
+            return json([
+                'success' => false,
+                'message' => '获取订单统计失败：' . $e->getMessage()
+            ]);
+        }
+    }
+}
+
+
+
+

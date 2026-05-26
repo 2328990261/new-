@@ -1,0 +1,127 @@
+<?php
+/**
+ * 公众号 JS-SDK 签名接口（给 wx.config / wx-open-launch-weapp 用）
+ *
+ * 部署（宝塔 / Linux）：
+ * 1. 复制本文件为 wechat_jssdk_sign.php（不要提交含密钥的文件到 Git）
+ * 2. 填写下方 OA_APP_ID、OA_APP_SECRET（公众号后台 → 设置与开发 → 基本配置）
+ * 3. 公众号后台「JS接口安全域名」填写你访问本 H5 的域名（不含协议与路径）
+ * 4. 浏览器请求：GET https://你的域名/.../wechat_jssdk_sign.php?url=当前页完整URL
+ *    url 须与微信内打开地址一致，不含 # 及后面（前端传 location.href.split('#')[0]）
+ *
+ * 安全建议：用 ALLOWED_HOST 限制 url 参数里的域名；生产环境可再加简单 token 校验。
+ */
+
+header('Content-Type: application/json; charset=utf-8');
+header('Access-Control-Allow-Origin: *');
+
+// ============ 必填：公众号（服务号）AppID / AppSecret，不是小程序 ============
+const OA_APP_ID = 'wx你的公众号AppID';
+const OA_APP_SECRET = '你的公众号AppSecret';
+
+/** 仅允许签名的页面域名，例如 'jiajiao91.com' 或 'www.xxx.com'，与 JS 安全域名一致 */
+const ALLOWED_HOST = '你的域名';
+
+const CACHE_DIR = __DIR__ . '/.wechat_cache';
+const TOKEN_TTL = 7000;
+const TICKET_TTL = 7000;
+
+function json_fail($msg, $code = 400) {
+    http_response_code($code);
+    echo json_encode(['ok' => false, 'error' => $msg], JSON_UNESCAPED_UNICODE);
+    exit;
+}
+
+$url = isset($_GET['url']) ? trim($_GET['url']) : '';
+if ($url === '') {
+    json_fail('missing url');
+}
+
+$parts = parse_url($url);
+if (empty($parts['scheme']) || empty($parts['host'])) {
+    json_fail('invalid url');
+}
+if (strcasecmp($parts['host'], ALLOWED_HOST) !== 0 && strcasecmp($parts['host'], 'www.' . ALLOWED_HOST) !== 0) {
+    json_fail('url host not allowed');
+}
+
+// 微信要求：参与签名的 url 需解码，且不含 #fragment
+$urlForSign = $url;
+if (strpos($urlForSign, '#') !== false) {
+    $urlForSign = strstr($urlForSign, '#', true);
+}
+
+if (!is_dir(CACHE_DIR)) {
+    @mkdir(CACHE_DIR, 0755, true);
+}
+
+function cache_get($key) {
+    $f = CACHE_DIR . '/' . preg_replace('/[^a-z0-9_-]/i', '', $key) . '.json';
+    if (!is_file($f)) {
+        return null;
+    }
+    $raw = @file_get_contents($f);
+    if ($raw === false) {
+        return null;
+    }
+    $d = json_decode($raw, true);
+    if (!is_array($d) || empty($d['exp']) || $d['exp'] < time()) {
+        return null;
+    }
+    return $d['val'] ?? null;
+}
+
+function cache_set($key, $val, $ttl) {
+    $f = CACHE_DIR . '/' . preg_replace('/[^a-z0-9_-]/i', '', $key) . '.json';
+    @file_put_contents($f, json_encode(['exp' => time() + $ttl, 'val' => $val]));
+}
+
+function http_get_json($u) {
+    $ctx = stream_context_create(['http' => ['timeout' => 10]]);
+    $r = @file_get_contents($u, false, $ctx);
+    if ($r === false) {
+        return null;
+    }
+    return json_decode($r, true);
+}
+
+$accessToken = cache_get('access_token');
+if (!$accessToken) {
+    $api = 'https://api.weixin.qq.com/cgi-bin/token?grant_type=client_credential&appid='
+        . urlencode(OA_APP_ID) . '&secret=' . urlencode(OA_APP_SECRET);
+    $j = http_get_json($api);
+    if (empty($j['access_token'])) {
+        json_fail('token: ' . ($j['errmsg'] ?? 'unknown'), 502);
+    }
+    $accessToken = $j['access_token'];
+    cache_set('access_token', $accessToken, TOKEN_TTL);
+}
+
+$jsapiTicket = cache_get('jsapi_ticket');
+if (!$jsapiTicket) {
+    $api = 'https://api.weixin.qq.com/cgi-bin/ticket/getticket?access_token='
+        . urlencode($accessToken) . '&type=jsapi';
+    $j = http_get_json($api);
+    if (empty($j['ticket']) || (int) $j['errcode'] !== 0) {
+        json_fail('ticket: ' . ($j['errmsg'] ?? 'unknown'), 502);
+    }
+    $jsapiTicket = $j['ticket'];
+    cache_set('jsapi_ticket', $jsapiTicket, TICKET_TTL);
+}
+
+$timestamp = time();
+$nonceStr = bin2hex(random_bytes(8));
+$plain = 'jsapi_ticket=' . $jsapiTicket
+    . '&noncestr=' . $nonceStr
+    . '&timestamp=' . $timestamp
+    . '&url=' . $urlForSign;
+$signature = sha1($plain);
+
+echo json_encode([
+    'ok' => true,
+    'appId' => OA_APP_ID,
+    'timestamp' => $timestamp,
+    'nonceStr' => $nonceStr,
+    'signature' => $signature,
+    'jsApiList' => [],
+], JSON_UNESCAPED_UNICODE);

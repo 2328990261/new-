@@ -1,0 +1,104 @@
+import { defineStore } from 'pinia'
+import { checkLoginStatus } from '@/api/auth'
+
+// 从localStorage 加载用户信息
+const loadUserFromStorage = () => {
+  try {
+    const userStr = localStorage.getItem('admin_user')
+    return userStr ? JSON.parse(userStr) : {}
+  } catch (error) {
+    
+    return {}
+  }
+}
+
+// 保存用户信息到localStorage
+const saveUserToStorage = (user) => {
+  try {
+    localStorage.setItem('admin_user', JSON.stringify(user))
+  } catch (error) {
+    
+  }
+}
+
+// 清除 localStorage 中的用户信息
+const clearUserFromStorage = () => {
+  localStorage.removeItem('admin_user')
+}
+
+export const useUserStore = defineStore('user', {
+  state: () => {
+    const savedUser = loadUserFromStorage()
+    return {
+      id: savedUser.id || null,
+      username: savedUser.username || '',
+      nickname: savedUser.nickname || '',
+      role: savedUser.role || '', // 'customer_service' 或 'dispatcher'
+      can_access_enterprise: savedUser.can_access_enterprise || 0
+    }
+  },
+
+  getters: {
+    isLoggedIn: (state) => !!state.id,
+    isSuperAdmin: (state) => state.role === 'super_admin', // 超级管理员
+    isAdmin: (state) => state.role === 'super_admin', // 兼容旧代码
+    isTeamLeader: (state) => state.role === 'team_leader', // 客服组长
+    isDispatcher: (state) => state.role === 'dispatcher',
+    isCustomerService: (state) => state.role === 'customer_service',
+    // 检查是否可以删除订单（超级管理员或客服组长）
+    canDeleteOrder: (state) => state.role === 'super_admin' || state.role === 'team_leader',
+    // 检查是否可以访问企业管理（超级管理员或有权限的管理员）
+    canAccessEnterprise: (state) => state.role === 'super_admin' || state.can_access_enterprise === 1,
+  },
+
+  actions: {
+    setUserInfo(userInfo) {
+      this.id = userInfo.id
+      this.username = userInfo.username
+      this.nickname = userInfo.nickname || userInfo.username
+      this.role = userInfo.role || 'customer_service' // 默认为客服组
+      this.can_access_enterprise = userInfo.can_access_enterprise || 0
+      
+      // 保存到localStorage
+      saveUserToStorage({
+        id: this.id,
+        username: this.username,
+        nickname: this.nickname,
+        role: this.role,
+        can_access_enterprise: this.can_access_enterprise
+      })
+    },
+    
+    logout() {
+      this.id = null
+      this.username = ''
+      this.nickname = ''
+      this.role = ''
+      this.can_access_enterprise = 0
+      
+      // 清除 localStorage
+      clearUserFromStorage()
+    },
+
+    // 检查登录状态（与后端session同步）
+    async checkLoginStatus() {
+      try {
+        const res = await checkLoginStatus()
+        if (res.success && res.data) {
+          // 后端session有效，更新用户信息
+          this.setUserInfo(res.data)
+          return true
+        } else {
+          // 后端session无效，清除本地状态
+          this.logout()
+          return false
+        }
+      } catch (error) {
+        
+        // 检查失败，清除本地状态
+        this.logout()
+        return false
+      }
+    }
+  }
+})

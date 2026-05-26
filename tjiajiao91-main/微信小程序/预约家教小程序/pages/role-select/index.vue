@@ -1,0 +1,453 @@
+<template>
+	<view class="role-select-container">
+		<!-- 顶部装饰 -->
+		<view class="top-decoration">
+			<view class="decoration-circle circle-1"></view>
+			<view class="decoration-circle circle-2"></view>
+			<view class="decoration-circle circle-3"></view>
+		</view>
+
+		<!-- 主内容区 -->
+		<view class="main-content">
+			<!-- Logo和标题 -->
+			<view class="header-section">
+				<image src="https://t.jiajiao91.com/public/miniprogram/images/ai-avatar.png" mode="aspectFit" class="logo-img"></image>
+				<text class="title">选择您的身份</text>
+				<text class="subtitle">请选择您使用小程序的身份</text>
+			</view>
+
+			<!-- 角色选择卡片 -->
+			<view class="role-cards">
+				<!-- 家长角色 -->
+				<view 
+					:class="selectedRole === 'parent' ? 'role-card parent-card selected' : 'role-card parent-card'"
+					@click="selectRole('parent')"
+				>
+					<view class="card-icon-wrapper">
+						<text class="icon-text">👥</text>
+					</view>
+					<view class="card-content">
+						<text class="card-title">我是家长</text>
+						<text class="card-desc">为孩子寻找优秀的家教老师</text>
+					</view>
+					<view class="card-check" v-if="selectedRole === 'parent'">
+						<text class="check-icon">✓</text>
+					</view>
+				</view>
+
+				<!-- 老师角色 -->
+				<view 
+					:class="selectedRole === 'teacher' ? 'role-card teacher-card selected' : 'role-card teacher-card'"
+					@click="selectRole('teacher')"
+				>
+					<view class="card-icon-wrapper">
+						<text class="icon-text">📚</text>
+					</view>
+					<view class="card-content">
+						<text class="card-title">我是老师</text>
+						<text class="card-desc">接单做家教，传播知识赚课费</text>
+					</view>
+					<view class="card-check" v-if="selectedRole === 'teacher'">
+						<text class="check-icon">✓</text>
+					</view>
+				</view>
+			</view>
+
+			<!-- 提示：身份绑定说明 -->
+			<view class="role-warning-box">
+				<text class="role-warning-title">重要提示</text>
+				<text class="role-warning-desc">身份确认后将绑定当前账号，无法再切换身份。</text>
+			</view>
+
+			<!-- 确认按钮 -->
+			<button 
+				:class="!selectedRole ? 'confirm-btn disabled' : 'confirm-btn'"
+				:disabled="!selectedRole"
+				@click="confirmRole"
+			>
+				<text class="btn-text">确认身份</text>
+			</button>
+
+			<!-- 补充说明 -->
+			<view class="tips-text">
+				<text>请根据实际使用情况谨慎选择</text>
+			</view>
+		</view>
+	</view>
+</template>
+
+<script>
+import { wechatLogin } from '@/utils/api.js'
+
+export default {
+	data() {
+		return {
+			selectedRole: '', // 选中的角色：parent-家长，teacher-老师
+		}
+	},
+	onLoad() {
+		// 检查是否已经选择过角色
+		const userRole = uni.getStorageSync('userRole')
+		if (userRole) {
+			// 已选择过角色，直接跳转
+			this.navigateToHome(userRole)
+		}
+	},
+	methods: {
+		// 选择角色
+		selectRole(role) {
+			this.selectedRole = role
+		},
+		
+		// 确认角色
+		confirmRole() {
+			if (!this.selectedRole) {
+				return
+			}
+			
+			// 保存角色到本地存储
+			uni.setStorageSync('userRole', this.selectedRole)
+			
+			// 已登录时同步身份到服务端，避免库里 user_type 仍是上次登录时的值
+			const token = uni.getStorageSync('token')
+			if (token) {
+				wechatLogin.updateUserType(this.selectedRole).catch(() => {})
+			}
+			
+			// 立即跳转，不需要等待接口
+			this.navigateToHome(this.selectedRole)
+		},
+		
+		// 根据角色跳转到对应首页（家长端首页=教员库，老师端首页=生源信息；AI 机器人页从「请家教」等入口进入）
+		navigateToHome(role) {
+			try {
+				const pending = (uni.getStorageSync('post_role_redirect_url') || '').trim()
+				if (pending) {
+					uni.removeStorageSync('post_role_redirect_url')
+					const u = pending.startsWith('/') ? pending : '/' + pending
+					uni.reLaunch({ url: u })
+					return
+				}
+			} catch (e) {}
+			
+			if (role === 'parent') {
+				// 家长端首页：教员库
+				uni.reLaunch({
+					url: '/pages/parent-home/index',
+					fail: (err) => {
+						console.error('跳转失败:', err)
+						uni.showToast({
+							title: '跳转失败',
+							icon: 'none'
+						})
+					}
+				})
+			} else if (role === 'teacher') {
+				// 老师跳转到生源信息页面（使用 reLaunch 而不是 switchTab，因为使用的是自定义 tabBar）
+				uni.reLaunch({
+					url: '/pages/tutor-list/index',
+					fail: (err) => {
+						console.error('跳转失败:', err)
+						uni.showToast({
+							title: '跳转失败',
+							icon: 'none'
+						})
+					}
+				})
+			}
+		}
+	}
+}
+</script>
+
+<style lang="scss" scoped>
+.role-select-container {
+	min-height: 100vh;
+	background: linear-gradient(180deg, #7FDFB8 0%, #E8F8F2 30%, #F5F9FF 100%);
+	display: flex;
+	flex-direction: column;
+	position: relative;
+	overflow: hidden;
+}
+
+.top-decoration {
+	position: absolute;
+	top: 0;
+	left: 0;
+	right: 0;
+	height: 400rpx;
+	overflow: hidden;
+	pointer-events: none;
+}
+
+.decoration-circle {
+	position: absolute;
+	border-radius: 50%;
+	background: rgba(255, 255, 255, 0.1);
+	animation: float 6s ease-in-out infinite;
+}
+
+.circle-1 {
+	width: 200rpx;
+	height: 200rpx;
+	top: -50rpx;
+	left: -50rpx;
+	animation-delay: 0s;
+}
+
+.circle-2 {
+	width: 150rpx;
+	height: 150rpx;
+	top: 100rpx;
+	right: 50rpx;
+	animation-delay: 1s;
+}
+
+.circle-3 {
+	width: 100rpx;
+	height: 100rpx;
+	top: 250rpx;
+	left: 50%;
+	animation-delay: 2s;
+}
+
+@keyframes float {
+	0%, 100% {
+		transform: translateY(0) scale(1);
+		opacity: 0.3;
+	}
+	50% {
+		transform: translateY(-20rpx) scale(1.1);
+		opacity: 0.5;
+	}
+}
+
+.main-content {
+	flex: 1;
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	padding: 120rpx 48rpx 60rpx;
+	box-sizing: border-box;
+	position: relative;
+	z-index: 1;
+}
+
+.header-section {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	margin-bottom: 80rpx;
+}
+
+.logo-img {
+	width: 160rpx;
+	height: 160rpx;
+	border-radius: 50%;
+	margin-bottom: 32rpx;
+	animation: pulse 2s ease-in-out infinite;
+}
+
+@keyframes pulse {
+	0%, 100% {
+		transform: scale(1);
+	}
+	50% {
+		transform: scale(1.05);
+	}
+}
+
+.title {
+	font-size: 44rpx;
+	font-weight: 700;
+	color: #1A1A1A;
+	margin-bottom: 16rpx;
+	letter-spacing: 2rpx;
+}
+
+.subtitle {
+	font-size: 28rpx;
+	color: #666;
+	opacity: 0.9;
+}
+
+.role-cards {
+	width: 100%;
+	display: flex;
+	flex-direction: column;
+	gap: 32rpx;
+	margin-bottom: 60rpx;
+}
+
+.role-card {
+	width: 100%;
+	background: rgba(255, 255, 255, 0.95);
+	backdrop-filter: blur(20rpx);
+	border-radius: 32rpx;
+	padding: 40rpx;
+	box-sizing: border-box;
+	display: flex;
+	align-items: center;
+	gap: 24rpx;
+	box-shadow: 0 8rpx 32rpx rgba(0, 0, 0, 0.08);
+	transition: all 0.3s;
+	position: relative;
+	border: 3rpx solid transparent;
+}
+
+.role-card:active {
+	transform: scale(0.98);
+}
+
+.role-card.selected {
+	border-color: #52C9A6;
+	box-shadow: 0 12rpx 40rpx rgba(82, 201, 166, 0.3);
+}
+
+.role-card.selected .card-icon-wrapper {
+	background: linear-gradient(135deg, #52C9A6 0%, #3BA888 100%);
+}
+
+.card-icon-wrapper {
+	width: 100rpx;
+	height: 100rpx;
+	background: #F5F7FA;
+	border-radius: 50%;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	flex-shrink: 0;
+	transition: all 0.3s;
+}
+
+.icon-text {
+	font-size: 56rpx;
+	line-height: 1;
+}
+
+.role-card.selected .icon-text {
+	filter: brightness(0) invert(1);
+}
+
+.card-content {
+	flex: 1;
+	display: flex;
+	flex-direction: column;
+	gap: 8rpx;
+}
+
+.card-title {
+	font-size: 32rpx;
+	font-weight: 600;
+	color: #1A1A1A;
+}
+
+.card-desc {
+	font-size: 26rpx;
+	color: #666;
+	line-height: 1.5;
+}
+
+.card-check {
+	width: 48rpx;
+	height: 48rpx;
+	background: linear-gradient(135deg, #52C9A6 0%, #3BA888 100%);
+	border-radius: 50%;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	flex-shrink: 0;
+	animation: checkIn 0.3s ease-out;
+}
+
+@keyframes checkIn {
+	0% {
+		transform: scale(0);
+		opacity: 0;
+	}
+	50% {
+		transform: scale(1.2);
+	}
+	100% {
+		transform: scale(1);
+		opacity: 1;
+	}
+}
+
+.check-icon {
+	font-size: 28rpx;
+	color: #fff;
+	font-weight: 700;
+}
+
+.confirm-btn {
+	width: 100%;
+	height: 100rpx;
+	background: linear-gradient(135deg, #52C9A6 0%, #3BA888 100%);
+	border-radius: 50rpx;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	box-shadow: 0 8rpx 24rpx rgba(82, 201, 166, 0.4);
+	transition: all 0.3s;
+	border: none;
+	margin-bottom: 32rpx;
+}
+
+.confirm-btn::after {
+	border: none;
+}
+
+.confirm-btn:active:not(.disabled) {
+	transform: scale(0.98);
+	box-shadow: 0 4rpx 16rpx rgba(82, 201, 166, 0.3);
+}
+
+.confirm-btn.disabled {
+	background: #E5E7EB;
+	box-shadow: none;
+}
+
+.confirm-btn.disabled .btn-text {
+	color: #9CA3AF;
+}
+
+.btn-text {
+	font-size: 32rpx;
+	font-weight: 500;
+	color: #fff;
+}
+
+.role-warning-box {
+	margin: 24rpx 0 32rpx;
+	padding: 24rpx 28rpx;
+	background: rgba(255, 243, 224, 0.95);
+	border-radius: 16rpx;
+	border: 1rpx solid rgba(230, 162, 60, 0.35);
+}
+
+.role-warning-title {
+	display: block;
+	font-size: 26rpx;
+	font-weight: 600;
+	color: #c77e14;
+	margin-bottom: 12rpx;
+}
+
+.role-warning-desc {
+	display: block;
+	font-size: 24rpx;
+	line-height: 1.55;
+	color: #856404;
+}
+
+.tips-text {
+	text-align: center;
+}
+
+.tips-text text {
+	font-size: 24rpx;
+	color: #999;
+	opacity: 0.8;
+}
+</style>

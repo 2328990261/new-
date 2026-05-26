@@ -1,0 +1,24 @@
+{
+  "name": "tutor-miniprogram",
+  "version": "1.0.0",
+  "description": "预约家教小程序",
+  "main": "main.js",
+  "scripts": {
+    "dev:mp-weixin": "uni -p mp-weixin",
+    "build:mp-weixin": "uni build -p mp-weixin"
+  },
+  "keywords": [
+    "uni-app",
+    "miniprogram"
+  ],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@dcloudio/uni-app": "^3.0.0",
+    "vue": "^3.0.0"
+  },
+  "devDependencies": {
+    "@dcloudio/vite-plugin-uni": "^3.0.0",
+    "vite": "^4.0.0"
+  }
+}
