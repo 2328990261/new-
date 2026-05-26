@@ -1,0 +1,5 @@
+# 完整数据库备份（仅保留本地，不上传仓库）
+myjiajiao.sql
+tjiajiao91.sql
+**/myjiajiao.sql
+**/tjiajiao91.sql
