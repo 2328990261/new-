@@ -37,6 +37,9 @@
 # 仅忽略 backend 目录下零散 SQL（如临时导出）；`sql/` 内为运维/补丁脚本纳入版本库
 *.sql
 !sql/*.sql
+# 完整库备份仅保留本地，不上传仓库
+sql/myjiajiao.sql
+sql/tjiajiao91.sql
 *.sqlite
 
 # OS
